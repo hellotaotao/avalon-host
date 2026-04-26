@@ -1,4 +1,4 @@
--- TableHost initial local schema for Avalon Lite.
+-- Avalon Host initial local schema for Avalon Lite.
 -- Prepared for local Supabase only. This repo is intentionally not linked to a remote project.
 
 create extension if not exists "pgcrypto";

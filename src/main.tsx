@@ -38,7 +38,7 @@ function App() {
   const [score, setScore] = useState({ success: 0, fail: 0 });
   const [assassinGuess, setAssassinGuess] = useState('');
   const [winner, setWinner] = useState('');
-  const [events, setEvents] = useState<EventItem[]>([{ id: 'e0', text: 'TableHost ready for Avalon Lite.' }]);
+  const [events, setEvents] = useState<EventItem[]>([{ id: 'e0', text: 'Avalon Host ready for Avalon Lite.' }]);
 
   const selectedPlayer = players.find((player) => player.id === selectedPlayerId);
   const currentTeamSize = players.length >= 5 && roundIndex < 5 ? getTeamSize(players.length, roundIndex) : 0;
@@ -162,8 +162,8 @@ function App() {
     <main className="shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">TableHost</p>
-          <h1>Avalon Lite</h1>
+          <p className="eyebrow">Avalon Host</p>
+          <h1>Avalon Host</h1>
         </div>
         <div className="room-pill">{roomCode}</div>
       </header>

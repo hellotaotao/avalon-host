@@ -1,4 +1,4 @@
-# TableHost / Avalon Lite
+# Avalon Host
 
 Offline-first host prototype for face-to-face Avalon-style gatherings. This MVP is a local React workflow prototype with mock room/device state and no remote backend connection.
 
@@ -31,7 +31,7 @@ Supabase is prepared locally only. The repo is not linked to any remote Supabase
 Initial schema lives at:
 
 ```text
-supabase/migrations/20260427010500_initial_tablehost_schema.sql
+supabase/migrations/20260427010500_initial_avalon_host_schema.sql
 ```
 
 It includes `rooms`, `players`, `game_state`, `private_roles`, `votes`, `mission_actions`, and `events` with RLS enabled. Current policies are permissive local-prototype drafts with TODO comments for room membership and private role access.

@@ -58,7 +58,7 @@ export function getRoleDistribution(playerCount: number, options: AssignmentOpti
   return roles;
 }
 
-export function assignRoles(players: Player[], options: AssignmentOptions = {}, seed = 'tablehost'): Player[] {
+export function assignRoles(players: Player[], options: AssignmentOptions = {}, seed = 'avalon-host'): Player[] {
   const roles = shuffle(getRoleDistribution(players.length, options), seed);
   return players.map((player, index) => ({ ...player, role: roles[index] }));
 }
