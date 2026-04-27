@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getTeamSize } from './domain/avalon';
+import { buildStepUrl, parseEntryStep, type EntryScreen } from './navigationState';
 import { isSupabaseConfigured } from './services/supabaseClient';
 import {
   createHostDemoRoom,
@@ -24,12 +25,12 @@ import {
 } from './services/roomService';
 import './styles.css';
 
-type Screen = 'home' | 'create' | 'join' | 'demo' | 'demoJoin' | 'room';
+type Screen = EntryScreen | 'room';
 const CURRENT_PLAYER_ID_KEY = 'avalon-host.currentPlayerId';
 const CURRENT_ROOM_ID_KEY = 'avalon-host.currentRoomId';
 
 function App() {
-  const [screen, setScreen] = useState<Screen>('home');
+  const [screen, setScreen] = useState<Screen>(() => parseEntryStep(window.location.href));
   const [snapshot, setSnapshot] = useState<RoomSnapshot>();
   const [currentPlayerId, setCurrentPlayerId] = useState(localStorage.getItem(CURRENT_PLAYER_ID_KEY) ?? '');
   const [deviceToken] = useState(() => getOrCreateDeviceToken());
@@ -60,6 +61,7 @@ function App() {
         if (restoredSnapshot?.players.some((player) => player.id === storedPlayerId)) {
           setCurrentPlayerId(storedPlayerId);
           setSnapshot(restoredSnapshot);
+          clearEntryStepFromUrl();
           setScreen('room');
           return;
         }
@@ -79,6 +81,24 @@ function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    function handlePopState() {
+      setScreen((currentScreen) => {
+        if (currentScreen === 'room') return currentScreen;
+        return parseEntryStep(window.location.href);
+      });
+      setMessage('');
+    }
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (screen !== 'demoJoin') return;
+    setJoinCode(DEMO_JOIN_ROOM_CODE);
+    setJoinName((current) => current || 'Demo Guest');
+  }, [screen]);
 
   useEffect(() => {
     if (!snapshot || snapshot.room.settings.createdInDemoMode) return undefined;
@@ -106,6 +126,7 @@ function App() {
       saveSessionBinding(result.snapshot.room.id, result.currentPlayerId);
       setCurrentPlayerId(result.currentPlayerId);
       setSnapshot(result.snapshot);
+      clearEntryStepFromUrl();
       setScreen('room');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not create room.');
@@ -124,6 +145,7 @@ function App() {
     setCurrentPlayerId(result.currentPlayerId);
     setSnapshot(startedDemo.snapshot ?? result.snapshot);
     setMessage(startedDemo.ok ? 'Demo room auto-started so you can see the reveal flow.' : startedDemo.reason ?? 'Demo room is ready.');
+    clearEntryStepFromUrl();
     setScreen('room');
   }
 
@@ -131,7 +153,7 @@ function App() {
     setJoinCode(DEMO_JOIN_ROOM_CODE);
     setJoinName((current) => current || 'Demo Guest');
     setMessage('');
-    setScreen('demoJoin');
+    navigateEntry('demoJoin');
   }
 
   function handleJoinDemo(event: React.FormEvent) {
@@ -143,6 +165,7 @@ function App() {
     setCurrentPlayerId(result.currentPlayerId);
     setSnapshot(startedDemo.snapshot ?? result.snapshot);
     setMessage(startedDemo.ok ? 'Demo room auto-started so you can see the reveal flow.' : startedDemo.reason ?? 'Demo room is ready.');
+    clearEntryStepFromUrl();
     setScreen('room');
   }
 
@@ -156,6 +179,7 @@ function App() {
       saveSessionBinding(result.snapshot.room.id, result.currentPlayerId);
       setCurrentPlayerId(result.currentPlayerId);
       setSnapshot(result.snapshot);
+      clearEntryStepFromUrl();
       setScreen('room');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not join room.');
@@ -217,7 +241,7 @@ function App() {
     if (isDemoMode) {
       setCurrentPlayerId('');
       setSnapshot(undefined);
-      setScreen('home');
+      navigateEntry('home', { replace: true });
       setMessage('You left the demo room.');
       setBusy(false);
       return;
@@ -229,7 +253,7 @@ function App() {
       clearSessionBinding();
       setCurrentPlayerId('');
       setSnapshot(undefined);
-      setScreen('home');
+      navigateEntry('home', { replace: true });
       setMessage('You left the room.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not leave room.');
@@ -252,28 +276,47 @@ function App() {
       {screen === 'home' && (
         <section className="entry">
           <div className="panel entry-intro">
-            <h2>Pick your next step</h2>
-            <p>Use one shared room for the table. The app keeps players in order, checks readiness, then locks the room for role reveal.</p>
+            <h2>Run the hidden-role setup without table chatter</h2>
+            <p>Avalon Host gives the table one room code, tracks who is ready, and lets each player reveal only their private role and night information.</p>
+          </div>
+          <div className="workflow-grid" aria-label="Live workflow">
+            <article>
+              <strong>1. Host creates room</strong>
+              <span>Share the four-character code with everyone at the table.</span>
+            </article>
+            <article>
+              <strong>2. Players join and ready</strong>
+              <span>The lobby confirms player count and readiness before start.</span>
+            </article>
+            <article>
+              <strong>3. Roles reveal privately</strong>
+              <span>Each phone shows only that player's role and night info.</span>
+            </article>
           </div>
           <div className="path-grid" aria-label="Primary actions">
-            <button type="button" className="path-card primary-path" onClick={() => setScreen('create')}>
+            <button type="button" className="path-card primary-path" onClick={() => navigateEntry('create')}>
               <span>Host a game</span>
-              <small>Create a room code for the table.</small>
+              <small>Create a live room code and become the host.</small>
             </button>
-            <button type="button" className="path-card" onClick={() => setScreen('join')}>
+            <button type="button" className="path-card" onClick={() => navigateEntry('join')}>
               <span>Join with code</span>
-              <small>Enter the four-character room code.</small>
+              <small>Enter a code from the host and ready up.</small>
             </button>
-            <button type="button" className="path-card demo-button" onClick={() => setScreen('demo')}>
+            <button type="button" className="path-card demo-button" onClick={() => navigateEntry('demo')}>
               <span>Try demo</span>
-              <small>Auto-start with demo players.</small>
+              <small>Use local sample players and jump straight to reveal.</small>
             </button>
+          </div>
+          <div className="panel entry-guide">
+            <h2>Choose the right entry</h2>
+            <p><strong>Host</strong> starts a real table room. <strong>Join</strong> is for players with a code. <strong>Demo</strong> stays on this device and never connects to Supabase.</p>
           </div>
         </section>
       )}
 
       {screen === 'demo' && (
         <section className="panel demo-panel">
+          <button type="button" className="back-button" onClick={() => navigateEntry('home')}>Back</button>
           <h2>Try Demo</h2>
           <p>Demo mode uses bot players and does not create a real shareable room.</p>
           <div className="demo-options">
@@ -307,6 +350,7 @@ function App() {
 
       {screen === 'create' && (
         <section className="panel">
+          <button type="button" className="back-button" onClick={() => navigateEntry('home')}>Back</button>
           <h2>Create Room</h2>
           <form className="stack" onSubmit={handleCreateRoom}>
             <label>
@@ -328,6 +372,7 @@ function App() {
 
       {screen === 'join' && (
         <section className="panel">
+          <button type="button" className="back-button" onClick={() => navigateEntry('home')}>Back</button>
           <h2>Join Room</h2>
           <form className="stack" onSubmit={handleJoinRoom}>
             <label>
@@ -345,6 +390,7 @@ function App() {
 
       {screen === 'demoJoin' && (
         <section className="panel demo-panel">
+          <button type="button" className="back-button" onClick={() => navigateEntry('demo')}>Back</button>
           <h2>Join Demo</h2>
           <p>Demo mode uses bot players and does not create a real shareable room.</p>
           <form className="stack" onSubmit={handleJoinDemo}>
@@ -377,6 +423,17 @@ function App() {
       )}
     </main>
   );
+
+  function navigateEntry(nextScreen: EntryScreen, options: { replace?: boolean } = {}) {
+    const nextUrl = buildStepUrl(window.location.href, nextScreen);
+    if (options.replace) {
+      window.history.replaceState({ step: nextScreen }, '', nextUrl);
+    } else {
+      window.history.pushState({ step: nextScreen }, '', nextUrl);
+    }
+    setScreen(nextScreen);
+    setMessage('');
+  }
 }
 
 function RoomView({
@@ -530,6 +587,10 @@ function saveSessionBinding(roomId: string, playerId: string) {
 function clearSessionBinding() {
   localStorage.removeItem(CURRENT_ROOM_ID_KEY);
   localStorage.removeItem(CURRENT_PLAYER_ID_KEY);
+}
+
+function clearEntryStepFromUrl() {
+  window.history.replaceState({ step: 'home' }, '', buildStepUrl(window.location.href, 'home'));
 }
 
 createRoot(document.getElementById('root')!).render(<App />);
