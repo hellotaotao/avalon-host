@@ -14,6 +14,7 @@ import {
   getStartValidation,
   joinRoom,
   leaveRoom,
+  normalizeRoomCode,
   removePlayer,
   setReady,
   startGame,
@@ -171,11 +172,13 @@ function App() {
 
   async function handleJoinRoom(event: React.FormEvent) {
     event.preventDefault();
-    if (!joinCode.trim() || !joinName.trim()) return setMessage('Enter room code and nickname.');
+    const normalizedCode = normalizeRoomCode(joinCode);
+    setJoinCode(normalizedCode);
+    if (normalizedCode.length !== 5 || !joinName.trim()) return setMessage('Enter the 5-digit room code and nickname.');
     setBusy(true);
     setMessage('');
     try {
-      const result = await joinRoom({ code: joinCode, displayName: joinName, deviceToken });
+      const result = await joinRoom({ code: normalizedCode, displayName: joinName, deviceToken });
       saveSessionBinding(result.snapshot.room.id, result.currentPlayerId);
       setCurrentPlayerId(result.currentPlayerId);
       setSnapshot(result.snapshot);
@@ -266,8 +269,8 @@ function App() {
     <main className="shell">
       <header className="hero">
         <p className="eyebrow">Avalon Host</p>
-        <h1>{screen === 'room' ? (snapshot?.room.status === 'reveal' ? 'Reveal Roles' : 'Room Lobby') : 'Host Avalon at the table'}</h1>
-        <p className="lede">Create room, players join and ready, then reveal private roles on each phone.</p>
+        <h1>{screen === 'room' ? (snapshot?.room.status === 'reveal' ? 'The Merlin Reveal' : 'Round Table Lobby') : 'Gather the Knights of Avalon'}</h1>
+        <p className="lede">Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.</p>
         <p className="mode">{isSupabaseConfigured ? 'Supabase realtime mode' : 'Local browser demo mode'}</p>
       </header>
 
@@ -276,40 +279,40 @@ function App() {
       {screen === 'home' && (
         <section className="entry">
           <div className="panel entry-intro">
-            <h2>Run the hidden-role setup without table chatter</h2>
-            <p>Avalon Host gives the table one room code, tracks who is ready, and lets each player reveal only their private role and night information.</p>
+            <h2>Let Merlin handle the hidden-role ritual</h2>
+            <p>Avalon Host gives the table one magic number, watches the round table fill, and reveals only the secrets each player should know.</p>
           </div>
           <div className="workflow-grid" aria-label="Live workflow">
             <article>
-              <strong>1. Host creates room</strong>
-              <span>Share the four-character code with everyone at the table.</span>
+              <strong>1. Host opens the hall</strong>
+              <span>Share the 5-digit room code with every knight at the table.</span>
             </article>
             <article>
-              <strong>2. Players join and ready</strong>
-              <span>The lobby confirms player count and readiness before start.</span>
+              <strong>2. Knights take seats</strong>
+              <span>The lobby tracks the fellowship and who is ready for the quest.</span>
             </article>
             <article>
-              <strong>3. Roles reveal privately</strong>
-              <span>Each phone shows only that player's role and night info.</span>
+              <strong>3. Secrets are revealed</strong>
+              <span>Each phone shows only that player's role and night vision.</span>
             </article>
           </div>
           <div className="path-grid" aria-label="Primary actions">
             <button type="button" className="path-card primary-path" onClick={() => navigateEntry('create')}>
-              <span>Host a game</span>
-              <small>Create a live room code and become the host.</small>
+              <span>Host the round</span>
+              <small>Create a live 5-digit code and become the table herald.</small>
             </button>
             <button type="button" className="path-card" onClick={() => navigateEntry('join')}>
-              <span>Join with code</span>
-              <small>Enter a code from the host and ready up.</small>
+              <span>Join by rune</span>
+              <small>Enter the host's 5-digit code and ready up.</small>
             </button>
             <button type="button" className="path-card demo-button" onClick={() => navigateEntry('demo')}>
               <span>Try demo</span>
-              <small>Use local sample players and jump straight to reveal.</small>
+              <small>Use local sample knights and jump straight to reveal.</small>
             </button>
           </div>
           <div className="panel entry-guide">
-            <h2>Choose the right entry</h2>
-            <p><strong>Host</strong> starts a real table room. <strong>Join</strong> is for players with a code. <strong>Demo</strong> stays on this device and never connects to Supabase.</p>
+            <h2>Choose your path</h2>
+            <p><strong>Host</strong> opens a real table room. <strong>Join</strong> is for players with a 5-digit code. <strong>Demo</strong> stays on this device and never connects to Supabase.</p>
           </div>
         </section>
       )}
@@ -318,11 +321,11 @@ function App() {
         <section className="panel demo-panel">
           <button type="button" className="back-button" onClick={() => navigateEntry('home')}>Back</button>
           <h2>Try Demo</h2>
-          <p>Demo mode uses bot players and does not create a real shareable room.</p>
+          <p>Demo mode uses bot knights and does not create a real shareable room.</p>
           <div className="demo-options">
             <form className="stack" onSubmit={handleHostDemo}>
               <h3>Host demo</h3>
-              <p>Create a sandbox room with ready bot players, then auto-start the reveal flow.</p>
+              <p>Create a sandbox hall with ready bot players, then auto-start the reveal flow.</p>
               <label>
                 Your nickname
                 <input value={hostName} onChange={(event) => setHostName(event.target.value)} maxLength={24} autoFocus />
@@ -331,9 +334,8 @@ function App() {
             </form>
             <div className="stack">
               <h3>Join demo</h3>
-              <p>Join a sandbox room that already has a host and other ready demo players.</p>
-              <button
-                type="button"
+              <p>Join a sandbox room that already has a host and ready demo players.</p>
+              <button type="button"
                 className="primary"
                 onClick={(event) => {
                   event.preventDefault();
@@ -376,8 +378,17 @@ function App() {
           <h2>Join Room</h2>
           <form className="stack" onSubmit={handleJoinRoom}>
             <label>
-              Room code
-              <input value={joinCode} onChange={(event) => setJoinCode(event.target.value.toUpperCase())} maxLength={4} autoFocus />
+              5-digit room code
+              <input
+                value={joinCode}
+                onChange={(event) => setJoinCode(normalizeRoomCode(event.target.value))}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={5}
+                placeholder="12345"
+                autoComplete="one-time-code"
+                autoFocus
+              />
             </label>
             <label>
               Your nickname
@@ -392,11 +403,11 @@ function App() {
         <section className="panel demo-panel">
           <button type="button" className="back-button" onClick={() => navigateEntry('demo')}>Back</button>
           <h2>Join Demo</h2>
-          <p>Demo mode uses bot players and does not create a real shareable room.</p>
+          <p>Demo mode uses bot knights and does not create a real shareable room.</p>
           <form className="stack" onSubmit={handleJoinDemo}>
             <label>
               Demo room code
-              <input value={joinCode} readOnly aria-label="Demo room code" />
+              <input value={joinCode} readOnly aria-label="Demo room code" inputMode="numeric" maxLength={5} />
             </label>
             <label>
               Your nickname
@@ -540,8 +551,7 @@ function RoomView({
           ))}
         </ol>
         {!started && currentPlayer && (
-          <button
-            type="button"
+          <button type="button"
             className="primary"
             disabled={!canStart}
             onClick={(event) => {

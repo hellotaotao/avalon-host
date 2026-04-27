@@ -1,6 +1,6 @@
 # Avalon Host
 
-Mobile-first room flow for face-to-face Avalon Lite gatherings. One person creates a room at the table, everyone else joins with a four-character code, players mark ready, and the host starts once the lobby is valid.
+Mobile-first room flow for face-to-face Avalon Lite gatherings. One person creates a room at the table, everyone else joins with a 5-digit numeric code, players mark ready, and the host starts once the lobby is valid.
 
 ## Local Run
 
@@ -16,8 +16,8 @@ When Supabase env vars are absent, the app runs in local browser demo mode using
 ## Table Flow
 
 1. Host opens the site and taps **Create Room**.
-2. Host enters a nickname, optionally enables Percival/Morgana for 7+ players, and receives a room code.
-3. Other players open the site, tap **Join Room**, enter the room code and nickname.
+2. Host enters a nickname, optionally enables Percival/Morgana for 7+ players, and receives a 5-digit room code.
+3. Other players open the site, tap **Join Room**, enter the 5-digit room code and nickname.
 4. The lobby shows seats, host marker, current player marker, and ready state.
 5. Refreshing the same browser restores its current room/player session, and rejoining from the same device reuses the existing seat.
 6. Before the game starts, the host can remove stale players from the lobby so abandoned seats do not block start.

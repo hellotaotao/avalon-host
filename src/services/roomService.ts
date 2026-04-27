@@ -52,18 +52,21 @@ export interface StartResult {
 type Listener = (snapshot: RoomSnapshot | undefined) => void;
 
 const STORAGE_KEY = 'avalon-host.rooms.v1';
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-export const DEMO_JOIN_ROOM_CODE = 'DEMO';
+export const DEMO_JOIN_ROOM_CODE = '58213';
 
 const DEMO_BOT_NAMES = ['Gwen', 'Lance', 'Mira', 'Percy', 'Selene', 'Tristan'];
 
 export function generateRoomCode(existingCodes: Iterable<string> = []): string {
-  const existing = new Set(Array.from(existingCodes, (code) => code.toUpperCase()));
+  const existing = new Set(Array.from(existingCodes, normalizeRoomCode));
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    const code = Array.from({ length: 4 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
+    const code = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
     if (!existing.has(code)) return code;
   }
   throw new Error('Unable to generate an unused room code');
+}
+
+export function normalizeRoomCode(code: string): string {
+  return code.replace(/\D/g, '').slice(0, 5);
 }
 
 export function getStartValidation(players: RoomPlayer[]): string | undefined {
@@ -84,7 +87,7 @@ export function createHostDemoRoom(displayName: string): { snapshot: RoomSnapsho
     makeDemoPlayer(roomId, currentPlayerId, displayName.trim() || 'Demo Host', 0, true),
     ...DEMO_BOT_NAMES.slice(0, 4).map((name, index) => makeDemoPlayer(roomId, `demo-bot-${index + 1}`, `${name} Bot`, index + 1, false)),
   ];
-  return { snapshot: makeDemoSnapshot(roomId, 'HOST', players), currentPlayerId };
+  return { snapshot: makeDemoSnapshot(roomId, '41372', players), currentPlayerId };
 }
 
 export function createJoinDemoRoom(displayName: string): { snapshot: RoomSnapshot; currentPlayerId: string } {
@@ -295,7 +298,9 @@ const localRepository = {
 const supabaseRepository = {
   async createRoom(input: CreateRoomInput) {
     const supabase = await getSupabaseRequired();
-    const code = generateRoomCode();
+    const { data: existingRooms, error: existingRoomsError } = await supabase.from('rooms').select('code');
+    if (existingRoomsError) throw existingRoomsError;
+    const code = generateRoomCode((existingRooms ?? []).map((room) => room.code as string));
     const { data: roomRow, error: roomError } = await supabase
       .from('rooms')
       .insert({
@@ -468,7 +473,7 @@ const supabaseRepository = {
 
   async getRoomByCode(code: string) {
     const supabase = await getSupabaseRequired();
-    const { data, error } = await supabase.from('rooms').select('id').eq('code', code.trim().toUpperCase()).maybeSingle();
+    const { data, error } = await supabase.from('rooms').select('id').eq('code', normalizeRoomCode(code)).maybeSingle();
     if (error) throw error;
     return data ? fetchSnapshot(data.id as string) : undefined;
   },
@@ -527,7 +532,7 @@ function writeRooms(data: { rooms: RoomSnapshot[] }) {
 }
 
 function findByCode(data: { rooms: RoomSnapshot[] }, code: string) {
-  return data.rooms.find((snapshot) => snapshot.room.code === code.trim().toUpperCase());
+  return data.rooms.find((snapshot) => snapshot.room.code === normalizeRoomCode(code));
 }
 
 function requireById(data: { rooms: RoomSnapshot[] }, roomId: string) {

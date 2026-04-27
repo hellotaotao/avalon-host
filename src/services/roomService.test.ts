@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { assignRoles } from '../domain/avalon';
 import {
   assertDeletedRows,
@@ -11,6 +11,7 @@ import {
   generateRoomCode,
   getStartValidation,
   leavePlayerFromSnapshot,
+  normalizeRoomCode,
   removePlayerFromSnapshot,
   startDemoSnapshot,
   type RoomSnapshot,
@@ -18,14 +19,24 @@ import {
 } from './roomService';
 
 describe('room service rules', () => {
-  it('generates four-character room codes without ambiguous characters', () => {
+  it('generates five-digit numeric room codes', () => {
     const code = generateRoomCode();
-    expect(code).toMatch(/^[A-Z2-9]{4}$/);
-    expect(code).not.toMatch(/[IO01]/);
+    expect(code).toHaveLength(5);
+    expect(code).toMatch(/^\d{5}$/);
   });
 
   it('does not reuse an existing room code when another code can be generated', () => {
-    expect(generateRoomCode(['ABCD'])).toHaveLength(4);
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValueOnce(0.12345).mockReturnValueOnce(0.54321);
+
+    try {
+      expect(generateRoomCode(['12345'])).toBe('54321');
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+
+  it('normalizes room code input to five digits', () => {
+    expect(normalizeRoomCode('ab 12-345 67')).toBe('12345');
   });
 
   it('validates lobby start constraints', () => {
@@ -173,7 +184,7 @@ function makeSnapshot(count: number): RoomSnapshot {
   return {
     room: {
       id: 'r1',
-      code: 'ABCD',
+      code: '12345',
       status: 'lobby',
       gameType: 'avalon_lite',
       settings: {},
