@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { assignRoles } from '../domain/avalon';
 import {
   assertDeletedRows,
+  createHostDemoRoom,
+  createJoinDemoRoom,
+  DEMO_JOIN_ROOM_CODE,
   findPlayerByDeviceToken,
   findPlayerByDisplayName,
   generateRoomCode,
   getStartValidation,
   leavePlayerFromSnapshot,
   removePlayerFromSnapshot,
+  startDemoSnapshot,
   type RoomSnapshot,
   type RoomPlayer,
 } from './roomService';
@@ -99,6 +103,50 @@ describe('room service rules', () => {
     players[1].displayName = '  Alice   Wang  ';
     expect(findPlayerByDisplayName(players, 'alice wang')?.id).toBe('p2');
     expect(findPlayerByDisplayName(players, 'Bob')).toBeUndefined();
+  });
+
+  it('creates a host demo room with enough ready players and exactly one host', () => {
+    const { snapshot, currentPlayerId } = createHostDemoRoom('Morgan');
+
+    expect(snapshot.room.settings.createdInDemoMode).toBe(true);
+    expect(snapshot.players).toHaveLength(5);
+    expect(snapshot.players.filter((player) => player.isHost)).toHaveLength(1);
+    expect(snapshot.players[0]).toMatchObject({ id: currentPlayerId, displayName: 'Morgan', isHost: true, isReady: true });
+    expect(snapshot.players.every((player) => player.isReady)).toBe(true);
+    expect(getStartValidation(snapshot.players)).toBeUndefined();
+  });
+
+  it('creates a deterministic join demo room with an existing host and ready demo players', () => {
+    const { snapshot, currentPlayerId } = createJoinDemoRoom('Riley');
+
+    expect(snapshot.room.code).toBe(DEMO_JOIN_ROOM_CODE);
+    expect(snapshot.players).toHaveLength(5);
+    expect(snapshot.players.filter((player) => player.isHost)).toHaveLength(1);
+    expect(snapshot.players[0]).toMatchObject({ displayName: 'Demo Host', isHost: true, isReady: true });
+    expect(snapshot.players.find((player) => player.id === currentPlayerId)).toMatchObject({
+      displayName: 'Riley',
+      isHost: false,
+      isReady: true,
+    });
+    expect(getStartValidation(snapshot.players)).toBeUndefined();
+  });
+
+  it('can start a host demo room and assign locked roles without persistence', () => {
+    const { snapshot } = createHostDemoRoom('Morgan');
+    const started = startDemoSnapshot(snapshot);
+
+    expect(started.ok).toBe(true);
+    expect(started.snapshot?.room.status).toBe('reveal');
+    expect(started.snapshot?.players.every((player) => player.role)).toBe(true);
+  });
+
+  it('can auto-start a join demo room for a guest without persistence', () => {
+    const { snapshot, currentPlayerId } = createJoinDemoRoom('Riley');
+    const started = startDemoSnapshot(snapshot);
+
+    expect(started.ok).toBe(true);
+    expect(started.snapshot?.room.status).toBe('reveal');
+    expect(started.snapshot?.players.find((player) => player.id === currentPlayerId)?.role).toBeTruthy();
   });
 });
 

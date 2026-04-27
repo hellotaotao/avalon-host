@@ -53,6 +53,9 @@ type Listener = (snapshot: RoomSnapshot | undefined) => void;
 
 const STORAGE_KEY = 'avalon-host.rooms.v1';
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export const DEMO_JOIN_ROOM_CODE = 'DEMO';
+
+const DEMO_BOT_NAMES = ['Gwen', 'Lance', 'Mira', 'Percy', 'Selene', 'Tristan'];
 
 export function generateRoomCode(existingCodes: Iterable<string> = []): string {
   const existing = new Set(Array.from(existingCodes, (code) => code.toUpperCase()));
@@ -68,6 +71,48 @@ export function getStartValidation(players: RoomPlayer[]): string | undefined {
   if (players.length > 10) return 'Avalon Lite supports at most 10 players.';
   if (players.some((player) => !player.isReady)) return 'Every player, including the host, must be ready.';
   return undefined;
+}
+
+export function createHostDemoRoom(displayName: string): { snapshot: RoomSnapshot; currentPlayerId: string } {
+  const roomId = 'demo-host-room';
+  const currentPlayerId = 'demo-host-player';
+  const players = [
+    makeDemoPlayer(roomId, currentPlayerId, displayName.trim() || 'Demo Host', 0, true),
+    ...DEMO_BOT_NAMES.slice(0, 4).map((name, index) => makeDemoPlayer(roomId, `demo-bot-${index + 1}`, `${name} Bot`, index + 1, false)),
+  ];
+  return { snapshot: makeDemoSnapshot(roomId, 'HOST', players), currentPlayerId };
+}
+
+export function createJoinDemoRoom(displayName: string): { snapshot: RoomSnapshot; currentPlayerId: string } {
+  const roomId = 'demo-join-room';
+  const currentPlayerId = 'demo-joining-player';
+  const players = [
+    makeDemoPlayer(roomId, 'demo-existing-host', 'Demo Host', 0, true),
+    ...DEMO_BOT_NAMES.slice(0, 3).map((name, index) => makeDemoPlayer(roomId, `demo-existing-bot-${index + 1}`, `${name} Bot`, index + 1, false)),
+    makeDemoPlayer(roomId, currentPlayerId, displayName.trim() || 'Demo Guest', 4, false),
+  ];
+  return { snapshot: makeDemoSnapshot(roomId, DEMO_JOIN_ROOM_CODE, players), currentPlayerId };
+}
+
+export function startDemoSnapshot(snapshot: RoomSnapshot): StartResult {
+  const reason = getStartValidation(snapshot.players);
+  if (reason) return { ok: false, reason, snapshot };
+  const assigned = assignRoles(
+    snapshot.players.map(toAvalonPlayer),
+    snapshot.room.settings,
+    `${snapshot.room.code}-${snapshot.players.map((player) => player.id).join('|')}`,
+  );
+  return {
+    ok: true,
+    snapshot: {
+      ...snapshot,
+      room: { ...snapshot.room, status: 'reveal' },
+      players: snapshot.players.map((player) => ({
+        ...player,
+        role: assigned.find((assignedPlayer) => assignedPlayer.id === player.id)?.role,
+      })),
+    },
+  };
 }
 
 export async function createRoom(input: CreateRoomInput): Promise<{ snapshot: RoomSnapshot; currentPlayerId: string }> {
@@ -125,7 +170,6 @@ const localRepository = {
       gameType: 'avalon_lite',
       settings: {
         includePercivalMorgana: input.includePercivalMorgana,
-        createdInDemoMode: true,
       },
     };
     const player: RoomPlayer = {
@@ -535,6 +579,34 @@ export function findPlayerByDisplayName(players: RoomPlayer[], displayName: stri
 
 function normalizeDisplayName(displayName: string) {
   return displayName.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+function makeDemoSnapshot(roomId: string, code: string, players: RoomPlayer[]): RoomSnapshot {
+  return {
+    room: {
+      id: roomId,
+      code,
+      status: 'lobby',
+      gameType: 'avalon_lite',
+      settings: {
+        createdInDemoMode: true,
+        includePercivalMorgana: false,
+      },
+    },
+    players,
+  };
+}
+
+function makeDemoPlayer(roomId: string, id: string, displayName: string, seatIndex: number, isHost: boolean): RoomPlayer {
+  return {
+    id,
+    roomId,
+    displayName,
+    seatIndex,
+    isHost,
+    isReady: true,
+    deviceToken: id,
+  };
 }
 
 function toAvalonPlayer(player: RoomPlayer): AvalonPlayer {

@@ -3,7 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { getTeamSize } from './domain/avalon';
 import { isSupabaseConfigured } from './services/supabaseClient';
 import {
+  createHostDemoRoom,
+  createJoinDemoRoom,
   createRoom,
+  DEMO_JOIN_ROOM_CODE,
   getRoomById,
   getPrivateRoleInfo,
   getStartValidation,
@@ -12,6 +15,7 @@ import {
   removePlayer,
   setReady,
   startGame,
+  startDemoSnapshot,
   subscribeToRoom,
   updateNickname,
   type RoomPlayer,
@@ -19,7 +23,7 @@ import {
 } from './services/roomService';
 import './styles.css';
 
-type Screen = 'home' | 'create' | 'join' | 'room';
+type Screen = 'home' | 'create' | 'join' | 'demo' | 'demoJoin' | 'room';
 const CURRENT_PLAYER_ID_KEY = 'avalon-host.currentPlayerId';
 const CURRENT_ROOM_ID_KEY = 'avalon-host.currentRoomId';
 
@@ -36,6 +40,7 @@ function App() {
   const [busy, setBusy] = useState(false);
 
   const currentPlayer = snapshot?.players.find((player) => player.id === currentPlayerId);
+  const isDemoMode = Boolean(snapshot?.room.settings.createdInDemoMode);
   const startValidation = snapshot ? getStartValidation(snapshot.players) : undefined;
   const privateInfo = useMemo(
     () => (currentPlayer && snapshot ? getPrivateRoleInfo(currentPlayer, snapshot.players) : undefined),
@@ -75,7 +80,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!snapshot) return undefined;
+    if (!snapshot || snapshot.room.settings.createdInDemoMode) return undefined;
     return subscribeToRoom(snapshot.room.id, (nextSnapshot) => {
       if (!nextSnapshot) return;
       if (currentPlayerId && !nextSnapshot.players.some((player) => player.id === currentPlayerId)) {
@@ -108,6 +113,38 @@ function App() {
     }
   }
 
+  function handleHostDemo(event: React.FormEvent) {
+    event.preventDefault();
+    if (!hostName.trim()) return setMessage('Enter your nickname first.');
+    setMessage('');
+    const result = createHostDemoRoom(hostName);
+    const startedDemo = startDemoSnapshot(result.snapshot);
+    clearSessionBinding();
+    setCurrentPlayerId(result.currentPlayerId);
+    setSnapshot(startedDemo.snapshot ?? result.snapshot);
+    setMessage(startedDemo.ok ? 'Demo room auto-started so you can see the reveal flow.' : startedDemo.reason ?? 'Demo room is ready.');
+    setScreen('room');
+  }
+
+  function openJoinDemo() {
+    setJoinCode(DEMO_JOIN_ROOM_CODE);
+    setJoinName((current) => current || 'Demo Guest');
+    setMessage('');
+    setScreen('demoJoin');
+  }
+
+  function handleJoinDemo(event: React.FormEvent) {
+    event.preventDefault();
+    if (!joinName.trim()) return setMessage('Enter your nickname first.');
+    const result = createJoinDemoRoom(joinName);
+    const startedDemo = startDemoSnapshot(result.snapshot);
+    clearSessionBinding();
+    setCurrentPlayerId(result.currentPlayerId);
+    setSnapshot(startedDemo.snapshot ?? result.snapshot);
+    setMessage(startedDemo.ok ? 'Demo room auto-started so you can see the reveal flow.' : startedDemo.reason ?? 'Demo room is ready.');
+    setScreen('room');
+  }
+
   async function handleJoinRoom(event: React.FormEvent) {
     event.preventDefault();
     if (!joinCode.trim() || !joinName.trim()) return setMessage('Enter room code and nickname.');
@@ -128,6 +165,13 @@ function App() {
 
   async function handleReady() {
     if (!snapshot || !currentPlayer) return;
+    if (isDemoMode) {
+      setSnapshot({
+        ...snapshot,
+        players: snapshot.players.map((player) => (player.id === currentPlayer.id ? { ...player, isReady: !player.isReady } : player)),
+      });
+      return;
+    }
     setSnapshot(await setReady(snapshot.room.id, currentPlayer.id, !currentPlayer.isReady));
   }
 
@@ -137,12 +181,19 @@ function App() {
     const form = new FormData(event.currentTarget);
     const name = String(form.get('displayName') ?? '').trim();
     if (!name) return;
+    if (isDemoMode) {
+      setSnapshot({
+        ...snapshot,
+        players: snapshot.players.map((player) => (player.id === currentPlayer.id ? { ...player, displayName: name } : player)),
+      });
+      return;
+    }
     setSnapshot(await updateNickname(snapshot.room.id, currentPlayer.id, name));
   }
 
   async function handleStartGame() {
     if (!snapshot || !currentPlayer?.isHost) return;
-    const result = await startGame(snapshot.room.id);
+    const result = isDemoMode ? startDemoSnapshot(snapshot) : await startGame(snapshot.room.id);
     if (result.snapshot) setSnapshot(result.snapshot);
     setMessage(result.ok ? '' : result.reason ?? 'Could not start game.');
   }
@@ -150,6 +201,7 @@ function App() {
   async function handleRemovePlayer(targetPlayerId: string) {
     if (!snapshot || !currentPlayer?.isHost) return;
     setMessage('');
+    if (isDemoMode) return;
     try {
       setSnapshot(await removePlayer(snapshot.room.id, currentPlayer.id, targetPlayerId));
     } catch (error) {
@@ -161,6 +213,14 @@ function App() {
     if (!snapshot || !currentPlayer) return;
     setBusy(true);
     setMessage('');
+    if (isDemoMode) {
+      setCurrentPlayerId('');
+      setSnapshot(undefined);
+      setScreen('home');
+      setMessage('You left the demo room.');
+      setBusy(false);
+      return;
+    }
     const roomId = snapshot.room.id;
     const playerId = currentPlayer.id;
     try {
@@ -186,6 +246,7 @@ function App() {
           <div className="hero-actions" aria-label="Primary actions">
             <button type="button" className="primary" onClick={() => setScreen('create')}>Create Room</button>
             <button type="button" onClick={() => setScreen('join')}>Join Room</button>
+            <button type="button" className="demo-button" onClick={() => setScreen('demo')}>Try Demo</button>
           </div>
         )}
         <p className="lede">Create a table room, share the four-character code, ready up, then reveal roles on each phone.</p>
@@ -198,6 +259,39 @@ function App() {
         <section className="panel">
           <h2>Start at the table</h2>
           <p>One player creates the room and becomes host. Everyone else joins from their own phone with the room code.</p>
+        </section>
+      )}
+
+      {screen === 'demo' && (
+        <section className="panel demo-panel">
+          <h2>Try Demo</h2>
+          <p>Demo mode uses bot players and does not create a real shareable room.</p>
+          <div className="demo-options">
+            <form className="stack" onSubmit={handleHostDemo}>
+              <h3>Host demo</h3>
+              <p>Create a sandbox room with ready bot players, then auto-start the reveal flow.</p>
+              <label>
+                Your nickname
+                <input value={hostName} onChange={(event) => setHostName(event.target.value)} maxLength={24} autoFocus />
+              </label>
+              <button type="submit" className="primary">Start Host Demo</button>
+            </form>
+            <div className="stack">
+              <h3>Join demo</h3>
+              <p>Join a sandbox room that already has a host and other ready demo players.</p>
+              <button
+                type="button"
+                className="primary"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  openJoinDemo();
+                }}
+              >
+                Open Join Demo
+              </button>
+            </div>
+          </div>
         </section>
       )}
 
@@ -217,7 +311,7 @@ function App() {
               />
               Include Percival and Morgana when 7+ players join
             </label>
-            <button className="primary" disabled={busy}>{busy ? 'Creating...' : 'Create Room'}</button>
+            <button type="submit" className="primary" disabled={busy}>{busy ? 'Creating...' : 'Create Room'}</button>
           </form>
         </section>
       )}
@@ -234,7 +328,25 @@ function App() {
               Your nickname
               <input value={joinName} onChange={(event) => setJoinName(event.target.value)} maxLength={24} />
             </label>
-            <button className="primary" disabled={busy}>{busy ? 'Joining...' : 'Join Room'}</button>
+            <button type="submit" className="primary" disabled={busy}>{busy ? 'Joining...' : 'Join Room'}</button>
+          </form>
+        </section>
+      )}
+
+      {screen === 'demoJoin' && (
+        <section className="panel demo-panel">
+          <h2>Join Demo</h2>
+          <p>Demo mode uses bot players and does not create a real shareable room.</p>
+          <form className="stack" onSubmit={handleJoinDemo}>
+            <label>
+              Demo room code
+              <input value={joinCode} readOnly aria-label="Demo room code" />
+            </label>
+            <label>
+              Your nickname
+              <input value={joinName} onChange={(event) => setJoinName(event.target.value)} maxLength={24} autoFocus />
+            </label>
+            <button type="submit" className="primary">Confirm Demo Join</button>
           </form>
         </section>
       )}
@@ -250,6 +362,7 @@ function App() {
           onRename={handleRename}
           onRemovePlayer={handleRemovePlayer}
           onLeave={handleLeaveRoom}
+          isDemoMode={isDemoMode}
         />
       )}
     </main>
@@ -266,6 +379,7 @@ function RoomView({
   onRename,
   onRemovePlayer,
   onLeave,
+  isDemoMode,
 }: {
   snapshot: RoomSnapshot;
   currentPlayer?: RoomPlayer;
@@ -276,6 +390,7 @@ function RoomView({
   onRename: (event: React.FormEvent<HTMLFormElement>) => void;
   onRemovePlayer: (targetPlayerId: string) => void;
   onLeave: () => void;
+  isDemoMode: boolean;
 }) {
   const started = snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup';
   const currentTeamSize = snapshot.players.length >= 5 && snapshot.players.length <= 10 ? getTeamSize(snapshot.players.length, 0) : 0;
@@ -283,20 +398,21 @@ function RoomView({
   return (
     <section className="room-grid">
       <div className="room-code">
-        <span>Room Code</span>
+        <span>{isDemoMode ? 'Demo Room Code' : 'Room Code'}</span>
         <strong>{snapshot.room.code}</strong>
+        {isDemoMode && <p>Sandbox demo with bot players. This is not a real shareable room.</p>}
         {currentPlayer && !started && (
           <button type="button" className="small-danger" onClick={onLeave}>Leave Room</button>
         )}
       </div>
 
       <section className="panel">
-        <h2>{started ? 'Private Reveal' : 'Lobby'}</h2>
+        <h2>{started ? 'Private Reveal' : isDemoMode ? 'Demo Lobby' : 'Lobby'}</h2>
         {currentPlayer && !started && (
           <>
             <form className="inline-form" onSubmit={onRename}>
               <input name="displayName" defaultValue={currentPlayer.displayName} maxLength={24} aria-label="Nickname" />
-              <button>Save</button>
+              <button type="submit">Save</button>
             </form>
             <button type="button" className={currentPlayer.isReady ? 'active-soft' : 'primary'} onClick={onReady}>
               {currentPlayer.isReady ? 'Ready' : 'Set Ready'}
@@ -327,7 +443,7 @@ function RoomView({
               <span>{player.displayName}</span>
               <small>{player.isHost ? 'Host' : `Seat ${player.seatIndex + 1}`}</small>
               <strong>{started ? (player.id === currentPlayer?.id ? player.role : 'Locked') : player.isReady ? 'Ready' : 'Waiting'}</strong>
-              {!started && currentPlayer?.isHost && !player.isHost && (
+              {!started && currentPlayer?.isHost && !player.isHost && !isDemoMode && (
                 <button type="button" className="small-danger" onClick={() => onRemovePlayer(player.id)}>Remove</button>
               )}
             </li>
@@ -335,7 +451,18 @@ function RoomView({
         </ol>
         {!started && <p className="hint">{startValidation ?? 'All set. Host can start now.'}</p>}
         {!started && currentPlayer?.isHost && (
-          <button type="button" className="primary" disabled={Boolean(startValidation)} onClick={onStart}>Start Game</button>
+          <button
+            type="button"
+            className="primary"
+            disabled={Boolean(startValidation)}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onStart();
+            }}
+          >
+            Start Game
+          </button>
         )}
       </section>
 

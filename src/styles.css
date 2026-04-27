@@ -87,12 +87,13 @@ label {
 
 .hero-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.55rem;
 }
 
 .primary,
-.active-soft {
+.active-soft,
+.demo-button {
   border-color: #2d594b;
   background: #dfead9;
 }
@@ -149,8 +150,15 @@ label {
   font-size: 1.18rem;
 }
 
+.panel h3 {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
 .stack,
-.room-grid {
+.room-grid,
+.demo-options {
   display: grid;
   gap: 1rem;
 }
@@ -186,6 +194,12 @@ label {
   font-size: 3rem;
   line-height: 1;
   letter-spacing: 0.08em;
+}
+
+.room-code p {
+  margin: 0.35rem 0 0;
+  color: #e7eee9;
+  line-height: 1.35;
 }
 
 .inline-form {
@@ -282,6 +296,10 @@ label {
   }
 
   .room-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .demo-options {
     grid-template-columns: 1fr 1fr;
   }
 
