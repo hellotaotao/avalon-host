@@ -331,6 +331,44 @@ label {
   line-height: 1.35;
 }
 
+.share-panel {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.65rem;
+}
+
+.share-panel input {
+  border-color: #d8ad58;
+  background: #fff8df;
+  font-size: 0.88rem;
+}
+
+.share-actions,
+.count-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.share-actions button,
+.count-row button {
+  min-width: 0;
+}
+
+.qr-code {
+  display: block;
+  width: fit-content;
+  border: 6px solid #fff8df;
+  border-radius: 10px;
+  background: #fff8df;
+}
+
+.qr-code img {
+  display: block;
+  width: 112px;
+  height: 112px;
+}
+
 .room-leave {
   margin-top: 0.5rem;
   width: fit-content;
@@ -441,6 +479,46 @@ label {
   font-weight: 900;
 }
 
+.mission-panel,
+.mission-step,
+.quest-track,
+.team-picker {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.quest-track {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.quest-track span {
+  border: 1px solid #ac7b38;
+  border-radius: 8px;
+  background: #fff0bd;
+  padding: 0.55rem 0.35rem;
+  text-align: center;
+  font-weight: 900;
+}
+
+.quest-track .current {
+  border-color: #6b3d8f;
+  background: #f1ddff;
+}
+
+.quest-track .success {
+  border-color: #58783d;
+  background: #d9e7ca;
+}
+
+.quest-track .fail {
+  border-color: #9d3e2e;
+  background: #f8c8a9;
+}
+
+.team-picker {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 @media (max-width: 420px) {
   .inline-form {
     grid-template-columns: 1fr;
@@ -448,6 +526,12 @@ label {
 
   .players li {
     grid-template-columns: 1fr auto;
+  }
+
+  .share-actions,
+  .count-row,
+  .team-picker {
+    grid-template-columns: 1fr;
   }
 }
 

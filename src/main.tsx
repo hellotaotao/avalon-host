@@ -1,7 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getTeamSize } from './domain/avalon';
-import { buildStepUrl, parseEntryStep, type EntryScreen } from './navigationState';
+import {
+  advanceMissionResult,
+  ensureMissionState,
+  recordTeamVote,
+  selectMissionTeam,
+  type MissionState,
+} from './domain/missionFlow';
+import { buildJoinUrl, buildStepUrl, parseEntryStep, parseJoinCodeFromUrl, type EntryScreen } from './navigationState';
 import { isSupabaseConfigured } from './services/supabaseClient';
 import {
   createHostDemoRoom,
@@ -21,6 +28,7 @@ import {
   startDemoSnapshot,
   subscribeToRoom,
   updateNickname,
+  updateMissionState,
   type RoomPlayer,
   type RoomSnapshot,
 } from './services/roomService';
@@ -37,7 +45,7 @@ function App() {
   const [deviceToken] = useState(() => getOrCreateDeviceToken());
   const [hostName, setHostName] = useState('');
   const [joinName, setJoinName] = useState('');
-  const [joinCode, setJoinCode] = useState('');
+  const [joinCode, setJoinCode] = useState(() => parseJoinCodeFromUrl(window.location.href));
   const [includePercivalMorgana, setIncludePercivalMorgana] = useState(false);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -224,6 +232,27 @@ function App() {
     const result = isDemoMode ? startDemoSnapshot(snapshot) : await startGame(snapshot.room.id);
     if (result.snapshot) setSnapshot(result.snapshot);
     setMessage(result.ok ? '' : result.reason ?? 'Could not start game.');
+  }
+
+  async function handleMissionStateChange(nextMissionState: MissionState) {
+    if (!snapshot || !currentPlayer?.isHost) return;
+    const nextSnapshot = {
+      ...snapshot,
+      room: {
+        ...snapshot.room,
+        status: nextMissionState.phase,
+        settings: { ...snapshot.room.settings, missionState: nextMissionState },
+      },
+    };
+    if (isDemoMode) {
+      setSnapshot(nextSnapshot);
+      return;
+    }
+    try {
+      setSnapshot(await updateMissionState(snapshot.room.id, nextMissionState));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not update mission flow.');
+    }
   }
 
   async function handleRemovePlayer(targetPlayerId: string) {
@@ -429,6 +458,7 @@ function App() {
           onRename={handleRename}
           onRemovePlayer={handleRemovePlayer}
           onLeave={handleLeaveRoom}
+          onMissionStateChange={handleMissionStateChange}
           isDemoMode={isDemoMode}
         />
       )}
@@ -457,6 +487,7 @@ function RoomView({
   onRename,
   onRemovePlayer,
   onLeave,
+  onMissionStateChange,
   isDemoMode,
 }: {
   snapshot: RoomSnapshot;
@@ -468,13 +499,18 @@ function RoomView({
   onRename: (event: React.FormEvent<HTMLFormElement>) => void;
   onRemovePlayer: (targetPlayerId: string) => void;
   onLeave: () => void;
+  onMissionStateChange: (missionState: MissionState) => void;
   isDemoMode: boolean;
 }) {
   const started = snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup';
-  const currentTeamSize = snapshot.players.length >= 5 && snapshot.players.length <= 10 ? getTeamSize(snapshot.players.length, 0) : 0;
+  const playerIds = snapshot.players.map((player) => player.id);
+  const missionState = started && snapshot.players.length >= 5 ? ensureMissionState(snapshot.room.settings.missionState, playerIds) : undefined;
+  const currentTeamSize = missionState ? getTeamSize(snapshot.players.length, missionState.roundIndex) : 0;
   const readyCount = snapshot.players.filter((player) => player.isReady).length;
   const neededPlayers = Math.max(0, 5 - snapshot.players.length);
   const canStart = canStartGame(snapshot.players);
+  const joinLinkPath = buildJoinUrl(window.location.href, snapshot.room.code);
+  const joinLink = `${window.location.origin}${joinLinkPath}`;
 
   return (
     <section className="room-grid">
@@ -488,6 +524,19 @@ function RoomView({
               ? 'Sandbox demo with bot players. This is not a real shareable room.'
               : 'Share this code with players at the table.'}
         </p>
+        <div className="share-panel">
+          <input value={joinLink} readOnly aria-label="Join link" onFocus={(event) => event.currentTarget.select()} />
+          <div className="share-actions">
+            <button type="button" onClick={() => copyText(joinLink)}>Copy Link</button>
+            <button type="button" onClick={() => copyText(snapshot.room.code)}>Copy Code</button>
+            {'share' in navigator && (
+              <button type="button" onClick={() => void navigator.share({ title: 'Join Avalon Host', text: `Avalon room ${snapshot.room.code}`, url: joinLink })}>
+                Share
+              </button>
+            )}
+          </div>
+          <QrCodePanel value={joinLink} />
+        </div>
         {currentPlayer && !started && (
           <button type="button" className="small-danger room-leave" onClick={onLeave}>Leave Room</button>
         )}
@@ -566,18 +615,179 @@ function RoomView({
       </section>
 
       {started && (
-        <section className="panel">
-          <h2>Table State</h2>
-          <div className="status">
-            <span>Status: {snapshot.room.status}</span>
-            <span>Players: {snapshot.players.length}</span>
-            <span>Mission 1 team: {currentTeamSize || '-'}</span>
-          </div>
-          <p>Room is locked. Continue with the Avalon Lite table flow using the revealed roles.</p>
-        </section>
+        <MissionPanel
+          missionState={missionState}
+          players={snapshot.players}
+          currentPlayer={currentPlayer}
+          currentTeamSize={currentTeamSize}
+          onMissionStateChange={onMissionStateChange}
+        />
       )}
     </section>
   );
+}
+
+function MissionPanel({
+  missionState,
+  players,
+  currentPlayer,
+  currentTeamSize,
+  onMissionStateChange,
+}: {
+  missionState?: MissionState;
+  players: RoomPlayer[];
+  currentPlayer?: RoomPlayer;
+  currentTeamSize: number;
+  onMissionStateChange: (missionState: MissionState) => void;
+}) {
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
+  const [approveCount, setApproveCount] = useState('');
+  const [rejectCount, setRejectCount] = useState('');
+  const [successCount, setSuccessCount] = useState('');
+  const [failCount, setFailCount] = useState('');
+  const [flowError, setFlowError] = useState('');
+  const canEdit = Boolean(currentPlayer?.isHost && missionState && missionState.phase !== 'assassin' && missionState.phase !== 'finished');
+  const playerIds = players.map((player) => player.id);
+  const successes = missionState?.missionResults.filter((result) => result.outcome === 'success').length ?? 0;
+  const fails = missionState?.missionResults.filter((result) => result.outcome === 'fail').length ?? 0;
+
+  useEffect(() => {
+    setSelectedTeamIds(missionState?.selectedTeamIds ?? []);
+    setApproveCount('');
+    setRejectCount('');
+    setSuccessCount('');
+    setFailCount('');
+  }, [missionState?.phase, missionState?.roundIndex, missionState?.selectedTeamIds.join('|')]);
+
+  if (!missionState) return null;
+
+  function togglePlayer(playerId: string) {
+    setSelectedTeamIds((current) => (current.includes(playerId) ? current.filter((id) => id !== playerId) : [...current, playerId]));
+  }
+
+  function submitTeam() {
+    if (!missionState) return;
+    try {
+      setFlowError('');
+      onMissionStateChange(selectMissionTeam(missionState, playerIds, selectedTeamIds));
+    } catch (error) {
+      setFlowError(error instanceof Error ? error.message : 'Could not propose team.');
+    }
+  }
+
+  function submitVote() {
+    if (!missionState) return;
+    try {
+      setFlowError('');
+      onMissionStateChange(recordTeamVote(missionState, playerIds, Number(approveCount), Number(rejectCount)));
+    } catch (error) {
+      setFlowError(error instanceof Error ? error.message : 'Could not record vote.');
+    }
+  }
+
+  function submitMission() {
+    if (!missionState) return;
+    try {
+      setFlowError('');
+      onMissionStateChange(advanceMissionResult(missionState, playerIds, Number(successCount), Number(failCount)));
+    } catch (error) {
+      setFlowError(error instanceof Error ? error.message : 'Could not record mission.');
+    }
+  }
+
+  return (
+    <section className="panel mission-panel">
+      <h2>Table Quest</h2>
+      <div className="quest-track">
+        {[0, 1, 2, 3, 4].map((roundIndex) => {
+          const result = missionState.missionResults.find((item) => item.roundIndex === roundIndex);
+          return (
+            <span key={roundIndex} className={result?.outcome ?? (roundIndex === missionState.roundIndex ? 'current' : '')}>
+              Q{roundIndex + 1}: {getTeamSize(players.length, roundIndex)}
+            </span>
+          );
+        })}
+      </div>
+      <div className="status">
+        <span>Phase: {missionState.phase}</span>
+        <span>Score: Good {successes} / Evil {fails}</span>
+        <span>Leader: {players.find((player) => player.id === missionState.leaderPlayerId)?.displayName ?? 'Unknown'}</span>
+      </div>
+      {flowError && <p className="notice">{flowError}</p>}
+
+      {missionState.phase === 'proposal' && (
+        <div className="mission-step">
+          <p>Quest {missionState.roundIndex + 1} needs exactly {currentTeamSize} team members.</p>
+          <div className="team-picker">
+            {players.map((player) => (
+              <label key={player.id} className="check">
+                <input
+                  type="checkbox"
+                  checked={selectedTeamIds.includes(player.id)}
+                  disabled={!canEdit}
+                  onChange={() => togglePlayer(player.id)}
+                />
+                {player.displayName}
+              </label>
+            ))}
+          </div>
+          {canEdit && <button type="button" className="primary" onClick={submitTeam}>Propose Team</button>}
+        </div>
+      )}
+
+      {missionState.phase === 'vote' && (
+        <div className="mission-step">
+          <p>Team: {missionState.selectedTeamIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id).join(', ')}</p>
+          {canEdit && (
+            <div className="count-row">
+              <input value={approveCount} onChange={(event) => setApproveCount(event.target.value)} inputMode="numeric" placeholder="Approve" aria-label="Approve count" />
+              <input value={rejectCount} onChange={(event) => setRejectCount(event.target.value)} inputMode="numeric" placeholder="Reject" aria-label="Reject count" />
+              <button type="button" className="primary" onClick={submitVote}>Record Vote</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {missionState.phase === 'mission' && (
+        <div className="mission-step">
+          <p>Team approved. Record the mission cards from the table.</p>
+          {canEdit && (
+            <div className="count-row">
+              <input value={successCount} onChange={(event) => setSuccessCount(event.target.value)} inputMode="numeric" placeholder="Success" aria-label="Success cards" />
+              <input value={failCount} onChange={(event) => setFailCount(event.target.value)} inputMode="numeric" placeholder="Fail" aria-label="Fail cards" />
+              <button type="button" className="primary" onClick={submitMission}>Record Mission</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {missionState.phase === 'assassin' && <p>Good completed three quests - Assassin phase next.</p>}
+      {missionState.phase === 'finished' && <p>{missionState.winner === 'evil' ? 'Evil wins after three failed quests.' : 'Good wins.'}</p>}
+      {!currentPlayer?.isHost && <p className="hint">Only the host can update the table quest flow.</p>}
+    </section>
+  );
+}
+
+function QrCodePanel({ value }: { value: string }) {
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=176x176&margin=10&data=${encodeURIComponent(value)}`;
+  return (
+    <a className="qr-code" href={value} aria-label="Scan QR code to join this Avalon room">
+      <img src={qrUrl} alt="QR code for the Avalon room join link" width="176" height="176" loading="lazy" />
+    </a>
+  );
+}
+
+async function copyText(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const input = document.createElement('input');
+  input.value = text;
+  document.body.append(input);
+  input.select();
+  document.execCommand('copy');
+  input.remove();
 }
 
 function getOrCreateDeviceToken() {

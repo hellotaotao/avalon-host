@@ -1,10 +1,12 @@
 import { assignRoles, getVisibilityInfo, type AssignmentOptions, type Player as AvalonPlayer, type Role } from '../domain/avalon';
+import { createInitialMissionState, type MissionState } from '../domain/missionFlow';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
 export type RoomStatus = 'setup' | 'lobby' | 'locked' | 'reveal' | 'proposal' | 'vote' | 'mission' | 'assassin' | 'finished';
 
 export interface RoomSettings extends AssignmentOptions {
   createdInDemoMode?: boolean;
+  missionState?: MissionState;
 }
 
 export interface Room {
@@ -113,7 +115,14 @@ export function startDemoSnapshot(snapshot: RoomSnapshot): StartResult {
     ok: true,
     snapshot: {
       ...snapshot,
-      room: { ...snapshot.room, status: 'reveal' },
+      room: {
+        ...snapshot.room,
+        status: 'reveal',
+        settings: {
+          ...snapshot.room.settings,
+          missionState: createInitialMissionState(snapshot.players.map((player) => player.id)),
+        },
+      },
       players: snapshot.players.map((player) => ({
         ...player,
         role: assigned.find((assignedPlayer) => assignedPlayer.id === player.id)?.role,
@@ -140,6 +149,10 @@ export async function setReady(roomId: string, playerId: string, isReady: boolea
 
 export async function startGame(roomId: string): Promise<StartResult> {
   return repository().startGame(roomId);
+}
+
+export async function updateMissionState(roomId: string, missionState: MissionState): Promise<RoomSnapshot> {
+  return repository().updateMissionState(roomId, missionState);
 }
 
 export async function removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot> {
@@ -251,12 +264,22 @@ const localRepository = {
       `${snapshot.room.code}-${snapshot.players.map((player) => player.id).join('|')}`,
     );
     snapshot.room.status = 'reveal';
+    snapshot.room.settings.missionState = createInitialMissionState(snapshot.players.map((player) => player.id));
     snapshot.players = snapshot.players.map((player) => ({
       ...player,
       role: assigned.find((assignedPlayer) => assignedPlayer.id === player.id)?.role,
     }));
     writeRooms(data);
     return { ok: true, snapshot };
+  },
+
+  async updateMissionState(roomId: string, missionState: MissionState) {
+    const data = readRooms();
+    const snapshot = requireById(data, roomId);
+    snapshot.room.settings = { ...snapshot.room.settings, missionState };
+    snapshot.room.status = missionState.phase;
+    writeRooms(data);
+    return snapshot;
   },
 
   async removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string) {
@@ -399,7 +422,8 @@ const supabaseRepository = {
       `${snapshot.room.code}-${snapshot.players.map((player) => player.id).join('|')}`,
     );
     const supabase = await getSupabaseRequired();
-    const { error: roomError } = await supabase.from('rooms').update({ status: 'reveal' }).eq('id', roomId);
+    const settings = { ...snapshot.room.settings, missionState: createInitialMissionState(snapshot.players.map((player) => player.id)) };
+    const { error: roomError } = await supabase.from('rooms').update({ status: 'reveal', settings }).eq('id', roomId);
     if (roomError) throw roomError;
     await Promise.all(
       assigned.map((player) =>
@@ -413,6 +437,15 @@ const supabaseRepository = {
       ),
     );
     return { ok: true, snapshot: await fetchSnapshot(roomId) };
+  },
+
+  async updateMissionState(roomId: string, missionState: MissionState) {
+    const snapshot = await fetchSnapshot(roomId);
+    const supabase = await getSupabaseRequired();
+    const settings = { ...snapshot.room.settings, missionState };
+    const { error } = await supabase.from('rooms').update({ settings, status: missionState.phase }).eq('id', roomId);
+    if (error) throw error;
+    return fetchSnapshot(roomId);
   },
 
   async removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string) {
