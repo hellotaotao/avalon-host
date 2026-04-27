@@ -8,6 +8,7 @@ import {
   getPrivateRoleInfo,
   getStartValidation,
   joinRoom,
+  leaveRoom,
   removePlayer,
   setReady,
   startGame,
@@ -156,15 +157,37 @@ function App() {
     }
   }
 
+  async function handleLeaveRoom() {
+    if (!snapshot || !currentPlayer) return;
+    setBusy(true);
+    setMessage('');
+    const roomId = snapshot.room.id;
+    const playerId = currentPlayer.id;
+    try {
+      await leaveRoom(roomId, playerId);
+      clearSessionBinding();
+      setCurrentPlayerId('');
+      setSnapshot(undefined);
+      setScreen('home');
+      setMessage('You left the room.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not leave room.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="shell">
       <header className="hero">
         <p className="eyebrow">Avalon Host</p>
         <h1>Room Flow</h1>
-        <div className="hero-actions" aria-label="Primary actions">
-          <button className="primary" onClick={() => setScreen('create')}>Create Room</button>
-          <button onClick={() => setScreen('join')}>Join Room</button>
-        </div>
+        {screen !== 'room' && (
+          <div className="hero-actions" aria-label="Primary actions">
+            <button className="primary" onClick={() => setScreen('create')}>Create Room</button>
+            <button onClick={() => setScreen('join')}>Join Room</button>
+          </div>
+        )}
         <p className="lede">Create a table room, share the four-character code, ready up, then reveal roles on each phone.</p>
         <p className="mode">{isSupabaseConfigured ? 'Supabase realtime mode' : 'Local browser demo mode'}</p>
       </header>
@@ -226,6 +249,7 @@ function App() {
           onStart={handleStartGame}
           onRename={handleRename}
           onRemovePlayer={handleRemovePlayer}
+          onLeave={handleLeaveRoom}
         />
       )}
     </main>
@@ -241,6 +265,7 @@ function RoomView({
   onStart,
   onRename,
   onRemovePlayer,
+  onLeave,
 }: {
   snapshot: RoomSnapshot;
   currentPlayer?: RoomPlayer;
@@ -250,6 +275,7 @@ function RoomView({
   onStart: () => void;
   onRename: (event: React.FormEvent<HTMLFormElement>) => void;
   onRemovePlayer: (targetPlayerId: string) => void;
+  onLeave: () => void;
 }) {
   const started = snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup';
   const currentTeamSize = snapshot.players.length >= 5 && snapshot.players.length <= 10 ? getTeamSize(snapshot.players.length, 0) : 0;
@@ -259,6 +285,9 @@ function RoomView({
       <div className="room-code">
         <span>Room Code</span>
         <strong>{snapshot.room.code}</strong>
+        {currentPlayer && !started && (
+          <button className="small-danger" onClick={onLeave}>Leave Room</button>
+        )}
       </div>
 
       <section className="panel">

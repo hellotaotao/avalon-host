@@ -94,6 +94,10 @@ export async function removePlayer(roomId: string, hostPlayerId: string, targetP
   return repository().removePlayer(roomId, hostPlayerId, targetPlayerId);
 }
 
+export async function leaveRoom(roomId: string, playerId: string): Promise<RoomSnapshot> {
+  return repository().leaveRoom(roomId, playerId);
+}
+
 export async function getRoomById(roomId: string): Promise<RoomSnapshot | undefined> {
   return repository().getRoomById(roomId);
 }
@@ -145,9 +149,11 @@ const localRepository = {
     if (!snapshot) throw new Error('Room not found.');
     if (snapshot.room.status !== 'lobby') throw new Error('This room is already locked.');
     const displayName = input.displayName.trim();
-    const existingPlayer = findPlayerByDeviceToken(snapshot.players, input.deviceToken);
+    const existingPlayer =
+      findPlayerByDeviceToken(snapshot.players, input.deviceToken) ?? findPlayerByDisplayName(snapshot.players, displayName);
     if (existingPlayer) {
       if (existingPlayer.displayName !== displayName) existingPlayer.displayName = displayName;
+      existingPlayer.deviceToken = input.deviceToken;
       writeRooms(data);
       return { snapshot, currentPlayerId: existingPlayer.id };
     }
@@ -206,6 +212,14 @@ const localRepository = {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
     removePlayerFromSnapshot(snapshot, hostPlayerId, targetPlayerId);
+    writeRooms(data);
+    return snapshot;
+  },
+
+  async leaveRoom(roomId: string, playerId: string) {
+    const data = readRooms();
+    const snapshot = requireById(data, roomId);
+    leavePlayerFromSnapshot(snapshot, playerId);
     writeRooms(data);
     return snapshot;
   },
@@ -282,6 +296,15 @@ const supabaseRepository = {
       }
       return { snapshot: await fetchSnapshot(found.room.id), currentPlayerId: existingPlayer.id as string };
     }
+    const sameNamePlayer = findPlayerByDisplayName(found.players, displayName);
+    if (sameNamePlayer) {
+      const { error } = await supabase
+        .from('players')
+        .update({ display_name: displayName, device_token_hash: input.deviceToken })
+        .eq('id', sameNamePlayer.id);
+      if (error) throw error;
+      return { snapshot: await fetchSnapshot(found.room.id), currentPlayerId: sameNamePlayer.id };
+    }
     if (found.players.length >= 10) throw new Error('This room already has 10 players.');
     const { data, error } = await supabase
       .from('players')
@@ -350,6 +373,26 @@ const supabaseRepository = {
         supabase
           .from('players')
           .update({ seat_index: player.seatIndex })
+          .eq('id', player.id)
+          .then(({ error }: { error: Error | null }) => {
+            if (error) throw error;
+          }),
+      ),
+    );
+    return fetchSnapshot(roomId);
+  },
+
+  async leaveRoom(roomId: string, playerId: string) {
+    const snapshot = await fetchSnapshot(roomId);
+    leavePlayerFromSnapshot(snapshot, playerId);
+    const supabase = await getSupabaseRequired();
+    const { error: deleteError } = await supabase.from('players').delete().eq('id', playerId).eq('room_id', roomId);
+    if (deleteError) throw deleteError;
+    await Promise.all(
+      snapshot.players.map((player) =>
+        supabase
+          .from('players')
+          .update({ seat_index: player.seatIndex, is_host: player.isHost })
           .eq('id', player.id)
           .then(({ error }: { error: Error | null }) => {
             if (error) throw error;
@@ -453,8 +496,29 @@ export function removePlayerFromSnapshot(snapshot: RoomSnapshot, hostPlayerId: s
   return snapshot;
 }
 
+export function leavePlayerFromSnapshot(snapshot: RoomSnapshot, playerId: string): RoomSnapshot {
+  if (snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup') {
+    throw new Error('Players can only leave before the game starts.');
+  }
+  requirePlayer(snapshot, playerId);
+  snapshot.players = snapshot.players
+    .filter((player) => player.id !== playerId)
+    .map((player, index) => ({ ...player, seatIndex: index, isHost: index === 0 }));
+  return snapshot;
+}
+
 export function findPlayerByDeviceToken(players: RoomPlayer[], deviceToken: string): RoomPlayer | undefined {
   return players.find((player) => player.deviceToken === deviceToken);
+}
+
+export function findPlayerByDisplayName(players: RoomPlayer[], displayName: string): RoomPlayer | undefined {
+  const normalized = normalizeDisplayName(displayName);
+  if (!normalized) return undefined;
+  return players.find((player) => normalizeDisplayName(player.displayName) === normalized);
+}
+
+function normalizeDisplayName(displayName: string) {
+  return displayName.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
 }
 
 function toAvalonPlayer(player: RoomPlayer): AvalonPlayer {
@@ -480,6 +544,7 @@ function mapPlayer(row: Record<string, unknown>): RoomPlayer {
     isHost: row.is_host as boolean,
     isReady: row.is_ready as boolean,
     role: row.role as Role | undefined,
+    deviceToken: row.device_token_hash as string | undefined,
   };
 }
 

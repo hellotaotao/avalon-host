@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { assignRoles } from '../domain/avalon';
 import {
   findPlayerByDeviceToken,
+  findPlayerByDisplayName,
   generateRoomCode,
   getStartValidation,
+  leavePlayerFromSnapshot,
   removePlayerFromSnapshot,
   type RoomSnapshot,
   type RoomPlayer,
@@ -52,10 +54,38 @@ describe('room service rules', () => {
     expect(snapshot.players.map((player) => player.seatIndex)).toEqual([0, 1, 2, 3]);
   });
 
+  it('lets a non-host leave before the game starts and compacts seats', () => {
+    const snapshot = makeSnapshot(5);
+    leavePlayerFromSnapshot(snapshot, 'p3');
+    expect(snapshot.players.map((player) => player.id)).toEqual(['p1', 'p2', 'p4', 'p5']);
+    expect(snapshot.players.map((player) => player.seatIndex)).toEqual([0, 1, 2, 3]);
+    expect(snapshot.players[0].isHost).toBe(true);
+  });
+
+  it('promotes the next player when the host leaves before the game starts', () => {
+    const snapshot = makeSnapshot(5);
+    leavePlayerFromSnapshot(snapshot, 'p1');
+    expect(snapshot.players.map((player) => player.id)).toEqual(['p2', 'p3', 'p4', 'p5']);
+    expect(snapshot.players[0]).toMatchObject({ id: 'p2', isHost: true, seatIndex: 0 });
+  });
+
+  it('does not allow players to leave after the game starts', () => {
+    const snapshot = makeSnapshot(5);
+    snapshot.room.status = 'reveal';
+    expect(() => leavePlayerFromSnapshot(snapshot, 'p3')).toThrow('Players can only leave before the game starts.');
+  });
+
   it('finds an existing same-device player for rejoin', () => {
     const players = makePlayers(3).map((player, index) => ({ ...player, deviceToken: `device-${index + 1}` }));
     expect(findPlayerByDeviceToken(players, 'device-2')?.id).toBe('p2');
     expect(findPlayerByDeviceToken(players, 'missing')).toBeUndefined();
+  });
+
+  it('finds an existing same-name player as a zombie-prevention fallback', () => {
+    const players = makePlayers(3);
+    players[1].displayName = '  Alice   Wang  ';
+    expect(findPlayerByDisplayName(players, 'alice wang')?.id).toBe('p2');
+    expect(findPlayerByDisplayName(players, 'Bob')).toBeUndefined();
   });
 });
 
