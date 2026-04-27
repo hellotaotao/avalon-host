@@ -366,8 +366,14 @@ const supabaseRepository = {
     const snapshot = await fetchSnapshot(roomId);
     removePlayerFromSnapshot(snapshot, hostPlayerId, targetPlayerId);
     const supabase = await getSupabaseRequired();
-    const { error: deleteError } = await supabase.from('players').delete().eq('id', targetPlayerId).eq('room_id', roomId);
+    const { data: deletedRows, error: deleteError } = await supabase
+      .from('players')
+      .delete()
+      .eq('id', targetPlayerId)
+      .eq('room_id', roomId)
+      .select('id');
     if (deleteError) throw deleteError;
+    assertDeletedRows(deletedRows, 'Could not remove player.');
     await Promise.all(
       snapshot.players.map((player) =>
         supabase
@@ -386,8 +392,14 @@ const supabaseRepository = {
     const snapshot = await fetchSnapshot(roomId);
     leavePlayerFromSnapshot(snapshot, playerId);
     const supabase = await getSupabaseRequired();
-    const { error: deleteError } = await supabase.from('players').delete().eq('id', playerId).eq('room_id', roomId);
+    const { data: deletedRows, error: deleteError } = await supabase
+      .from('players')
+      .delete()
+      .eq('id', playerId)
+      .eq('room_id', roomId)
+      .select('id');
     if (deleteError) throw deleteError;
+    assertDeletedRows(deletedRows, 'Could not leave room.');
     await Promise.all(
       snapshot.players.map((player) =>
         supabase
@@ -480,6 +492,10 @@ function requirePlayer(snapshot: RoomSnapshot, playerId: string) {
   const player = snapshot.players.find((item) => item.id === playerId);
   if (!player) throw new Error('Player not found.');
   return player;
+}
+
+export function assertDeletedRows(rows: unknown[] | null | undefined, message: string) {
+  if (!rows?.length) throw new Error(message);
 }
 
 export function removePlayerFromSnapshot(snapshot: RoomSnapshot, hostPlayerId: string, targetPlayerId: string): RoomSnapshot {

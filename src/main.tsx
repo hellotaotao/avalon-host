@@ -184,8 +184,8 @@ function App() {
         <h1>Room Flow</h1>
         {screen !== 'room' && (
           <div className="hero-actions" aria-label="Primary actions">
-            <button className="primary" onClick={() => setScreen('create')}>Create Room</button>
-            <button onClick={() => setScreen('join')}>Join Room</button>
+            <button type="button" className="primary" onClick={() => setScreen('create')}>Create Room</button>
+            <button type="button" onClick={() => setScreen('join')}>Join Room</button>
           </div>
         )}
         <p className="lede">Create a table room, share the four-character code, ready up, then reveal roles on each phone.</p>
@@ -286,7 +286,7 @@ function RoomView({
         <span>Room Code</span>
         <strong>{snapshot.room.code}</strong>
         {currentPlayer && !started && (
-          <button className="small-danger" onClick={onLeave}>Leave Room</button>
+          <button type="button" className="small-danger" onClick={onLeave}>Leave Room</button>
         )}
       </div>
 
@@ -298,7 +298,7 @@ function RoomView({
               <input name="displayName" defaultValue={currentPlayer.displayName} maxLength={24} aria-label="Nickname" />
               <button>Save</button>
             </form>
-            <button className={currentPlayer.isReady ? 'active-soft' : 'primary'} onClick={onReady}>
+            <button type="button" className={currentPlayer.isReady ? 'active-soft' : 'primary'} onClick={onReady}>
               {currentPlayer.isReady ? 'Ready' : 'Set Ready'}
             </button>
           </>
@@ -328,14 +328,14 @@ function RoomView({
               <small>{player.isHost ? 'Host' : `Seat ${player.seatIndex + 1}`}</small>
               <strong>{started ? (player.id === currentPlayer?.id ? player.role : 'Locked') : player.isReady ? 'Ready' : 'Waiting'}</strong>
               {!started && currentPlayer?.isHost && !player.isHost && (
-                <button className="small-danger" onClick={() => onRemovePlayer(player.id)}>Remove</button>
+                <button type="button" className="small-danger" onClick={() => onRemovePlayer(player.id)}>Remove</button>
               )}
             </li>
           ))}
         </ol>
         {!started && <p className="hint">{startValidation ?? 'All set. Host can start now.'}</p>}
         {!started && currentPlayer?.isHost && (
-          <button className="primary" disabled={Boolean(startValidation)} onClick={onStart}>Start Game</button>
+          <button type="button" className="primary" disabled={Boolean(startValidation)} onClick={onStart}>Start Game</button>
         )}
       </section>
 

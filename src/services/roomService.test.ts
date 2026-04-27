@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { assignRoles } from '../domain/avalon';
 import {
+  assertDeletedRows,
   findPlayerByDeviceToken,
   findPlayerByDisplayName,
   generateRoomCode,
@@ -47,11 +48,23 @@ describe('room service rules', () => {
     expect(() => removePlayerFromSnapshot(snapshot, 'p1', 'p1')).toThrow('Host cannot remove themselves.');
   });
 
+  it('lets the host remove any non-host player before the game starts', () => {
+    const snapshot = makeSnapshot(6);
+    removePlayerFromSnapshot(snapshot, 'p1', 'p6');
+    expect(snapshot.players.map((player) => player.id)).toEqual(['p1', 'p2', 'p3', 'p4', 'p5']);
+    expect(snapshot.players.map((player) => player.seatIndex)).toEqual([0, 1, 2, 3, 4]);
+    expect(snapshot.players[0].isHost).toBe(true);
+  });
+
   it('removes a player and compacts remaining seats', () => {
     const snapshot = makeSnapshot(5);
     removePlayerFromSnapshot(snapshot, 'p1', 'p3');
     expect(snapshot.players.map((player) => player.id)).toEqual(['p1', 'p2', 'p4', 'p5']);
     expect(snapshot.players.map((player) => player.seatIndex)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('fails loudly when a database delete matches no player rows', () => {
+    expect(() => assertDeletedRows([], 'Could not remove player.')).toThrow('Could not remove player.');
   });
 
   it('lets a non-host leave before the game starts and compacts seats', () => {
