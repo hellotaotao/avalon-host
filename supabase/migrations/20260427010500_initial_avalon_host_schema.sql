@@ -6,9 +6,10 @@ create extension if not exists "pgcrypto";
 create table if not exists public.rooms (
   id uuid primary key default gen_random_uuid(),
   code text not null unique,
-  status text not null default 'setup',
+  status text not null default 'setup' check (status in ('setup', 'lobby', 'locked', 'reveal', 'proposal', 'vote', 'mission', 'assassin', 'finished')),
   game_type text not null default 'avalon_lite',
   settings jsonb not null default '{}'::jsonb,
+  host_player_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -20,9 +21,18 @@ create table if not exists public.players (
   device_token_hash text,
   seat_index integer not null,
   is_host boolean not null default false,
+  is_ready boolean not null default false,
+  -- Local demo reveal convenience only. Production should keep roles in private_roles
+  -- and expose them through RPCs guarded by a verified device token.
+  role text,
   created_at timestamptz not null default now(),
   unique (room_id, seat_index)
 );
+
+alter table public.rooms
+  add constraint rooms_host_player_id_fkey
+  foreign key (host_player_id) references public.players(id) on delete set null
+  deferrable initially deferred;
 
 create table if not exists public.game_state (
   room_id uuid primary key references public.rooms(id) on delete cascade,
@@ -89,6 +99,8 @@ alter table public.events enable row level security;
 -- - rooms/game_state/events: readable by players in the same room.
 -- - private_roles: readable only by matching player device token or trusted host service role.
 -- - votes/mission_actions: insertable by matching player; public result should be aggregated via RPC/view.
+-- - room create/join/start/role assignment should move behind RPCs that hash and verify device tokens.
+-- - anon clients must not be able to update arbitrary players or reveal all role rows in production.
 
 create policy "local prototype read rooms"
   on public.rooms for select

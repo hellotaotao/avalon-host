@@ -1,342 +1,276 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { getTeamSize } from './domain/avalon';
+import { isSupabaseConfigured } from './services/supabaseClient';
 import {
-  assassinWins,
-  assignRoles,
-  getTeamSize,
-  getVisibilityInfo,
-  resolveMission,
-  votePasses,
-  type MissionCard,
-  type Player,
-  type Vote,
-} from './domain/avalon';
+  createRoom,
+  getPrivateRoleInfo,
+  getStartValidation,
+  joinRoom,
+  setReady,
+  startGame,
+  subscribeToRoom,
+  updateNickname,
+  type RoomPlayer,
+  type RoomSnapshot,
+} from './services/roomService';
 import './styles.css';
 
-type Tab = 'host' | 'player' | 'table';
-type Phase = 'setup' | 'reveal' | 'proposal' | 'vote' | 'mission' | 'assassin' | 'finished';
-
-interface EventItem {
-  id: string;
-  text: string;
-}
+type Screen = 'home' | 'create' | 'join' | 'room';
 
 function App() {
-  const [tab, setTab] = useState<Tab>('host');
-  const [roomCode, setRoomCode] = useState('AVLN42');
+  const [screen, setScreen] = useState<Screen>('home');
+  const [snapshot, setSnapshot] = useState<RoomSnapshot>();
+  const [currentPlayerId, setCurrentPlayerId] = useState(localStorage.getItem('avalon-host.currentPlayerId') ?? '');
+  const [deviceToken] = useState(() => getOrCreateDeviceToken());
+  const [hostName, setHostName] = useState('');
+  const [joinName, setJoinName] = useState('');
   const [joinCode, setJoinCode] = useState('');
-  const [namesText, setNamesText] = useState('Alex\nBao\nCasey\nDevon\nEli');
-  const [includePercival, setIncludePercival] = useState(false);
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [selectedPlayerId, setSelectedPlayerId] = useState('');
-  const [phase, setPhase] = useState<Phase>('setup');
-  const [roundIndex, setRoundIndex] = useState(0);
-  const [leaderIndex, setLeaderIndex] = useState(0);
-  const [proposal, setProposal] = useState<string[]>([]);
-  const [votes, setVotes] = useState<Record<string, Vote>>({});
-  const [missionCards, setMissionCards] = useState<Record<string, MissionCard>>({});
-  const [score, setScore] = useState({ success: 0, fail: 0 });
-  const [assassinGuess, setAssassinGuess] = useState('');
-  const [winner, setWinner] = useState('');
-  const [events, setEvents] = useState<EventItem[]>([{ id: 'e0', text: 'Avalon Host ready for Avalon Lite.' }]);
+  const [includePercivalMorgana, setIncludePercivalMorgana] = useState(false);
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  const selectedPlayer = players.find((player) => player.id === selectedPlayerId);
-  const currentTeamSize = players.length >= 5 && roundIndex < 5 ? getTeamSize(players.length, roundIndex) : 0;
-  const proposedPlayers = players.filter((player) => proposal.includes(player.id));
-  const missionPlayers = proposedPlayers;
-  const voteValues = Object.values(votes);
-  const allVotesIn = players.length > 0 && voteValues.length === players.length;
-  const allMissionCardsIn = missionPlayers.length > 0 && missionPlayers.every((player) => missionCards[player.id]);
+  const currentPlayer = snapshot?.players.find((player) => player.id === currentPlayerId);
+  const startValidation = snapshot ? getStartValidation(snapshot.players) : undefined;
+  const privateInfo = useMemo(
+    () => (currentPlayer && snapshot ? getPrivateRoleInfo(currentPlayer, snapshot.players) : undefined),
+    [currentPlayer, snapshot],
+  );
 
-  const nightInfo = useMemo(() => {
-    if (!selectedPlayer?.role) return undefined;
-    return getVisibilityInfo(selectedPlayer, players);
-  }, [selectedPlayer, players]);
-
-  function addEvent(text: string) {
-    setEvents((items) => [{ id: `e${Date.now()}-${items.length}`, text }, ...items]);
-  }
-
-  function createRoom() {
-    const names = namesText
-      .split('\n')
-      .map((name) => name.trim())
-      .filter(Boolean)
-      .slice(0, 10);
-    if (names.length < 5) return;
-    const roster = names.map((name, index) => ({ id: `p${index + 1}`, name }));
-    const assigned = assignRoles(roster, { includePercivalMorgana: includePercival }, `${roomCode}-${names.join('|')}`);
-    setPlayers(assigned);
-    setSelectedPlayerId(assigned[0]?.id ?? '');
-    setPhase('reveal');
-    setRoundIndex(0);
-    setLeaderIndex(0);
-    setProposal([]);
-    setVotes({});
-    setMissionCards({});
-    setScore({ success: 0, fail: 0 });
-    setWinner('');
-    addEvent(`Room ${roomCode} created with ${assigned.length} players.`);
-  }
-
-  function joinRoom() {
-    if (!joinCode.trim()) return;
-    setRoomCode(joinCode.trim().toUpperCase());
-    addEvent(`Joined mock room ${joinCode.trim().toUpperCase()} on this device.`);
-  }
-
-  function toggleProposal(playerId: string) {
-    setProposal((current) => {
-      if (current.includes(playerId)) return current.filter((id) => id !== playerId);
-      if (current.length >= currentTeamSize) return current;
-      return [...current, playerId];
+  useEffect(() => {
+    if (!snapshot) return undefined;
+    return subscribeToRoom(snapshot.room.id, (nextSnapshot) => {
+      if (nextSnapshot) setSnapshot(nextSnapshot);
     });
-  }
+  }, [snapshot?.room.id]);
 
-  function startVote() {
-    if (proposal.length !== currentTeamSize) return;
-    setPhase('vote');
-    setVotes({});
-    addEvent(`Leader proposed ${proposedPlayers.map((player) => player.name).join(', ')} for mission ${roundIndex + 1}.`);
-  }
-
-  function submitVote(playerId: string, vote: Vote) {
-    setVotes((current) => ({ ...current, [playerId]: vote }));
-  }
-
-  function resolveVote() {
-    const passed = votePasses(Object.values(votes), players.length);
-    addEvent(`Team vote ${passed ? 'approved' : 'rejected'}: ${countVote('approve')} approve, ${countVote('reject')} reject.`);
-    setLeaderIndex((index) => (index + 1) % players.length);
-    if (passed) {
-      setPhase('mission');
-      setMissionCards({});
-    } else {
-      setPhase('proposal');
-      setProposal([]);
+  async function handleCreateRoom(event: React.FormEvent) {
+    event.preventDefault();
+    if (!hostName.trim()) return setMessage('Enter your nickname first.');
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await createRoom({ displayName: hostName, includePercivalMorgana, deviceToken });
+      localStorage.setItem('avalon-host.currentPlayerId', result.currentPlayerId);
+      setCurrentPlayerId(result.currentPlayerId);
+      setSnapshot(result.snapshot);
+      setScreen('room');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not create room.');
+    } finally {
+      setBusy(false);
     }
   }
 
-  function submitMissionCard(playerId: string, card: MissionCard) {
-    setMissionCards((current) => ({ ...current, [playerId]: card }));
-  }
-
-  function resolveMissionCards() {
-    const result = resolveMission(Object.values(missionCards), players.length, roundIndex);
-    const nextScore = {
-      success: score.success + (result.outcome === 'success' ? 1 : 0),
-      fail: score.fail + (result.outcome === 'fail' ? 1 : 0),
-    };
-    setScore(nextScore);
-    addEvent(`Mission ${roundIndex + 1} ${result.outcome}: ${result.failCount} fail card(s), ${result.requiredFails} required.`);
-    setMissionCards({});
-    setProposal([]);
-
-    if (nextScore.success >= 3) {
-      setPhase('assassin');
-      addEvent('Good completed three missions. Assassin may guess Merlin.');
-      return;
+  async function handleJoinRoom(event: React.FormEvent) {
+    event.preventDefault();
+    if (!joinCode.trim() || !joinName.trim()) return setMessage('Enter room code and nickname.');
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await joinRoom({ code: joinCode, displayName: joinName, deviceToken });
+      localStorage.setItem('avalon-host.currentPlayerId', result.currentPlayerId);
+      setCurrentPlayerId(result.currentPlayerId);
+      setSnapshot(result.snapshot);
+      setScreen('room');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not join room.');
+    } finally {
+      setBusy(false);
     }
-    if (nextScore.fail >= 3 || roundIndex >= 4) {
-      setWinner(nextScore.fail >= 3 ? 'Evil wins by missions.' : 'Game ended after five missions.');
-      setPhase('finished');
-      return;
-    }
-    setRoundIndex((round) => round + 1);
-    setLeaderIndex((index) => (index + 1) % players.length);
-    setPhase('proposal');
   }
 
-  function resolveAssassinGuess() {
-    const evilWins = assassinWins(assassinGuess, players);
-    setWinner(evilWins ? 'Evil wins: Assassin found Merlin.' : 'Good wins: Merlin survived the guess.');
-    setPhase('finished');
-    addEvent(evilWins ? 'Assassin guessed Merlin correctly.' : 'Assassin missed Merlin.');
+  async function handleReady() {
+    if (!snapshot || !currentPlayer) return;
+    setSnapshot(await setReady(snapshot.room.id, currentPlayer.id, !currentPlayer.isReady));
   }
 
-  function countVote(vote: Vote) {
-    return Object.values(votes).filter((item) => item === vote).length;
+  async function handleRename(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!snapshot || !currentPlayer) return;
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get('displayName') ?? '').trim();
+    if (!name) return;
+    setSnapshot(await updateNickname(snapshot.room.id, currentPlayer.id, name));
+  }
+
+  async function handleStartGame() {
+    if (!snapshot || !currentPlayer?.isHost) return;
+    const result = await startGame(snapshot.room.id);
+    if (result.snapshot) setSnapshot(result.snapshot);
+    setMessage(result.ok ? '' : result.reason ?? 'Could not start game.');
   }
 
   return (
     <main className="shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">Avalon Host</p>
-          <h1>Avalon Host</h1>
+      <header className="hero">
+        <p className="eyebrow">Avalon Host</p>
+        <h1>Room Flow</h1>
+        <div className="hero-actions" aria-label="Primary actions">
+          <button className="primary" onClick={() => setScreen('create')}>Create Room</button>
+          <button onClick={() => setScreen('join')}>Join Room</button>
         </div>
-        <div className="room-pill">{roomCode}</div>
+        <p className="lede">Create a table room, share the four-character code, ready up, then reveal roles on each phone.</p>
+        <p className="mode">{isSupabaseConfigured ? 'Supabase realtime mode' : 'Local browser demo mode'}</p>
       </header>
 
-      <nav className="tabs" aria-label="Views">
-        {(['host', 'player', 'table'] as Tab[]).map((item) => (
-          <button key={item} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>
-            {item}
-          </button>
-        ))}
-      </nav>
+      {message && <p className="notice">{message}</p>}
 
-      {tab === 'host' && (
-        <section className="grid">
-          <Panel title="Room setup">
+      {screen === 'home' && (
+        <section className="panel">
+          <h2>Start at the table</h2>
+          <p>One player creates the room and becomes host. Everyone else joins from their own phone with the room code.</p>
+        </section>
+      )}
+
+      {screen === 'create' && (
+        <section className="panel">
+          <h2>Create Room</h2>
+          <form className="stack" onSubmit={handleCreateRoom}>
             <label>
-              Room code
-              <input value={roomCode} onChange={(event) => setRoomCode(event.target.value.toUpperCase())} />
-            </label>
-            <label>
-              Players, one per line
-              <textarea value={namesText} onChange={(event) => setNamesText(event.target.value)} rows={8} />
+              Your nickname
+              <input value={hostName} onChange={(event) => setHostName(event.target.value)} maxLength={24} autoFocus />
             </label>
             <label className="check">
               <input
                 type="checkbox"
-                checked={includePercival}
-                onChange={(event) => setIncludePercival(event.target.checked)}
+                checked={includePercivalMorgana}
+                onChange={(event) => setIncludePercivalMorgana(event.target.checked)}
               />
-              Include Percival and Morgana for 7+ players
+              Include Percival and Morgana when 7+ players join
             </label>
-            <button className="primary" onClick={createRoom}>Create room and assign roles</button>
-          </Panel>
-
-          <Panel title="Host controls">
-            <Status phase={phase} roundIndex={roundIndex} score={score} />
-            <div className="row">
-              <button onClick={() => setPhase('proposal')} disabled={players.length < 5}>Start proposal</button>
-              <button onClick={() => setPhase('reveal')} disabled={players.length < 5}>Private reveals</button>
-            </div>
-            {phase === 'proposal' && (
-              <>
-                <p>Leader: {players[leaderIndex]?.name}. Pick {currentTeamSize} players.</p>
-                <PlayerPicker players={players} selected={proposal} onToggle={toggleProposal} />
-                <button className="primary" onClick={startVote} disabled={proposal.length !== currentTeamSize}>Lock team</button>
-              </>
-            )}
-            {phase === 'vote' && (
-              <>
-                <p>Collect approve/reject votes from every player.</p>
-                {players.map((player) => (
-                  <div className="vote-row" key={player.id}>
-                    <span>{player.name}</span>
-                    <button className={votes[player.id] === 'approve' ? 'active-soft' : ''} onClick={() => submitVote(player.id, 'approve')}>Approve</button>
-                    <button className={votes[player.id] === 'reject' ? 'active-soft' : ''} onClick={() => submitVote(player.id, 'reject')}>Reject</button>
-                  </div>
-                ))}
-                <button className="primary" onClick={resolveVote} disabled={!allVotesIn}>Reveal vote result</button>
-              </>
-            )}
-            {phase === 'mission' && (
-              <>
-                <p>Mission team submits hidden cards. Host sees only completion until reveal.</p>
-                {missionPlayers.map((player) => (
-                  <div className="vote-row" key={player.id}>
-                    <span>{player.name}</span>
-                    <button className={missionCards[player.id] === 'success' ? 'active-soft' : ''} onClick={() => submitMissionCard(player.id, 'success')}>Success</button>
-                    <button className={missionCards[player.id] === 'fail' ? 'active-soft' : ''} onClick={() => submitMissionCard(player.id, 'fail')}>Fail</button>
-                  </div>
-                ))}
-                <button className="primary" onClick={resolveMissionCards} disabled={!allMissionCardsIn}>Reveal mission result</button>
-              </>
-            )}
-            {phase === 'assassin' && (
-              <>
-                <label>
-                  Assassin guess
-                  <select value={assassinGuess} onChange={(event) => setAssassinGuess(event.target.value)}>
-                    <option value="">Choose Merlin suspect</option>
-                    {players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
-                  </select>
-                </label>
-                <button className="primary" onClick={resolveAssassinGuess} disabled={!assassinGuess}>Resolve game</button>
-              </>
-            )}
-            {winner && <p className="result">{winner}</p>}
-          </Panel>
+            <button className="primary" disabled={busy}>{busy ? 'Creating...' : 'Create Room'}</button>
+          </form>
         </section>
       )}
 
-      {tab === 'player' && (
-        <section className="grid">
-          <Panel title="Join mock room">
+      {screen === 'join' && (
+        <section className="panel">
+          <h2>Join Room</h2>
+          <form className="stack" onSubmit={handleJoinRoom}>
             <label>
               Room code
-              <input value={joinCode} onChange={(event) => setJoinCode(event.target.value)} placeholder="AVLN42" />
+              <input value={joinCode} onChange={(event) => setJoinCode(event.target.value.toUpperCase())} maxLength={4} autoFocus />
             </label>
-            <button onClick={joinRoom}>Join on this device</button>
-          </Panel>
-          <Panel title="Private player view">
             <label>
-              Device player
-              <select value={selectedPlayerId} onChange={(event) => setSelectedPlayerId(event.target.value)}>
-                {players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
-              </select>
+              Your nickname
+              <input value={joinName} onChange={(event) => setJoinName(event.target.value)} maxLength={24} />
             </label>
-            {nightInfo ? (
-              <div className="role-box">
-                <p className="eyebrow">Private reveal</p>
-                <h2>{nightInfo.role}</h2>
-                <p>{nightInfo.allegiance === 'good' ? 'Good' : 'Evil'} team</p>
-                <h3>Night information</h3>
-                {nightInfo.sees.length ? (
-                  <ul>{nightInfo.sees.map((item) => <li key={item.playerId}>{item.name}: {item.hint}</li>)}</ul>
-                ) : (
-                  <p>No extra night information.</p>
-                )}
-              </div>
-            ) : (
-              <p>Create a room first, then select a player token.</p>
-            )}
-          </Panel>
+            <button className="primary" disabled={busy}>{busy ? 'Joining...' : 'Join Room'}</button>
+          </form>
         </section>
       )}
 
-      {tab === 'table' && (
-        <section className="grid">
-          <Panel title="Public table">
-            <Status phase={phase} roundIndex={roundIndex} score={score} />
-            <p>Leader: {players[leaderIndex]?.name ?? 'Not set'}</p>
-            <p>Required team size: {currentTeamSize || '-'}</p>
-            <div className="team-list">
-              {proposedPlayers.length ? proposedPlayers.map((player) => <span key={player.id}>{player.name}</span>) : <span>No team proposed</span>}
-            </div>
-          </Panel>
-          <Panel title="Timeline">
-            <ol className="events">{events.map((event) => <li key={event.id}>{event.text}</li>)}</ol>
-          </Panel>
-        </section>
+      {screen === 'room' && snapshot && (
+        <RoomView
+          snapshot={snapshot}
+          currentPlayer={currentPlayer}
+          privateInfo={privateInfo}
+          startValidation={startValidation}
+          onReady={handleReady}
+          onStart={handleStartGame}
+          onRename={handleRename}
+        />
       )}
     </main>
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function RoomView({
+  snapshot,
+  currentPlayer,
+  privateInfo,
+  startValidation,
+  onReady,
+  onStart,
+  onRename,
+}: {
+  snapshot: RoomSnapshot;
+  currentPlayer?: RoomPlayer;
+  privateInfo?: ReturnType<typeof getPrivateRoleInfo>;
+  startValidation?: string;
+  onReady: () => void;
+  onStart: () => void;
+  onRename: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  const started = snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup';
+  const currentTeamSize = snapshot.players.length >= 5 && snapshot.players.length <= 10 ? getTeamSize(snapshot.players.length, 0) : 0;
+
   return (
-    <section className="panel">
-      <h2>{title}</h2>
-      {children}
+    <section className="room-grid">
+      <div className="room-code">
+        <span>Room Code</span>
+        <strong>{snapshot.room.code}</strong>
+      </div>
+
+      <section className="panel">
+        <h2>{started ? 'Private Reveal' : 'Lobby'}</h2>
+        {currentPlayer && !started && (
+          <>
+            <form className="inline-form" onSubmit={onRename}>
+              <input name="displayName" defaultValue={currentPlayer.displayName} maxLength={24} aria-label="Nickname" />
+              <button>Save</button>
+            </form>
+            <button className={currentPlayer.isReady ? 'active-soft' : 'primary'} onClick={onReady}>
+              {currentPlayer.isReady ? 'Ready' : 'Set Ready'}
+            </button>
+          </>
+        )}
+
+        {started && privateInfo && (
+          <div className="role-box">
+            <p className="eyebrow">Only for {currentPlayer?.displayName}</p>
+            <h3>{privateInfo.role}</h3>
+            <p>{privateInfo.allegiance === 'good' ? 'Good team' : 'Evil team'}</p>
+            <h4>Night information</h4>
+            {privateInfo.sees.length ? (
+              <ul>{privateInfo.sees.map((item) => <li key={item.playerId}>{item.name}: {item.hint}</li>)}</ul>
+            ) : (
+              <p>No extra night information.</p>
+            )}
+          </div>
+        )}
+      </section>
+
+      <section className="panel">
+        <h2>Players</h2>
+        <ol className="players">
+          {snapshot.players.map((player) => (
+            <li key={player.id} className={player.id === currentPlayer?.id ? 'me' : ''}>
+              <span>{player.displayName}</span>
+              <small>{player.isHost ? 'Host' : `Seat ${player.seatIndex + 1}`}</small>
+              <strong>{started ? (player.id === currentPlayer?.id ? player.role : 'Locked') : player.isReady ? 'Ready' : 'Waiting'}</strong>
+            </li>
+          ))}
+        </ol>
+        {!started && <p className="hint">{startValidation ?? 'All set. Host can start now.'}</p>}
+        {!started && currentPlayer?.isHost && (
+          <button className="primary" disabled={Boolean(startValidation)} onClick={onStart}>Start Game</button>
+        )}
+      </section>
+
+      {started && (
+        <section className="panel">
+          <h2>Table State</h2>
+          <div className="status">
+            <span>Status: {snapshot.room.status}</span>
+            <span>Players: {snapshot.players.length}</span>
+            <span>Mission 1 team: {currentTeamSize || '-'}</span>
+          </div>
+          <p>Room is locked. Continue with the Avalon Lite table flow using the revealed roles.</p>
+        </section>
+      )}
     </section>
   );
 }
 
-function Status({ phase, roundIndex, score }: { phase: Phase; roundIndex: number; score: { success: number; fail: number } }) {
-  return (
-    <div className="status">
-      <span>Phase: {phase}</span>
-      <span>Mission: {Math.min(roundIndex + 1, 5)}/5</span>
-      <span>Good {score.success} - Evil {score.fail}</span>
-    </div>
-  );
-}
-
-function PlayerPicker({ players, selected, onToggle }: { players: Player[]; selected: string[]; onToggle: (id: string) => void }) {
-  return (
-    <div className="picker">
-      {players.map((player) => (
-        <button key={player.id} className={selected.includes(player.id) ? 'active-soft' : ''} onClick={() => onToggle(player.id)}>
-          {player.name}
-        </button>
-      ))}
-    </div>
-  );
+function getOrCreateDeviceToken() {
+  const key = 'avalon-host.deviceToken';
+  const existing = localStorage.getItem(key);
+  if (existing) return existing;
+  const token = crypto.randomUUID();
+  localStorage.setItem(key, token);
+  return token;
 }
 
 createRoot(document.getElementById('root')!).render(<App />);

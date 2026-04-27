@@ -1,6 +1,6 @@
 # Avalon Host
 
-Offline-first host prototype for face-to-face Avalon-style gatherings. This MVP is a local React workflow prototype with mock room/device state and no remote backend connection.
+Mobile-first room flow for face-to-face Avalon Lite gatherings. One person creates a room at the table, everyone else joins with a four-character code, players mark ready, and the host starts once the lobby is valid.
 
 ## Local Run
 
@@ -11,35 +11,32 @@ npm test
 npm run build
 ```
 
-## MVP Scope
+When Supabase env vars are absent, the app runs in local browser demo mode using `localStorage`.
 
-- Create room and join room mock flow.
-- Host, player, and public table panels.
-- Configurable 5-10 player roster.
-- Avalon Lite role assignment with Merlin, Assassin, Loyal Servants, and Minions.
-- Optional Percival and Morgana for 7+ player tables.
-- Private per-player role reveal and night information.
-- Team proposal, approve/reject voting, hidden mission card collection, mission result reveal.
-- Mission timeline/event log and assassin endgame guess.
+## Table Flow
 
-This is intentionally a runnable tabletop workflow, not a landing page. State is in-browser only and resets on reload.
+1. Host opens the site and taps **Create Room**.
+2. Host enters a nickname, optionally enables Percival/Morgana for 7+ players, and receives a room code.
+3. Other players open the site, tap **Join Room**, enter the room code and nickname.
+4. The lobby shows seats, host marker, current player marker, and ready state.
+5. Host can start only when the room has 5-10 players and every player, including the host, is ready.
+6. Starting locks the room, assigns Avalon Lite roles from the actual joined player count, and shows each device its own private reveal.
 
 ## Supabase Status
 
-Supabase is prepared locally only. The repo is not linked to any remote Supabase project, and no project has been created.
+The app is Supabase-ready, but remote project creation is currently blocked by the account free-project limit. No secrets are committed.
 
-Initial schema lives at:
+Create a local `.env` from `.env.example` when a Supabase project is available:
+
+```bash
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+```
+
+Schema draft:
 
 ```text
 supabase/migrations/20260427010500_initial_avalon_host_schema.sql
 ```
 
-It includes `rooms`, `players`, `game_state`, `private_roles`, `votes`, `mission_actions`, and `events` with RLS enabled. Current policies are permissive local-prototype drafts with TODO comments for room membership and private role access.
-
-## Next Steps
-
-- Add persisted local storage so room flow survives refresh.
-- Replace mock device tokens with QR/device-token room join links.
-- Move game state writes behind Supabase RPCs to prevent clients from seeing hidden roles/cards.
-- Add host recovery and multi-device sync.
-- Add Werewolf mode after Avalon Lite is stable.
+The current RLS policies are intentionally permissive local-prototype drafts. Production needs RPC-based room create/join/start actions, hashed device-token verification, and private role/mission-card access controls before real use.
