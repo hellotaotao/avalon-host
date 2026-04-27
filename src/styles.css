@@ -28,6 +28,7 @@ button {
   color: #17201a;
   padding: 0.7rem 0.9rem;
   font-weight: 750;
+  overflow-wrap: anywhere;
 }
 
 button:disabled {
@@ -85,12 +86,6 @@ label {
   text-transform: uppercase;
 }
 
-.hero-actions {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.55rem;
-}
-
 .primary,
 .active-soft,
 .demo-button {
@@ -144,6 +139,44 @@ label {
   border-radius: 8px;
   background: #fffdfa;
   padding: 1rem;
+}
+
+.entry {
+  display: grid;
+  gap: 1rem;
+}
+
+.entry-intro {
+  background: #f8fbf7;
+}
+
+.path-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.path-card {
+  display: grid;
+  min-height: 104px;
+  align-content: center;
+  justify-items: start;
+  gap: 0.35rem;
+  text-align: left;
+}
+
+.path-card span {
+  font-size: 1.05rem;
+}
+
+.path-card small {
+  color: #3e463f;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.primary-path,
+.primary-path small {
+  color: #fffdfa;
 }
 
 .panel h2 {
@@ -202,10 +235,32 @@ label {
   line-height: 1.35;
 }
 
+.room-leave {
+  margin-top: 0.5rem;
+  width: fit-content;
+}
+
 .inline-form {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 0.5rem;
+}
+
+.next-step {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid #d8e0d4;
+  border-radius: 8px;
+  background: #f6f8f3;
+  padding: 0.75rem;
+}
+
+.next-step strong {
+  color: #2d594b;
+}
+
+.next-step span {
+  line-height: 1.35;
 }
 
 .players {
@@ -301,6 +356,10 @@ label {
 
   .demo-options {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .path-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .room-code,

@@ -5,6 +5,7 @@ import { isSupabaseConfigured } from './services/supabaseClient';
 import {
   createHostDemoRoom,
   createJoinDemoRoom,
+  canStartGame,
   createRoom,
   DEMO_JOIN_ROOM_CODE,
   getRoomById,
@@ -192,7 +193,7 @@ function App() {
   }
 
   async function handleStartGame() {
-    if (!snapshot || !currentPlayer?.isHost) return;
+    if (!snapshot || !currentPlayer || startValidation) return;
     const result = isDemoMode ? startDemoSnapshot(snapshot) : await startGame(snapshot.room.id);
     if (result.snapshot) setSnapshot(result.snapshot);
     setMessage(result.ok ? '' : result.reason ?? 'Could not start game.');
@@ -241,24 +242,33 @@ function App() {
     <main className="shell">
       <header className="hero">
         <p className="eyebrow">Avalon Host</p>
-        <h1>Room Flow</h1>
-        {screen !== 'room' && (
-          <div className="hero-actions" aria-label="Primary actions">
-            <button type="button" className="primary" onClick={() => setScreen('create')}>Create Room</button>
-            <button type="button" onClick={() => setScreen('join')}>Join Room</button>
-            <button type="button" className="demo-button" onClick={() => setScreen('demo')}>Try Demo</button>
-          </div>
-        )}
-        <p className="lede">Create a table room, share the four-character code, ready up, then reveal roles on each phone.</p>
+        <h1>{screen === 'room' ? (snapshot?.room.status === 'reveal' ? 'Reveal Roles' : 'Room Lobby') : 'Host Avalon at the table'}</h1>
+        <p className="lede">Create room, players join and ready, then reveal private roles on each phone.</p>
         <p className="mode">{isSupabaseConfigured ? 'Supabase realtime mode' : 'Local browser demo mode'}</p>
       </header>
 
       {message && <p className="notice">{message}</p>}
 
       {screen === 'home' && (
-        <section className="panel">
-          <h2>Start at the table</h2>
-          <p>One player creates the room and becomes host. Everyone else joins from their own phone with the room code.</p>
+        <section className="entry">
+          <div className="panel entry-intro">
+            <h2>Pick your next step</h2>
+            <p>Use one shared room for the table. The app keeps players in order, checks readiness, then locks the room for role reveal.</p>
+          </div>
+          <div className="path-grid" aria-label="Primary actions">
+            <button type="button" className="path-card primary-path" onClick={() => setScreen('create')}>
+              <span>Host a game</span>
+              <small>Create a room code for the table.</small>
+            </button>
+            <button type="button" className="path-card" onClick={() => setScreen('join')}>
+              <span>Join with code</span>
+              <small>Enter the four-character room code.</small>
+            </button>
+            <button type="button" className="path-card demo-button" onClick={() => setScreen('demo')}>
+              <span>Try demo</span>
+              <small>Auto-start with demo players.</small>
+            </button>
+          </div>
         </section>
       )}
 
@@ -394,20 +404,29 @@ function RoomView({
 }) {
   const started = snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup';
   const currentTeamSize = snapshot.players.length >= 5 && snapshot.players.length <= 10 ? getTeamSize(snapshot.players.length, 0) : 0;
+  const readyCount = snapshot.players.filter((player) => player.isReady).length;
+  const neededPlayers = Math.max(0, 5 - snapshot.players.length);
+  const canStart = canStartGame(snapshot.players);
 
   return (
     <section className="room-grid">
       <div className="room-code">
         <span>{isDemoMode ? 'Demo Room Code' : 'Room Code'}</span>
         <strong>{snapshot.room.code}</strong>
-        {isDemoMode && <p>Sandbox demo with bot players. This is not a real shareable room.</p>}
+        <p>
+          {started
+            ? 'Room is locked for private role reveal.'
+            : isDemoMode
+              ? 'Sandbox demo with bot players. This is not a real shareable room.'
+              : 'Share this code with players at the table.'}
+        </p>
         {currentPlayer && !started && (
-          <button type="button" className="small-danger" onClick={onLeave}>Leave Room</button>
+          <button type="button" className="small-danger room-leave" onClick={onLeave}>Leave Room</button>
         )}
       </div>
 
       <section className="panel">
-        <h2>{started ? 'Private Reveal' : isDemoMode ? 'Demo Lobby' : 'Lobby'}</h2>
+        <h2>{started ? 'Private Reveal' : 'Current Room'}</h2>
         {currentPlayer && !started && (
           <>
             <form className="inline-form" onSubmit={onRename}>
@@ -418,6 +437,19 @@ function RoomView({
               {currentPlayer.isReady ? 'Ready' : 'Set Ready'}
             </button>
           </>
+        )}
+
+        {!started && (
+          <div className="next-step">
+            <strong>{canStart ? 'Everyone is ready.' : 'Waiting to start'}</strong>
+            <span>
+              {canStart
+                ? 'Any ready player can start the game now.'
+                : neededPlayers > 0
+                  ? `${neededPlayers} more player${neededPlayers === 1 ? '' : 's'} needed.`
+                  : startValidation}
+            </span>
+          </div>
         )}
 
         {started && privateInfo && (
@@ -437,6 +469,7 @@ function RoomView({
 
       <section className="panel">
         <h2>Players</h2>
+        {!started && <p className="hint">{readyCount}/{snapshot.players.length} ready. Minimum 5 players.</p>}
         <ol className="players">
           {snapshot.players.map((player) => (
             <li key={player.id} className={player.id === currentPlayer?.id ? 'me' : ''}>
@@ -449,19 +482,18 @@ function RoomView({
             </li>
           ))}
         </ol>
-        {!started && <p className="hint">{startValidation ?? 'All set. Host can start now.'}</p>}
-        {!started && currentPlayer?.isHost && (
+        {!started && currentPlayer && (
           <button
             type="button"
             className="primary"
-            disabled={Boolean(startValidation)}
+            disabled={!canStart}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
               onStart();
             }}
           >
-            Start Game
+            {canStart ? 'Start Game' : startValidation}
           </button>
         )}
       </section>

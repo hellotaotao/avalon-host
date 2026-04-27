@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { assignRoles } from '../domain/avalon';
 import {
   assertDeletedRows,
+  canStartGame,
   createHostDemoRoom,
   createJoinDemoRoom,
   DEMO_JOIN_ROOM_CODE,
@@ -32,6 +33,13 @@ describe('room service rules', () => {
     expect(getStartValidation(makePlayers(11))).toBe('Avalon Lite supports at most 10 players.');
     expect(getStartValidation(makePlayers(5, [2]))).toBe('Every player, including the host, must be ready.');
     expect(getStartValidation(makePlayers(5))).toBeUndefined();
+  });
+
+  it('allows the room to start once every player is ready regardless of who will press start', () => {
+    const players = makePlayers(5);
+    expect(players.some((player) => !player.isHost && player.isReady)).toBe(true);
+    expect(canStartGame(players)).toBe(true);
+    expect(canStartGame(makePlayers(5, [3]))).toBe(false);
   });
 
   it('assigns roles from the actual joined player count', () => {

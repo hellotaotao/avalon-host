@@ -73,6 +73,10 @@ export function getStartValidation(players: RoomPlayer[]): string | undefined {
   return undefined;
 }
 
+export function canStartGame(players: RoomPlayer[]): boolean {
+  return !getStartValidation(players);
+}
+
 export function createHostDemoRoom(displayName: string): { snapshot: RoomSnapshot; currentPlayerId: string } {
   const roomId = 'demo-host-room';
   const currentPlayerId = 'demo-host-player';
