@@ -19,8 +19,10 @@ When Supabase env vars are absent, the app runs in local browser demo mode using
 2. Host enters a nickname, optionally enables Percival/Morgana for 7+ players, and receives a room code.
 3. Other players open the site, tap **Join Room**, enter the room code and nickname.
 4. The lobby shows seats, host marker, current player marker, and ready state.
-5. Host can start only when the room has 5-10 players and every player, including the host, is ready.
-6. Starting locks the room, assigns Avalon Lite roles from the actual joined player count, and shows each device its own private reveal.
+5. Refreshing the same browser restores its current room/player session, and rejoining from the same device reuses the existing seat.
+6. Before the game starts, the host can remove stale players from the lobby so abandoned seats do not block start.
+7. Host can start only when the room has 5-10 players and every player, including the host, is ready.
+8. Starting locks the room, assigns Avalon Lite roles from the actual joined player count, and shows each device its own private reveal.
 
 ## Supabase Status
 

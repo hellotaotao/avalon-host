@@ -4,9 +4,11 @@ import { getTeamSize } from './domain/avalon';
 import { isSupabaseConfigured } from './services/supabaseClient';
 import {
   createRoom,
+  getRoomById,
   getPrivateRoleInfo,
   getStartValidation,
   joinRoom,
+  removePlayer,
   setReady,
   startGame,
   subscribeToRoom,
@@ -17,11 +19,13 @@ import {
 import './styles.css';
 
 type Screen = 'home' | 'create' | 'join' | 'room';
+const CURRENT_PLAYER_ID_KEY = 'avalon-host.currentPlayerId';
+const CURRENT_ROOM_ID_KEY = 'avalon-host.currentRoomId';
 
 function App() {
   const [screen, setScreen] = useState<Screen>('home');
   const [snapshot, setSnapshot] = useState<RoomSnapshot>();
-  const [currentPlayerId, setCurrentPlayerId] = useState(localStorage.getItem('avalon-host.currentPlayerId') ?? '');
+  const [currentPlayerId, setCurrentPlayerId] = useState(localStorage.getItem(CURRENT_PLAYER_ID_KEY) ?? '');
   const [deviceToken] = useState(() => getOrCreateDeviceToken());
   const [hostName, setHostName] = useState('');
   const [joinName, setJoinName] = useState('');
@@ -38,11 +42,52 @@ function App() {
   );
 
   useEffect(() => {
+    const storedRoomId = localStorage.getItem(CURRENT_ROOM_ID_KEY);
+    const storedPlayerId = localStorage.getItem(CURRENT_PLAYER_ID_KEY);
+    if (!storedRoomId || !storedPlayerId) return;
+
+    let cancelled = false;
+    void getRoomById(storedRoomId)
+      .then((restoredSnapshot) => {
+        if (cancelled) return;
+        if (restoredSnapshot?.players.some((player) => player.id === storedPlayerId)) {
+          setCurrentPlayerId(storedPlayerId);
+          setSnapshot(restoredSnapshot);
+          setScreen('room');
+          return;
+        }
+        clearSessionBinding();
+        setCurrentPlayerId('');
+        setSnapshot(undefined);
+        setScreen('join');
+        setMessage('You were removed from the room.');
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        clearSessionBinding();
+        setCurrentPlayerId('');
+        setMessage(error instanceof Error ? error.message : 'Could not restore room.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!snapshot) return undefined;
     return subscribeToRoom(snapshot.room.id, (nextSnapshot) => {
-      if (nextSnapshot) setSnapshot(nextSnapshot);
+      if (!nextSnapshot) return;
+      if (currentPlayerId && !nextSnapshot.players.some((player) => player.id === currentPlayerId)) {
+        clearSessionBinding();
+        setCurrentPlayerId('');
+        setSnapshot(undefined);
+        setScreen('join');
+        setMessage('You were removed from the room.');
+        return;
+      }
+      setSnapshot(nextSnapshot);
     });
-  }, [snapshot?.room.id]);
+  }, [currentPlayerId, snapshot?.room.id]);
 
   async function handleCreateRoom(event: React.FormEvent) {
     event.preventDefault();
@@ -51,7 +96,7 @@ function App() {
     setMessage('');
     try {
       const result = await createRoom({ displayName: hostName, includePercivalMorgana, deviceToken });
-      localStorage.setItem('avalon-host.currentPlayerId', result.currentPlayerId);
+      saveSessionBinding(result.snapshot.room.id, result.currentPlayerId);
       setCurrentPlayerId(result.currentPlayerId);
       setSnapshot(result.snapshot);
       setScreen('room');
@@ -69,7 +114,7 @@ function App() {
     setMessage('');
     try {
       const result = await joinRoom({ code: joinCode, displayName: joinName, deviceToken });
-      localStorage.setItem('avalon-host.currentPlayerId', result.currentPlayerId);
+      saveSessionBinding(result.snapshot.room.id, result.currentPlayerId);
       setCurrentPlayerId(result.currentPlayerId);
       setSnapshot(result.snapshot);
       setScreen('room');
@@ -99,6 +144,16 @@ function App() {
     const result = await startGame(snapshot.room.id);
     if (result.snapshot) setSnapshot(result.snapshot);
     setMessage(result.ok ? '' : result.reason ?? 'Could not start game.');
+  }
+
+  async function handleRemovePlayer(targetPlayerId: string) {
+    if (!snapshot || !currentPlayer?.isHost) return;
+    setMessage('');
+    try {
+      setSnapshot(await removePlayer(snapshot.room.id, currentPlayer.id, targetPlayerId));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not remove player.');
+    }
   }
 
   return (
@@ -170,6 +225,7 @@ function App() {
           onReady={handleReady}
           onStart={handleStartGame}
           onRename={handleRename}
+          onRemovePlayer={handleRemovePlayer}
         />
       )}
     </main>
@@ -184,6 +240,7 @@ function RoomView({
   onReady,
   onStart,
   onRename,
+  onRemovePlayer,
 }: {
   snapshot: RoomSnapshot;
   currentPlayer?: RoomPlayer;
@@ -192,6 +249,7 @@ function RoomView({
   onReady: () => void;
   onStart: () => void;
   onRename: (event: React.FormEvent<HTMLFormElement>) => void;
+  onRemovePlayer: (targetPlayerId: string) => void;
 }) {
   const started = snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup';
   const currentTeamSize = snapshot.players.length >= 5 && snapshot.players.length <= 10 ? getTeamSize(snapshot.players.length, 0) : 0;
@@ -240,6 +298,9 @@ function RoomView({
               <span>{player.displayName}</span>
               <small>{player.isHost ? 'Host' : `Seat ${player.seatIndex + 1}`}</small>
               <strong>{started ? (player.id === currentPlayer?.id ? player.role : 'Locked') : player.isReady ? 'Ready' : 'Waiting'}</strong>
+              {!started && currentPlayer?.isHost && !player.isHost && (
+                <button className="small-danger" onClick={() => onRemovePlayer(player.id)}>Remove</button>
+              )}
             </li>
           ))}
         </ol>
@@ -271,6 +332,16 @@ function getOrCreateDeviceToken() {
   const token = crypto.randomUUID();
   localStorage.setItem(key, token);
   return token;
+}
+
+function saveSessionBinding(roomId: string, playerId: string) {
+  localStorage.setItem(CURRENT_ROOM_ID_KEY, roomId);
+  localStorage.setItem(CURRENT_PLAYER_ID_KEY, playerId);
+}
+
+function clearSessionBinding() {
+  localStorage.removeItem(CURRENT_ROOM_ID_KEY);
+  localStorage.removeItem(CURRENT_PLAYER_ID_KEY);
 }
 
 createRoot(document.getElementById('root')!).render(<App />);

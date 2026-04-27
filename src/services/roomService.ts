@@ -23,6 +23,7 @@ export interface RoomPlayer {
   isHost: boolean;
   isReady: boolean;
   role?: Role;
+  deviceToken?: string;
 }
 
 export interface RoomSnapshot {
@@ -89,6 +90,14 @@ export async function startGame(roomId: string): Promise<StartResult> {
   return repository().startGame(roomId);
 }
 
+export async function removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot> {
+  return repository().removePlayer(roomId, hostPlayerId, targetPlayerId);
+}
+
+export async function getRoomById(roomId: string): Promise<RoomSnapshot | undefined> {
+  return repository().getRoomById(roomId);
+}
+
 export async function getRoomByCode(code: string): Promise<RoomSnapshot | undefined> {
   return repository().getRoomByCode(code);
 }
@@ -122,6 +131,7 @@ const localRepository = {
       seatIndex: 0,
       isHost: true,
       isReady: false,
+      deviceToken: input.deviceToken,
     };
     const snapshot = { room, players: [player] };
     data.rooms.push(snapshot);
@@ -134,14 +144,22 @@ const localRepository = {
     const snapshot = findByCode(data, input.code);
     if (!snapshot) throw new Error('Room not found.');
     if (snapshot.room.status !== 'lobby') throw new Error('This room is already locked.');
+    const displayName = input.displayName.trim();
+    const existingPlayer = findPlayerByDeviceToken(snapshot.players, input.deviceToken);
+    if (existingPlayer) {
+      if (existingPlayer.displayName !== displayName) existingPlayer.displayName = displayName;
+      writeRooms(data);
+      return { snapshot, currentPlayerId: existingPlayer.id };
+    }
     if (snapshot.players.length >= 10) throw new Error('This room already has 10 players.');
     const player: RoomPlayer = {
       id: crypto.randomUUID(),
       roomId: snapshot.room.id,
-      displayName: input.displayName.trim(),
+      displayName,
       seatIndex: snapshot.players.length,
       isHost: false,
       isReady: false,
+      deviceToken: input.deviceToken,
     };
     snapshot.players.push(player);
     writeRooms(data);
@@ -182,6 +200,18 @@ const localRepository = {
     }));
     writeRooms(data);
     return { ok: true, snapshot };
+  },
+
+  async removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string) {
+    const data = readRooms();
+    const snapshot = requireById(data, roomId);
+    removePlayerFromSnapshot(snapshot, hostPlayerId, targetPlayerId);
+    writeRooms(data);
+    return snapshot;
+  },
+
+  async getRoomById(roomId: string) {
+    return readRooms().rooms.find((snapshot) => snapshot.room.id === roomId);
   },
 
   async getRoomByCode(code: string) {
@@ -235,13 +265,29 @@ const supabaseRepository = {
     const found = await this.getRoomByCode(input.code);
     if (!found) throw new Error('Room not found.');
     if (found.room.status !== 'lobby') throw new Error('This room is already locked.');
-    if (found.players.length >= 10) throw new Error('This room already has 10 players.');
     const supabase = await getSupabaseRequired();
+    const { data: existingRows, error: existingError } = await supabase
+      .from('players')
+      .select('id, display_name')
+      .eq('room_id', found.room.id)
+      .eq('device_token_hash', input.deviceToken)
+      .limit(1);
+    if (existingError) throw existingError;
+    const existingPlayer = existingRows?.[0];
+    const displayName = input.displayName.trim();
+    if (existingPlayer) {
+      if (existingPlayer.display_name !== displayName) {
+        const { error } = await supabase.from('players').update({ display_name: displayName }).eq('id', existingPlayer.id);
+        if (error) throw error;
+      }
+      return { snapshot: await fetchSnapshot(found.room.id), currentPlayerId: existingPlayer.id as string };
+    }
+    if (found.players.length >= 10) throw new Error('This room already has 10 players.');
     const { data, error } = await supabase
       .from('players')
       .insert({
         room_id: found.room.id,
-        display_name: input.displayName.trim(),
+        display_name: displayName,
         seat_index: found.players.length,
         is_host: false,
         is_ready: false,
@@ -291,6 +337,30 @@ const supabaseRepository = {
       ),
     );
     return { ok: true, snapshot: await fetchSnapshot(roomId) };
+  },
+
+  async removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string) {
+    const snapshot = await fetchSnapshot(roomId);
+    removePlayerFromSnapshot(snapshot, hostPlayerId, targetPlayerId);
+    const supabase = await getSupabaseRequired();
+    const { error: deleteError } = await supabase.from('players').delete().eq('id', targetPlayerId).eq('room_id', roomId);
+    if (deleteError) throw deleteError;
+    await Promise.all(
+      snapshot.players.map((player) =>
+        supabase
+          .from('players')
+          .update({ seat_index: player.seatIndex })
+          .eq('id', player.id)
+          .then(({ error }: { error: Error | null }) => {
+            if (error) throw error;
+          }),
+      ),
+    );
+    return fetchSnapshot(roomId);
+  },
+
+  async getRoomById(roomId: string) {
+    return fetchSnapshot(roomId).catch(() => undefined);
   },
 
   async getRoomByCode(code: string) {
@@ -367,6 +437,24 @@ function requirePlayer(snapshot: RoomSnapshot, playerId: string) {
   const player = snapshot.players.find((item) => item.id === playerId);
   if (!player) throw new Error('Player not found.');
   return player;
+}
+
+export function removePlayerFromSnapshot(snapshot: RoomSnapshot, hostPlayerId: string, targetPlayerId: string): RoomSnapshot {
+  if (snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup') {
+    throw new Error('Players can only be removed before the game starts.');
+  }
+  const host = requirePlayer(snapshot, hostPlayerId);
+  if (!host.isHost) throw new Error('Only the host can remove players.');
+  if (hostPlayerId === targetPlayerId) throw new Error('Host cannot remove themselves.');
+  requirePlayer(snapshot, targetPlayerId);
+  snapshot.players = snapshot.players
+    .filter((player) => player.id !== targetPlayerId)
+    .map((player, index) => ({ ...player, seatIndex: index }));
+  return snapshot;
+}
+
+export function findPlayerByDeviceToken(players: RoomPlayer[], deviceToken: string): RoomPlayer | undefined {
+  return players.find((player) => player.deviceToken === deviceToken);
 }
 
 function toAvalonPlayer(player: RoomPlayer): AvalonPlayer {

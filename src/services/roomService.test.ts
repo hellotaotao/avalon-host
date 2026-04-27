@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { assignRoles } from '../domain/avalon';
-import { generateRoomCode, getStartValidation, type RoomPlayer } from './roomService';
+import {
+  findPlayerByDeviceToken,
+  generateRoomCode,
+  getStartValidation,
+  removePlayerFromSnapshot,
+  type RoomSnapshot,
+  type RoomPlayer,
+} from './roomService';
 
 describe('room service rules', () => {
   it('generates four-character room codes without ambiguous characters', () => {
@@ -27,6 +34,29 @@ describe('room service rules', () => {
     expect(assigned.map((player) => player.role)).toContain('Percival');
     expect(assigned.map((player) => player.role)).toContain('Morgana');
   });
+
+  it('does not allow non-host players to remove others', () => {
+    const snapshot = makeSnapshot(5);
+    expect(() => removePlayerFromSnapshot(snapshot, 'p2', 'p3')).toThrow('Only the host can remove players.');
+  });
+
+  it('does not allow the host to remove themselves', () => {
+    const snapshot = makeSnapshot(5);
+    expect(() => removePlayerFromSnapshot(snapshot, 'p1', 'p1')).toThrow('Host cannot remove themselves.');
+  });
+
+  it('removes a player and compacts remaining seats', () => {
+    const snapshot = makeSnapshot(5);
+    removePlayerFromSnapshot(snapshot, 'p1', 'p3');
+    expect(snapshot.players.map((player) => player.id)).toEqual(['p1', 'p2', 'p4', 'p5']);
+    expect(snapshot.players.map((player) => player.seatIndex)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('finds an existing same-device player for rejoin', () => {
+    const players = makePlayers(3).map((player, index) => ({ ...player, deviceToken: `device-${index + 1}` }));
+    expect(findPlayerByDeviceToken(players, 'device-2')?.id).toBe('p2');
+    expect(findPlayerByDeviceToken(players, 'missing')).toBeUndefined();
+  });
 });
 
 function makePlayers(count: number, notReadyIndexes: number[] = []): RoomPlayer[] {
@@ -38,4 +68,17 @@ function makePlayers(count: number, notReadyIndexes: number[] = []): RoomPlayer[
     isHost: index === 0,
     isReady: !notReadyIndexes.includes(index),
   }));
+}
+
+function makeSnapshot(count: number): RoomSnapshot {
+  return {
+    room: {
+      id: 'r1',
+      code: 'ABCD',
+      status: 'lobby',
+      gameType: 'avalon_lite',
+      settings: {},
+    },
+    players: makePlayers(count),
+  };
 }

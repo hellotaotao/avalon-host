@@ -204,7 +204,7 @@ label {
 
 .players li {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
   gap: 0.25rem 0.75rem;
   border: 1px solid #e0ddd5;
   border-radius: 8px;
@@ -231,6 +231,16 @@ label {
   grid-row: span 2;
   align-self: center;
   color: #2d594b;
+}
+
+.small-danger {
+  min-height: 34px;
+  align-self: center;
+  border-color: #b77b6f;
+  background: #fff6f2;
+  color: #7a2e22;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.82rem;
 }
 
 .role-box {
