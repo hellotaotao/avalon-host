@@ -13,6 +13,40 @@ npm run build
 
 When Supabase env vars are absent, the app runs in local browser demo mode using `localStorage`.
 
+## Developer 5-Player Simulator
+
+For one-Mac manual testing, run the Vite dev server and open the dev-only simulator:
+
+```bash
+npm run dev:multi
+```
+
+If the browser does not open automatically, visit:
+
+```text
+http://127.0.0.1:5173/dev/multiplayer
+```
+
+The simulator embeds five same-origin player panes. They share the local room store but each pane has its own namespaced session identity (`devSession=tao-p1` through `tao-p5`), so Tao can click as five different players without Supabase.
+
+Useful controls:
+
+- **Seed 5-Player Lobby** creates a fresh local room with five unready Tao players and binds each pane to a different seat.
+- **Reload Players** refreshes the embedded panes without changing local room data.
+- **Clear Simulator** removes the local room and simulator session keys.
+
+The route is guarded by `import.meta.env.DEV`, so production builds do not render the test UI. It is intentionally not linked from the normal app.
+
+## Automated 5-Player Smoke Test
+
+Run only the five-player smoke:
+
+```bash
+npm run test:five-player
+```
+
+The smoke test uses the local room service with mocked browser storage. It creates one host, joins four more players, marks all five ready, starts the game, and verifies every player reaches the private role reveal state. No Supabase, secrets, browser install, or network access is required.
+
 ## Table Flow
 
 1. Host opens the site and taps **Create Room**.

@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:multi": "vite --host 127.0.0.1 --open /dev/multiplayer",
     "build": "tsc -b && vite build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:five-player": "vitest run src/services/fivePlayerSmoke.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.104.1",

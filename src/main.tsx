@@ -32,16 +32,15 @@ import {
   type RoomPlayer,
   type RoomSnapshot,
 } from './services/roomService';
+import { getSessionStorageKeys, isDevSessionActive } from './sessionKeys';
 import './styles.css';
 
 type Screen = EntryScreen | 'room';
-const CURRENT_PLAYER_ID_KEY = 'avalon-host.currentPlayerId';
-const CURRENT_ROOM_ID_KEY = 'avalon-host.currentRoomId';
 
 function App() {
   const [screen, setScreen] = useState<Screen>(() => parseEntryStep(window.location.href));
   const [snapshot, setSnapshot] = useState<RoomSnapshot>();
-  const [currentPlayerId, setCurrentPlayerId] = useState(localStorage.getItem(CURRENT_PLAYER_ID_KEY) ?? '');
+  const [currentPlayerId, setCurrentPlayerId] = useState(localStorage.getItem(getSessionStorageKeys().currentPlayerId) ?? '');
   const [deviceToken] = useState(() => getOrCreateDeviceToken());
   const [hostName, setHostName] = useState('');
   const [joinName, setJoinName] = useState('');
@@ -59,8 +58,9 @@ function App() {
   );
 
   useEffect(() => {
-    const storedRoomId = localStorage.getItem(CURRENT_ROOM_ID_KEY);
-    const storedPlayerId = localStorage.getItem(CURRENT_PLAYER_ID_KEY);
+    const sessionKeys = getSessionStorageKeys();
+    const storedRoomId = localStorage.getItem(sessionKeys.currentRoomId);
+    const storedPlayerId = localStorage.getItem(sessionKeys.currentPlayerId);
     if (!storedRoomId || !storedPlayerId) return;
 
     let cancelled = false;
@@ -300,7 +300,7 @@ function App() {
         <p className="eyebrow">Avalon Host</p>
         <h1>{screen === 'room' ? (snapshot?.room.status === 'reveal' ? 'The Merlin Reveal' : 'Round Table Lobby') : 'Gather the Knights of Avalon'}</h1>
         <p className="lede">Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.</p>
-        <p className="mode">{isSupabaseConfigured ? 'Supabase realtime mode' : 'Local browser demo mode'}</p>
+        <p className="mode">{isSupabaseConfigured && !isDevSessionActive() ? 'Supabase realtime mode' : 'Local browser demo mode'}</p>
       </header>
 
       {message && <p className="notice">{message}</p>}
@@ -791,7 +791,7 @@ async function copyText(text: string) {
 }
 
 function getOrCreateDeviceToken() {
-  const key = 'avalon-host.deviceToken';
+  const key = getSessionStorageKeys().deviceToken;
   const existing = localStorage.getItem(key);
   if (existing) return existing;
   const token = crypto.randomUUID();
@@ -800,17 +800,27 @@ function getOrCreateDeviceToken() {
 }
 
 function saveSessionBinding(roomId: string, playerId: string) {
-  localStorage.setItem(CURRENT_ROOM_ID_KEY, roomId);
-  localStorage.setItem(CURRENT_PLAYER_ID_KEY, playerId);
+  const sessionKeys = getSessionStorageKeys();
+  localStorage.setItem(sessionKeys.currentRoomId, roomId);
+  localStorage.setItem(sessionKeys.currentPlayerId, playerId);
 }
 
 function clearSessionBinding() {
-  localStorage.removeItem(CURRENT_ROOM_ID_KEY);
-  localStorage.removeItem(CURRENT_PLAYER_ID_KEY);
+  const sessionKeys = getSessionStorageKeys();
+  localStorage.removeItem(sessionKeys.currentRoomId);
+  localStorage.removeItem(sessionKeys.currentPlayerId);
 }
 
 function clearEntryStepFromUrl() {
   window.history.replaceState({ step: 'home' }, '', buildStepUrl(window.location.href, 'home'));
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+const root = createRoot(document.getElementById('root')!);
+
+if (import.meta.env.DEV && window.location.pathname === '/dev/multiplayer') {
+  void import('./dev/DevMultiplayerSimulator').then(({ DevMultiplayerSimulator }) => {
+    root.render(<DevMultiplayerSimulator />);
+  });
+} else {
+  root.render(<App />);
+}

@@ -1,5 +1,6 @@
 import { assignRoles, getVisibilityInfo, type AssignmentOptions, type Player as AvalonPlayer, type Role } from '../domain/avalon';
 import { createInitialMissionState, type MissionState } from '../domain/missionFlow';
+import { isDevSessionActive } from '../sessionKeys';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
 export type RoomStatus = 'setup' | 'lobby' | 'locked' | 'reveal' | 'proposal' | 'vote' | 'mission' | 'assassin' | 'finished';
@@ -53,7 +54,7 @@ export interface StartResult {
 
 type Listener = (snapshot: RoomSnapshot | undefined) => void;
 
-const STORAGE_KEY = 'avalon-host.rooms.v1';
+export const LOCAL_ROOMS_STORAGE_KEY = 'avalon-host.rooms.v1';
 export const DEMO_JOIN_ROOM_CODE = '58213';
 
 const DEMO_BOT_NAMES = ['Gwen', 'Lance', 'Mira', 'Percy', 'Selene', 'Tristan'];
@@ -176,7 +177,7 @@ export function subscribeToRoom(roomId: string, listener: Listener): () => void 
 }
 
 function repository() {
-  return isSupabaseConfigured ? supabaseRepository : localRepository;
+  return isSupabaseConfigured && !isDevSessionActive() ? supabaseRepository : localRepository;
 }
 
 const localRepository = {
@@ -309,7 +310,7 @@ const localRepository = {
   subscribeToRoom(roomId: string, listener: Listener) {
     listener(readRooms().rooms.find((snapshot) => snapshot.room.id === roomId));
     const handler = (event: StorageEvent) => {
-      if (event.key === STORAGE_KEY) {
+      if (event.key === LOCAL_ROOMS_STORAGE_KEY) {
         listener(readRooms().rooms.find((snapshot) => snapshot.room.id === roomId));
       }
     };
@@ -553,15 +554,15 @@ async function getSupabaseRequired() {
 
 function readRooms(): { rooms: RoomSnapshot[] } {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{"rooms":[]}') as { rooms: RoomSnapshot[] };
+    return JSON.parse(localStorage.getItem(LOCAL_ROOMS_STORAGE_KEY) ?? '{"rooms":[]}') as { rooms: RoomSnapshot[] };
   } catch {
     return { rooms: [] };
   }
 }
 
 function writeRooms(data: { rooms: RoomSnapshot[] }) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }));
+  localStorage.setItem(LOCAL_ROOMS_STORAGE_KEY, JSON.stringify(data));
+  window.dispatchEvent(new StorageEvent('storage', { key: LOCAL_ROOMS_STORAGE_KEY }));
 }
 
 function findByCode(data: { rooms: RoomSnapshot[] }, code: string) {
