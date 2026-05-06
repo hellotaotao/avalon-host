@@ -1,6 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { getTeamSize } from './domain/avalon';
+import {
+  buildRolePreset,
+  getPlayerCountRule,
+  getTeamSize,
+  getVisibilityInfo,
+  playerCountRange,
+  resolveMission,
+  roleAllegiance,
+  type MissionCard,
+  type Player,
+  type Role,
+  type RolePresetOptions,
+  type Vote,
+} from './domain/avalon';
 import {
   advanceMissionResult,
   ensureMissionState,
@@ -11,11 +24,8 @@ import {
 import { buildJoinUrl, buildStepUrl, parseEntryStep, parseJoinCodeFromUrl, type EntryScreen } from './navigationState';
 import { isSupabaseConfigured } from './services/supabaseClient';
 import {
-  createHostDemoRoom,
-  createJoinDemoRoom,
   canStartGame,
   createRoom,
-  DEMO_JOIN_ROOM_CODE,
   getRoomById,
   getPrivateRoleInfo,
   getStartValidation,
@@ -25,7 +35,6 @@ import {
   removePlayer,
   setReady,
   startGame,
-  startDemoSnapshot,
   subscribeToRoom,
   updateNickname,
   updateMissionState,
@@ -104,12 +113,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (screen !== 'demoJoin') return;
-    setJoinCode(DEMO_JOIN_ROOM_CODE);
-    setJoinName((current) => current || 'Demo Guest');
-  }, [screen]);
-
-  useEffect(() => {
     if (!snapshot || snapshot.room.settings.createdInDemoMode) return undefined;
     return subscribeToRoom(snapshot.room.id, (nextSnapshot) => {
       if (!nextSnapshot) return;
@@ -142,40 +145,6 @@ function App() {
     } finally {
       setBusy(false);
     }
-  }
-
-  function handleHostDemo(event: React.FormEvent) {
-    event.preventDefault();
-    if (!hostName.trim()) return setMessage('Enter your nickname first.');
-    setMessage('');
-    const result = createHostDemoRoom(hostName);
-    const startedDemo = startDemoSnapshot(result.snapshot);
-    clearSessionBinding();
-    setCurrentPlayerId(result.currentPlayerId);
-    setSnapshot(startedDemo.snapshot ?? result.snapshot);
-    setMessage(startedDemo.ok ? 'Demo room auto-started so you can see the reveal flow.' : startedDemo.reason ?? 'Demo room is ready.');
-    clearEntryStepFromUrl();
-    setScreen('room');
-  }
-
-  function openJoinDemo() {
-    setJoinCode(DEMO_JOIN_ROOM_CODE);
-    setJoinName((current) => current || 'Demo Guest');
-    setMessage('');
-    navigateEntry('demoJoin');
-  }
-
-  function handleJoinDemo(event: React.FormEvent) {
-    event.preventDefault();
-    if (!joinName.trim()) return setMessage('Enter your nickname first.');
-    const result = createJoinDemoRoom(joinName);
-    const startedDemo = startDemoSnapshot(result.snapshot);
-    clearSessionBinding();
-    setCurrentPlayerId(result.currentPlayerId);
-    setSnapshot(startedDemo.snapshot ?? result.snapshot);
-    setMessage(startedDemo.ok ? 'Demo room auto-started so you can see the reveal flow.' : startedDemo.reason ?? 'Demo room is ready.');
-    clearEntryStepFromUrl();
-    setScreen('room');
   }
 
   async function handleJoinRoom(event: React.FormEvent) {
@@ -229,7 +198,7 @@ function App() {
 
   async function handleStartGame() {
     if (!snapshot || !currentPlayer || startValidation) return;
-    const result = isDemoMode ? startDemoSnapshot(snapshot) : await startGame(snapshot.room.id);
+    const result = await startGame(snapshot.room.id);
     if (result.snapshot) setSnapshot(result.snapshot);
     setMessage(result.ok ? '' : result.reason ?? 'Could not start game.');
   }
@@ -295,7 +264,7 @@ function App() {
   }
 
   return (
-    <main className="shell">
+    <main className={`shell ${screen === 'demo' || screen === 'demoJoin' ? 'demo-shell' : ''}`}>
       <header className="hero">
         <p className="eyebrow">Avalon Host</p>
         <h1>{screen === 'room' ? (snapshot?.room.status === 'reveal' ? 'The Merlin Reveal' : 'Round Table Lobby') : 'Gather the Knights of Avalon'}</h1>
@@ -307,10 +276,30 @@ function App() {
 
       {screen === 'home' && (
         <section className="entry">
-          <div className="panel entry-intro">
+          <div className="entry-intro">
             <h2>Let Merlin handle the hidden-role ritual</h2>
             <p>Avalon Host gives the table one magic number, watches the round table fill, and reveals only the secrets each player should know.</p>
           </div>
+          <section className="path-section" aria-labelledby="choose-path-title">
+            <div>
+              <p className="eyebrow">Choose your path</p>
+              <h2 id="choose-path-title">Host / Join / Demo</h2>
+            </div>
+            <div className="path-grid" aria-label="Primary actions">
+              <button type="button" className="path-card primary-path" onClick={() => navigateEntry('create')}>
+                <span>Host the round</span>
+                <small>Create a live 5-digit code for the table.</small>
+              </button>
+              <button type="button" className="path-card" onClick={() => navigateEntry('join')}>
+                <span>Join by rune</span>
+                <small>Enter a host's 5-digit code and ready up.</small>
+              </button>
+              <button type="button" className="path-card demo-button" onClick={() => navigateEntry('demo')}>
+                <span>Try demo</span>
+                <small>Simulate 5-10 phone screens on this laptop.</small>
+              </button>
+            </div>
+          </section>
           <div className="workflow-grid" aria-label="Live workflow">
             <article>
               <strong>1. Host opens the hall</strong>
@@ -325,57 +314,17 @@ function App() {
               <span>Each phone shows only that player's role and night vision.</span>
             </article>
           </div>
-          <div className="path-grid" aria-label="Primary actions">
-            <button type="button" className="path-card primary-path" onClick={() => navigateEntry('create')}>
-              <span>Host the round</span>
-              <small>Create a live 5-digit code and become the table herald.</small>
-            </button>
-            <button type="button" className="path-card" onClick={() => navigateEntry('join')}>
-              <span>Join by rune</span>
-              <small>Enter the host's 5-digit code and ready up.</small>
-            </button>
-            <button type="button" className="path-card demo-button" onClick={() => navigateEntry('demo')}>
-              <span>Try demo</span>
-              <small>Use local sample knights and jump straight to reveal.</small>
-            </button>
-          </div>
-          <div className="panel entry-guide">
-            <h2>Choose your path</h2>
+          <div className="entry-guide">
+            <h2>What each choice means</h2>
             <p><strong>Host</strong> opens a real table room. <strong>Join</strong> is for players with a 5-digit code. <strong>Demo</strong> stays on this device and never connects to Supabase.</p>
           </div>
         </section>
       )}
 
       {screen === 'demo' && (
-        <section className="panel demo-panel">
+        <section className="demo-panel">
           <button type="button" className="back-button" onClick={() => navigateEntry('home')}>Back</button>
-          <h2>Try Demo</h2>
-          <p>Demo mode uses bot knights and does not create a real shareable room.</p>
-          <div className="demo-options">
-            <form className="stack" onSubmit={handleHostDemo}>
-              <h3>Host demo</h3>
-              <p>Create a sandbox hall with ready bot players, then auto-start the reveal flow.</p>
-              <label>
-                Your nickname
-                <input value={hostName} onChange={(event) => setHostName(event.target.value)} maxLength={24} autoFocus />
-              </label>
-              <button type="submit" className="primary">Start Host Demo</button>
-            </form>
-            <div className="stack">
-              <h3>Join demo</h3>
-              <p>Join a sandbox room that already has a host and ready demo players.</p>
-              <button type="button"
-                className="primary"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  openJoinDemo();
-                }}
-              >
-                Open Join Demo
-              </button>
-            </div>
-          </div>
+          <DemoSimulator />
         </section>
       )}
 
@@ -429,21 +378,9 @@ function App() {
       )}
 
       {screen === 'demoJoin' && (
-        <section className="panel demo-panel">
-          <button type="button" className="back-button" onClick={() => navigateEntry('demo')}>Back</button>
-          <h2>Join Demo</h2>
-          <p>Demo mode uses bot knights and does not create a real shareable room.</p>
-          <form className="stack" onSubmit={handleJoinDemo}>
-            <label>
-              Demo room code
-              <input value={joinCode} readOnly aria-label="Demo room code" inputMode="numeric" maxLength={5} />
-            </label>
-            <label>
-              Your nickname
-              <input value={joinName} onChange={(event) => setJoinName(event.target.value)} maxLength={24} autoFocus />
-            </label>
-            <button type="submit" className="primary">Confirm Demo Join</button>
-          </form>
+        <section className="demo-panel">
+          <button type="button" className="back-button" onClick={() => navigateEntry('home')}>Back</button>
+          <DemoSimulator />
         </section>
       )}
 
@@ -475,6 +412,426 @@ function App() {
     setScreen(nextScreen);
     setMessage('');
   }
+}
+
+interface DemoPlayer {
+  id: string;
+  displayName: string;
+  seatIndex: number;
+  role: Role;
+  revealRole: boolean;
+  teamVote?: Vote;
+  missionCard?: MissionCard;
+}
+
+interface DemoMissionResult {
+  roundIndex: number;
+  outcome: 'success' | 'fail';
+  successCount: number;
+  failCount: number;
+  requiredFails: number;
+}
+
+interface DemoState {
+  playerCount: number;
+  roleOptions: RolePresetOptions;
+  players: DemoPlayer[];
+  phase: 'proposal' | 'vote' | 'mission' | 'result';
+  roundIndex: number;
+  leaderIndex: number;
+  selectedTeamIds: string[];
+  missionResults: DemoMissionResult[];
+  lastVote?: { approveCount: number; rejectCount: number; passed: boolean };
+  lastMission?: DemoMissionResult;
+}
+
+const demoNames = ['Arthur', 'Bors', 'Cai', 'Dagonet', 'Elaine', 'Gareth', 'Helena', 'Isolde', 'Lucan', 'Yvain'];
+const optionalRoleControls: Array<{ key: keyof RolePresetOptions; role: Role; label: string; note: string }> = [
+  { key: 'includePercival', role: 'Percival', label: 'Percival', note: 'Good, sees Merlin candidates.' },
+  { key: 'includeMorgana', role: 'Morgana', label: 'Morgana', note: 'Evil, appears as Merlin candidate.' },
+  { key: 'includeMordred', role: 'Mordred', label: 'Mordred', note: 'Evil, hidden from Merlin.' },
+  { key: 'includeOberon', role: 'Oberon', label: 'Oberon', note: 'Evil, hidden from other evil.' },
+];
+
+function DemoSimulator() {
+  const [demo, setDemo] = useState(() => createDemoState(7, { includeMorgana: true }));
+  const rule = getPlayerCountRule(demo.playerCount);
+  const preset = buildRolePreset(demo.playerCount, demo.roleOptions);
+  const teamSize = getTeamSize(demo.playerCount, demo.roundIndex);
+  const selectedPlayers = demo.selectedTeamIds.map((id) => demo.players.find((player) => player.id === id)?.displayName ?? id);
+  const approveCount = demo.players.filter((player) => player.teamVote === 'approve').length;
+  const rejectCount = demo.players.filter((player) => player.teamVote === 'reject').length;
+  const votedCount = approveCount + rejectCount;
+  const missionCards = demo.players.filter((player) => demo.selectedTeamIds.includes(player.id) && player.missionCard);
+  const goodScore = demo.missionResults.filter((result) => result.outcome === 'success').length;
+  const evilScore = demo.missionResults.filter((result) => result.outcome === 'fail').length;
+  const winner = goodScore >= 3 ? 'Good' : evilScore >= 3 ? 'Evil' : undefined;
+
+  function resetWith(playerCount: number, roleOptions: RolePresetOptions) {
+    setDemo(createDemoState(playerCount, sanitizeRoleOptions(playerCount, roleOptions)));
+  }
+
+  function toggleOptionalRole(key: keyof RolePresetOptions) {
+    resetWith(demo.playerCount, { ...demo.roleOptions, [key]: !demo.roleOptions[key] });
+  }
+
+  function toggleTeamPlayer(playerId: string) {
+    if (demo.phase !== 'proposal') return;
+    setDemo((current) => {
+      const selectedTeamIds = current.selectedTeamIds.includes(playerId)
+        ? current.selectedTeamIds.filter((id) => id !== playerId)
+        : [...current.selectedTeamIds, playerId];
+      return { ...current, selectedTeamIds };
+    });
+  }
+
+  function proposeTeam() {
+    if (demo.selectedTeamIds.length !== teamSize) return;
+    setDemo((current) => ({
+      ...current,
+      phase: 'vote',
+      players: current.players.map((player) => ({ ...player, teamVote: undefined, missionCard: undefined })),
+      lastVote: undefined,
+      lastMission: undefined,
+    }));
+  }
+
+  function vote(playerId: string, teamVote: Vote) {
+    if (demo.phase !== 'vote') return;
+    setDemo((current) => ({
+      ...current,
+      players: current.players.map((player) => (player.id === playerId ? { ...player, teamVote } : player)),
+    }));
+  }
+
+  function resolveVote() {
+    if (demo.phase !== 'vote' || votedCount !== demo.playerCount) return;
+    const passed = approveCount > demo.playerCount / 2;
+    setDemo((current) => ({
+      ...current,
+      phase: passed ? 'mission' : 'proposal',
+      leaderIndex: passed ? current.leaderIndex : (current.leaderIndex + 1) % current.playerCount,
+      selectedTeamIds: passed ? current.selectedTeamIds : [],
+      lastVote: { approveCount, rejectCount, passed },
+      players: current.players.map((player) => ({ ...player, missionCard: undefined })),
+    }));
+  }
+
+  function playMissionCard(playerId: string, missionCard: MissionCard) {
+    if (demo.phase !== 'mission') return;
+    setDemo((current) => ({
+      ...current,
+      players: current.players.map((player) => (player.id === playerId ? { ...player, missionCard } : player)),
+    }));
+  }
+
+  function revealMission() {
+    if (demo.phase !== 'mission' || missionCards.length !== demo.selectedTeamIds.length) return;
+    const cards = demo.selectedTeamIds.map((id) => demo.players.find((player) => player.id === id)?.missionCard ?? 'success');
+    const resolved = resolveMission(cards, demo.playerCount, demo.roundIndex);
+    const result: DemoMissionResult = {
+      roundIndex: demo.roundIndex,
+      outcome: resolved.outcome,
+      successCount: cards.filter((card) => card === 'success').length,
+      failCount: resolved.failCount,
+      requiredFails: resolved.requiredFails,
+    };
+    setDemo((current) => ({
+      ...current,
+      phase: 'result',
+      missionResults: [...current.missionResults, result],
+      lastMission: result,
+    }));
+  }
+
+  function nextQuest() {
+    if (winner || demo.roundIndex >= 4) return;
+    setDemo((current) => ({
+      ...current,
+      phase: 'proposal',
+      roundIndex: current.roundIndex + 1,
+      leaderIndex: (current.leaderIndex + 1) % current.playerCount,
+      selectedTeamIds: [],
+      players: current.players.map((player) => ({ ...player, teamVote: undefined, missionCard: undefined })),
+      lastVote: undefined,
+    }));
+  }
+
+  function toggleRoleReveal(playerId: string) {
+    setDemo((current) => ({
+      ...current,
+      players: current.players.map((player) => (player.id === playerId ? { ...player, revealRole: !player.revealRole } : player)),
+    }));
+  }
+
+  return (
+    <div className="demo-simulator">
+      <div className="demo-heading">
+        <div>
+          <p className="eyebrow">Local tabletop simulator</p>
+          <h2>Multi-phone Demo</h2>
+        </div>
+        <button type="button" onClick={() => resetWith(demo.playerCount, demo.roleOptions)}>Reset table</button>
+      </div>
+
+      <section className="demo-setup">
+        <div>
+          <h3>Players</h3>
+          <div className="segmented" aria-label="Player count">
+            {playerCountRange.map((count) => (
+              <button
+                key={count}
+                type="button"
+                className={count === demo.playerCount ? 'selected' : ''}
+                onClick={() => resetWith(count, demo.roleOptions)}
+              >
+                {count}
+              </button>
+            ))}
+          </div>
+          <p>{rule.goodCount} Good / {rule.evilCount} Evil</p>
+        </div>
+        <div>
+          <h3>Role setup</h3>
+          <div className="role-preset">
+            <span>Fixed: {preset.requiredRoles.join(', ')}</span>
+            <span>Fill: {summarizeRoles(preset.fillerRoles)}</span>
+          </div>
+          <div className="optional-roles">
+            {optionalRoleControls.map((control) => {
+              const checked = Boolean(demo.roleOptions[control.key]);
+              const disabled = !checked && !canEnableRoleOption(demo.playerCount, demo.roleOptions, control.key);
+              return (
+                <label key={control.key} className="check role-toggle">
+                  <input type="checkbox" checked={checked} disabled={disabled} onChange={() => toggleOptionalRole(control.key)} />
+                  <span><strong>{control.label}</strong><small>{control.note}</small></span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section className="demo-board" aria-label="Demo table state">
+        <div className="quest-track">
+          {[0, 1, 2, 3, 4].map((roundIndex) => {
+            const result = demo.missionResults.find((item) => item.roundIndex === roundIndex);
+            const threshold = rule.failThresholds[roundIndex];
+            return (
+              <span key={roundIndex} className={result?.outcome ?? (roundIndex === demo.roundIndex ? 'current' : '')}>
+                Q{roundIndex + 1}: {rule.teamSizes[roundIndex]}{threshold > 1 ? ` / ${threshold} fails` : ''}
+              </span>
+            );
+          })}
+        </div>
+        <div className="status">
+          <span>Leader: {demo.players[demo.leaderIndex]?.displayName}</span>
+          <span>Quest: {demo.roundIndex + 1} needs {teamSize}</span>
+          <span>Score: Good {goodScore} / Evil {evilScore}</span>
+        </div>
+        {demo.lastVote && <p className="hint">Last vote: {demo.lastVote.approveCount} approve, {demo.lastVote.rejectCount} reject. Team {demo.lastVote.passed ? 'approved' : 'rejected'}.</p>}
+        {demo.lastMission && <p className="notice">Quest {demo.lastMission.roundIndex + 1} {demo.lastMission.outcome === 'success' ? 'succeeded' : 'failed'} with {demo.lastMission.failCount} fail card(s).</p>}
+        {winner && <p className="notice">{winner} has reached three quests. Reset the table to try another setup.</p>}
+        {demo.phase === 'proposal' && (
+          <div className="mission-step">
+            <p>Leader selects exactly {teamSize} players. Selected: {selectedPlayers.length ? selectedPlayers.join(', ') : 'none'}.</p>
+            <button type="button" className="primary" disabled={demo.selectedTeamIds.length !== teamSize} onClick={proposeTeam}>Propose Team</button>
+          </div>
+        )}
+        {demo.phase === 'vote' && (
+          <div className="mission-step">
+            <p>Everyone votes on {selectedPlayers.join(', ')}. Votes in: {votedCount}/{demo.playerCount}.</p>
+            <button type="button" className="primary" disabled={votedCount !== demo.playerCount} onClick={resolveVote}>Resolve Vote</button>
+          </div>
+        )}
+        {demo.phase === 'mission' && (
+          <div className="mission-step">
+            <p>Mission team plays cards anonymously. Cards in: {missionCards.length}/{demo.selectedTeamIds.length}.</p>
+            <button type="button" className="primary" disabled={missionCards.length !== demo.selectedTeamIds.length} onClick={revealMission}>Reveal Mission</button>
+          </div>
+        )}
+        {demo.phase === 'result' && !winner && (
+          <div className="mission-step">
+            <button type="button" className="primary" onClick={nextQuest}>Next Quest</button>
+          </div>
+        )}
+      </section>
+
+      <section className="demo-phone-grid" aria-label="Virtual phones">
+        {demo.players.map((player) => (
+          <DemoPhone
+            key={player.id}
+            player={player}
+            players={demo.players}
+            leaderId={demo.players[demo.leaderIndex]?.id}
+            phase={demo.phase}
+            selectedTeamIds={demo.selectedTeamIds}
+            teamSize={teamSize}
+            onToggleRoleReveal={toggleRoleReveal}
+            onToggleTeamPlayer={toggleTeamPlayer}
+            onVote={vote}
+            onPlayMissionCard={playMissionCard}
+          />
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function DemoPhone({
+  player,
+  players,
+  leaderId,
+  phase,
+  selectedTeamIds,
+  teamSize,
+  onToggleRoleReveal,
+  onToggleTeamPlayer,
+  onVote,
+  onPlayMissionCard,
+}: {
+  player: DemoPlayer;
+  players: DemoPlayer[];
+  leaderId?: string;
+  phase: DemoState['phase'];
+  selectedTeamIds: string[];
+  teamSize: number;
+  onToggleRoleReveal: (playerId: string) => void;
+  onToggleTeamPlayer: (playerId: string) => void;
+  onVote: (playerId: string, vote: Vote) => void;
+  onPlayMissionCard: (playerId: string, card: MissionCard) => void;
+}) {
+  const isLeader = player.id === leaderId;
+  const onTeam = selectedTeamIds.includes(player.id);
+  const privateInfo = getVisibilityInfo(
+    { id: player.id, name: player.displayName, role: player.role },
+    players.map(toDemoAvalonPlayer),
+  );
+  const canFailMission = roleAllegiance(player.role) === 'evil';
+
+  return (
+    <article className={`demo-phone ${isLeader ? 'leader-phone' : ''}`}>
+      <div className="phone-top">
+        <span>Seat {player.seatIndex + 1}</span>
+        <strong>{player.displayName}</strong>
+        <small>{isLeader ? 'Leader' : onTeam ? 'On team' : 'Table player'}</small>
+      </div>
+      <div className={`phone-role ${roleAllegiance(player.role)}`}>
+        {player.revealRole ? (
+          <>
+            <strong>{player.role}</strong>
+            <span>{roleAllegiance(player.role) === 'good' ? 'Good' : 'Evil'}</span>
+          </>
+        ) : (
+          <strong>Role hidden</strong>
+        )}
+        <button type="button" onClick={() => onToggleRoleReveal(player.id)}>{player.revealRole ? 'Hide role' : 'Show role'}</button>
+      </div>
+      {player.revealRole && (
+        <div className="phone-info">
+          <span>Night info</span>
+          {privateInfo.sees.length ? (
+            <ul>{privateInfo.sees.map((item) => <li key={item.playerId}>{item.name}: {item.hint}</li>)}</ul>
+          ) : (
+            <p>No extra information.</p>
+          )}
+        </div>
+      )}
+      {phase === 'proposal' && isLeader && (
+        <div className="phone-action">
+          <span>Select {teamSize}</span>
+          {players.map((candidate) => (
+            <label key={candidate.id} className="check">
+              <input type="checkbox" checked={selectedTeamIds.includes(candidate.id)} onChange={() => onToggleTeamPlayer(candidate.id)} />
+              {candidate.displayName}
+            </label>
+          ))}
+        </div>
+      )}
+      {phase === 'vote' && (
+        <div className="phone-action">
+          <span>Team vote</span>
+          <div className="choice-row">
+            <button type="button" className={player.teamVote === 'approve' ? 'selected' : ''} onClick={() => onVote(player.id, 'approve')}>Approve</button>
+            <button type="button" className={player.teamVote === 'reject' ? 'selected' : ''} onClick={() => onVote(player.id, 'reject')}>Reject</button>
+          </div>
+        </div>
+      )}
+      {phase === 'mission' && onTeam && (
+        <div className="phone-action">
+          <span>Mission card</span>
+          <div className="choice-row">
+            <button type="button" className={player.missionCard === 'success' ? 'selected' : ''} onClick={() => onPlayMissionCard(player.id, 'success')}>Success</button>
+            <button
+              type="button"
+              className={player.missionCard === 'fail' ? 'selected danger-choice' : ''}
+              disabled={!canFailMission}
+              onClick={() => onPlayMissionCard(player.id, 'fail')}
+            >
+              Fail
+            </button>
+          </div>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function createDemoState(playerCount: number, roleOptions: RolePresetOptions): DemoState {
+  const sanitizedOptions = sanitizeRoleOptions(playerCount, roleOptions);
+  const preset = buildRolePreset(playerCount, sanitizedOptions);
+  return {
+    playerCount,
+    roleOptions: sanitizedOptions,
+    players: preset.roles.map((role, index) => ({
+      id: `demo-player-${index + 1}`,
+      displayName: demoNames[index],
+      seatIndex: index,
+      role,
+      revealRole: false,
+    })),
+    phase: 'proposal',
+    roundIndex: 0,
+    leaderIndex: 0,
+    selectedTeamIds: [],
+    missionResults: [],
+  };
+}
+
+function sanitizeRoleOptions(playerCount: number, roleOptions: RolePresetOptions): RolePresetOptions {
+  return optionalRoleControls.reduce<RolePresetOptions>((next, control) => {
+    if (!roleOptions[control.key]) return next;
+    const candidate = { ...next, [control.key]: true };
+    try {
+      buildRolePreset(playerCount, candidate);
+      return candidate;
+    } catch {
+      return next;
+    }
+  }, {});
+}
+
+function canEnableRoleOption(playerCount: number, roleOptions: RolePresetOptions, key: keyof RolePresetOptions): boolean {
+  try {
+    buildRolePreset(playerCount, { ...roleOptions, [key]: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function summarizeRoles(roles: Role[]): string {
+  const counts = roles.reduce<Record<string, number>>((summary, role) => {
+    summary[role] = (summary[role] ?? 0) + 1;
+    return summary;
+  }, {});
+  return Object.entries(counts)
+    .map(([role, count]) => `${count} ${role}`)
+    .join(', ');
+}
+
+function toDemoAvalonPlayer(player: DemoPlayer): Player {
+  return { id: player.id, name: player.displayName, role: player.role };
 }
 
 function RoomView({

@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   assignRoles,
   assassinWins,
+  buildRolePreset,
+  getMissionFailThreshold,
+  getPlayerCountRule,
   getRoleDistribution,
   getTeamSize,
   getVisibilityInfo,
@@ -18,7 +21,18 @@ describe('Avalon Lite rules', () => {
       expect(roles).toHaveLength(count);
       expect(roles.filter((role) => role === 'Merlin')).toHaveLength(1);
       expect(roles.filter((role) => role === 'Assassin')).toHaveLength(1);
+      expect(roles.filter((role) => roleAllegiance(role) === 'good')).toHaveLength(getPlayerCountRule(count).goodCount);
+      expect(roles.filter((role) => roleAllegiance(role) === 'evil')).toHaveLength(getPlayerCountRule(count).evilCount);
     }
+  });
+
+  it('builds demo-friendly role presets with fixed required roles and optional specials', () => {
+    const preset = buildRolePreset(7, { includeMorgana: true });
+    expect(preset.goodCount).toBe(4);
+    expect(preset.evilCount).toBe(3);
+    expect(preset.requiredRoles).toEqual(['Merlin', 'Assassin']);
+    expect(preset.optionalRoles).toEqual(['Morgana']);
+    expect(preset.roles.filter((role) => roleAllegiance(role) === 'evil')).toEqual(['Assassin', 'Morgana', 'Minion']);
   });
 
   it('supports optional Percival and Morgana for larger tables', () => {
@@ -26,6 +40,12 @@ describe('Avalon Lite rules', () => {
     expect(roles).toContain('Percival');
     expect(roles).toContain('Morgana');
     expect(roles.filter((role) => roleAllegiance(role) === 'evil')).toHaveLength(3);
+  });
+
+  it('keeps the live Percival/Morgana option gated to 7+ players', () => {
+    const roles = getRoleDistribution(6, { includePercivalMorgana: true });
+    expect(roles).not.toContain('Percival');
+    expect(roles).not.toContain('Morgana');
   });
 
   it('assigns every player exactly one required role set', () => {
@@ -38,7 +58,15 @@ describe('Avalon Lite rules', () => {
 
   it('returns official team sizes by player count and round', () => {
     expect([0, 1, 2, 3, 4].map((round) => getTeamSize(5, round))).toEqual([2, 3, 2, 3, 3]);
+    expect([0, 1, 2, 3, 4].map((round) => getTeamSize(7, round))).toEqual([2, 3, 3, 4, 4]);
+    expect([0, 1, 2, 3, 4].map((round) => getTeamSize(8, round))).toEqual([3, 4, 4, 5, 5]);
     expect([0, 1, 2, 3, 4].map((round) => getTeamSize(10, round))).toEqual([3, 4, 4, 5, 5]);
+  });
+
+  it('returns official fail thresholds by player count and round', () => {
+    expect([0, 1, 2, 3, 4].map((round) => getMissionFailThreshold(6, round))).toEqual([1, 1, 1, 1, 1]);
+    expect([0, 1, 2, 3, 4].map((round) => getMissionFailThreshold(7, round))).toEqual([1, 1, 1, 2, 1]);
+    expect([0, 1, 2, 3, 4].map((round) => getMissionFailThreshold(10, round))).toEqual([1, 1, 1, 2, 1]);
   });
 
   it('requires strict majority for team voting', () => {
@@ -76,6 +104,19 @@ describe('Avalon Lite rules', () => {
       { id: 'p7', name: 'G', role: 'Minion' },
     ];
     expect(getVisibilityInfo(players[2], players).sees.map((item) => item.playerId).sort()).toEqual(['p1', 'p2']);
+  });
+
+  it('applies Mordred and Oberon visibility rules', () => {
+    const players: Player[] = [
+      { id: 'p1', name: 'Merlin', role: 'Merlin' },
+      { id: 'p2', name: 'Assassin', role: 'Assassin' },
+      { id: 'p3', name: 'Mordred', role: 'Mordred' },
+      { id: 'p4', name: 'Oberon', role: 'Oberon' },
+      { id: 'p5', name: 'Servant', role: 'Loyal Servant' },
+    ];
+    expect(getVisibilityInfo(players[0], players).sees.map((item) => item.playerId)).toEqual(['p2', 'p4']);
+    expect(getVisibilityInfo(players[1], players).sees.map((item) => item.playerId)).toEqual(['p3']);
+    expect(getVisibilityInfo(players[3], players).sees).toEqual([]);
   });
 
   it('assassin wins by guessing Merlin', () => {

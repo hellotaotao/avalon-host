@@ -1,4 +1,4 @@
-export type Role = 'Merlin' | 'Assassin' | 'Loyal Servant' | 'Minion' | 'Percival' | 'Morgana';
+export type Role = 'Merlin' | 'Assassin' | 'Loyal Servant' | 'Minion' | 'Percival' | 'Morgana' | 'Mordred' | 'Oberon';
 export type Allegiance = 'good' | 'evil';
 export type Vote = 'approve' | 'reject';
 export type MissionCard = 'success' | 'fail';
@@ -11,6 +11,30 @@ export interface Player {
 
 export interface AssignmentOptions {
   includePercivalMorgana?: boolean;
+  includeMordred?: boolean;
+  includeOberon?: boolean;
+}
+
+export interface RolePresetOptions {
+  includePercival?: boolean;
+  includeMorgana?: boolean;
+  includeMordred?: boolean;
+  includeOberon?: boolean;
+}
+
+export interface PlayerCountRule {
+  playerCount: number;
+  goodCount: number;
+  evilCount: number;
+  teamSizes: number[];
+  failThresholds: number[];
+}
+
+export interface RolePreset extends PlayerCountRule {
+  requiredRoles: Role[];
+  optionalRoles: Role[];
+  fillerRoles: Role[];
+  roles: Role[];
 }
 
 export interface VisibilityInfo {
@@ -40,22 +64,22 @@ export const evilCountByPlayers: Record<number, number> = {
   10: 4,
 };
 
+export const goodCountByPlayers: Record<number, number> = {
+  5: 3,
+  6: 4,
+  7: 4,
+  8: 5,
+  9: 6,
+  10: 6,
+};
+
 export function getRoleDistribution(playerCount: number, options: AssignmentOptions = {}): Role[] {
-  assertSupportedPlayerCount(playerCount);
-  const evilCount = evilCountByPlayers[playerCount];
-  const goodCount = playerCount - evilCount;
-  const roles: Role[] = ['Merlin', 'Assassin'];
-
-  if (options.includePercivalMorgana && playerCount >= 7) {
-    roles.push('Percival', 'Morgana');
-  }
-
-  const currentGood = roles.filter((role) => roleAllegiance(role) === 'good').length;
-  const currentEvil = roles.filter((role) => roleAllegiance(role) === 'evil').length;
-
-  roles.push(...Array.from<Role>({ length: goodCount - currentGood }).fill('Loyal Servant'));
-  roles.push(...Array.from<Role>({ length: evilCount - currentEvil }).fill('Minion'));
-  return roles;
+  return buildRolePreset(playerCount, {
+    includePercival: options.includePercivalMorgana && playerCount >= 7,
+    includeMorgana: options.includePercivalMorgana && playerCount >= 7,
+    includeMordred: options.includeMordred,
+    includeOberon: options.includeOberon,
+  }).roles;
 }
 
 export function assignRoles(players: Player[], options: AssignmentOptions = {}, seed = 'avalon-host'): Player[] {
@@ -64,7 +88,7 @@ export function assignRoles(players: Player[], options: AssignmentOptions = {}, 
 }
 
 export function roleAllegiance(role: Role): Allegiance {
-  return role === 'Assassin' || role === 'Minion' || role === 'Morgana' ? 'evil' : 'good';
+  return role === 'Assassin' || role === 'Minion' || role === 'Morgana' || role === 'Mordred' || role === 'Oberon' ? 'evil' : 'good';
 }
 
 export function getTeamSize(playerCount: number, roundIndex: number): number {
@@ -72,6 +96,50 @@ export function getTeamSize(playerCount: number, roundIndex: number): number {
   const size = teamSizeByPlayers[playerCount][roundIndex];
   if (!size) throw new Error(`Unsupported round index: ${roundIndex}`);
   return size;
+}
+
+export function getMissionFailThreshold(playerCount: number, roundIndex: number): number {
+  assertSupportedPlayerCount(playerCount);
+  if (roundIndex < 0 || roundIndex > 4) throw new Error(`Unsupported round index: ${roundIndex}`);
+  return playerCount >= 7 && roundIndex === 3 ? 2 : 1;
+}
+
+export function getPlayerCountRule(playerCount: number): PlayerCountRule {
+  assertSupportedPlayerCount(playerCount);
+  return {
+    playerCount,
+    goodCount: goodCountByPlayers[playerCount],
+    evilCount: evilCountByPlayers[playerCount],
+    teamSizes: [...teamSizeByPlayers[playerCount]],
+    failThresholds: [0, 1, 2, 3, 4].map((roundIndex) => getMissionFailThreshold(playerCount, roundIndex)),
+  };
+}
+
+export function buildRolePreset(playerCount: number, options: RolePresetOptions = {}): RolePreset {
+  const rule = getPlayerCountRule(playerCount);
+  const requiredRoles: Role[] = ['Merlin', 'Assassin'];
+  const optionalRoles: Role[] = [
+    ...(options.includePercival ? (['Percival'] as Role[]) : []),
+    ...(options.includeMorgana ? (['Morgana'] as Role[]) : []),
+    ...(options.includeMordred ? (['Mordred'] as Role[]) : []),
+    ...(options.includeOberon ? (['Oberon'] as Role[]) : []),
+  ];
+  const fixedRoles = [...requiredRoles, ...optionalRoles];
+  const fixedGoodCount = fixedRoles.filter((role) => roleAllegiance(role) === 'good').length;
+  const fixedEvilCount = fixedRoles.filter((role) => roleAllegiance(role) === 'evil').length;
+  if (fixedGoodCount > rule.goodCount) throw new Error(`Too many Good special roles for ${playerCount} players.`);
+  if (fixedEvilCount > rule.evilCount) throw new Error(`Too many Evil special roles for ${playerCount} players.`);
+  const fillerRoles: Role[] = [
+    ...Array.from<Role>({ length: rule.goodCount - fixedGoodCount }).fill('Loyal Servant'),
+    ...Array.from<Role>({ length: rule.evilCount - fixedEvilCount }).fill('Minion'),
+  ];
+  return {
+    ...rule,
+    requiredRoles,
+    optionalRoles,
+    fillerRoles,
+    roles: [...requiredRoles, ...optionalRoles, ...fillerRoles],
+  };
 }
 
 export function votePasses(votes: Vote[], playerCount: number): boolean {
@@ -84,7 +152,7 @@ export function resolveMission(cards: MissionCard[], playerCount: number, roundI
   requiredFails: number;
 } {
   const failCount = cards.filter((card) => card === 'fail').length;
-  const requiredFails = playerCount >= 7 && roundIndex === 3 ? 2 : 1;
+  const requiredFails = getMissionFailThreshold(playerCount, roundIndex);
   return {
     outcome: failCount >= requiredFails ? 'fail' : 'success',
     failCount,
@@ -98,13 +166,13 @@ export function getVisibilityInfo(viewer: Player, players: Player[]): Visibility
 
   if (viewer.role === 'Merlin') {
     players
-      .filter((player) => player.id !== viewer.id && player.role && roleAllegiance(player.role) === 'evil')
+      .filter((player) => player.id !== viewer.id && player.role && roleAllegiance(player.role) === 'evil' && player.role !== 'Mordred')
       .forEach((player) => sees.push({ playerId: player.id, name: player.name, hint: 'Evil player' }));
   }
 
-  if (viewer.role === 'Assassin' || viewer.role === 'Minion' || viewer.role === 'Morgana') {
+  if (viewer.role === 'Assassin' || viewer.role === 'Minion' || viewer.role === 'Morgana' || viewer.role === 'Mordred') {
     players
-      .filter((player) => player.id !== viewer.id && player.role && roleAllegiance(player.role) === 'evil')
+      .filter((player) => player.id !== viewer.id && player.role && roleAllegiance(player.role) === 'evil' && player.role !== 'Oberon')
       .forEach((player) => sees.push({ playerId: player.id, name: player.name, hint: 'Evil teammate' }));
   }
 
