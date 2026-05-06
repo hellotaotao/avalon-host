@@ -46,8 +46,9 @@ button:hover:not(:disabled) {
 }
 
 button:disabled {
-  color: #74685c;
-  background: #c9bda6;
+  border-color: #766653;
+  color: #3e352b;
+  background: #bfb29b;
   cursor: not-allowed;
   box-shadow: none;
 }
@@ -128,6 +129,14 @@ label {
 
 .primary {
   color: #2a1307;
+}
+
+.primary:hover:not(:disabled) {
+  color: #241006;
+}
+
+.primary:disabled {
+  color: #3e352b;
 }
 
 .active-soft {
@@ -368,6 +377,33 @@ label {
   font-weight: 900;
 }
 
+.demo-start-row {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
+.demo-setup-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  border: 1px solid #cfac61;
+  border-radius: 8px;
+  background: #2b3c2e;
+  color: #fff3c6;
+  padding: 0.6rem;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.demo-setup-summary span {
+  border: 1px solid rgba(240, 199, 107, 0.55);
+  border-radius: 999px;
+  background: rgba(255, 248, 221, 0.1);
+  padding: 0.35rem 0.55rem;
+  font-size: 0.88rem;
+  font-weight: 900;
+}
+
 .segmented,
 .choice-row {
   display: flex;
@@ -390,7 +426,14 @@ label {
 }
 
 .choice-row .danger-choice {
+  border-color: #8f3a2e;
   background: #7a2d25;
+  color: #fff7de;
+}
+
+.choice-row .danger-choice:hover:not(:disabled) {
+  background: #91382d;
+  color: #fff7de;
 }
 
 .role-preset {
@@ -437,6 +480,23 @@ label {
   margin: 0;
   color: #f2ddae;
   font-weight: 800;
+}
+
+.demo-board .quest-track span,
+.demo-board .status span {
+  color: #321a0c;
+}
+
+.demo-board .quest-track .current {
+  color: #3a2148;
+}
+
+.demo-board .quest-track .success {
+  color: #26351f;
+}
+
+.demo-board .quest-track .fail {
+  color: #61170e;
 }
 
 .demo-board .hint,

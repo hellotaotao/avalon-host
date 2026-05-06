@@ -436,7 +436,7 @@ interface DemoState {
   playerCount: number;
   roleOptions: RolePresetOptions;
   players: DemoPlayer[];
-  phase: 'proposal' | 'vote' | 'mission' | 'result';
+  phase: 'setup' | 'proposal' | 'vote' | 'mission' | 'result';
   roundIndex: number;
   leaderIndex: number;
   selectedTeamIds: string[];
@@ -466,9 +466,16 @@ function DemoSimulator() {
   const goodScore = demo.missionResults.filter((result) => result.outcome === 'success').length;
   const evilScore = demo.missionResults.filter((result) => result.outcome === 'fail').length;
   const winner = goodScore >= 3 ? 'Good' : evilScore >= 3 ? 'Evil' : undefined;
+  const includedSpecialRoles = optionalRoleControls
+    .filter((control) => demo.roleOptions[control.key])
+    .map((control) => control.label);
 
   function resetWith(playerCount: number, roleOptions: RolePresetOptions) {
     setDemo(createDemoState(playerCount, sanitizeRoleOptions(playerCount, roleOptions)));
+  }
+
+  function startTable() {
+    setDemo((current) => ({ ...current, phase: 'proposal' }));
   }
 
   function toggleOptionalRole(key: keyof RolePresetOptions) {
@@ -574,43 +581,56 @@ function DemoSimulator() {
         <button type="button" onClick={() => resetWith(demo.playerCount, demo.roleOptions)}>Reset table</button>
       </div>
 
-      <section className="demo-setup">
-        <div>
-          <h3>Players</h3>
-          <div className="segmented" aria-label="Player count">
-            {playerCountRange.map((count) => (
-              <button
-                key={count}
-                type="button"
-                className={count === demo.playerCount ? 'selected' : ''}
-                onClick={() => resetWith(count, demo.roleOptions)}
-              >
-                {count}
-              </button>
-            ))}
+      {demo.phase === 'setup' ? (
+        <section className="demo-setup">
+          <div>
+            <h3>Players</h3>
+            <div className="segmented" aria-label="Player count">
+              {playerCountRange.map((count) => (
+                <button
+                  key={count}
+                  type="button"
+                  className={count === demo.playerCount ? 'selected' : ''}
+                  onClick={() => resetWith(count, demo.roleOptions)}
+                >
+                  {count}
+                </button>
+              ))}
+            </div>
+            <p>{rule.goodCount} Good / {rule.evilCount} Evil</p>
           </div>
-          <p>{rule.goodCount} Good / {rule.evilCount} Evil</p>
-        </div>
-        <div>
-          <h3>Role setup</h3>
-          <div className="role-preset">
-            <span>Fixed: {preset.requiredRoles.join(', ')}</span>
-            <span>Fill: {summarizeRoles(preset.fillerRoles)}</span>
+          <div>
+            <h3>Role setup</h3>
+            <div className="role-preset">
+              <span>Fixed: {preset.requiredRoles.join(', ')}</span>
+              <span>Fill: {summarizeRoles(preset.fillerRoles)}</span>
+            </div>
+            <div className="optional-roles">
+              {optionalRoleControls.map((control) => {
+                const checked = Boolean(demo.roleOptions[control.key]);
+                const disabled = !checked && !canEnableRoleOption(demo.playerCount, demo.roleOptions, control.key);
+                return (
+                  <label key={control.key} className="check role-toggle">
+                    <input type="checkbox" checked={checked} disabled={disabled} onChange={() => toggleOptionalRole(control.key)} />
+                    <span><strong>{control.label}</strong><small>{control.note}</small></span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
-          <div className="optional-roles">
-            {optionalRoleControls.map((control) => {
-              const checked = Boolean(demo.roleOptions[control.key]);
-              const disabled = !checked && !canEnableRoleOption(demo.playerCount, demo.roleOptions, control.key);
-              return (
-                <label key={control.key} className="check role-toggle">
-                  <input type="checkbox" checked={checked} disabled={disabled} onChange={() => toggleOptionalRole(control.key)} />
-                  <span><strong>{control.label}</strong><small>{control.note}</small></span>
-                </label>
-              );
-            })}
+          <div className="demo-start-row">
+            <button type="button" className="primary" onClick={startTable}>Start tabletop</button>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : (
+        <section className="demo-setup-summary" aria-label="Demo table setup">
+          <span>{demo.playerCount} players</span>
+          <span>{rule.goodCount} Good / {rule.evilCount} Evil</span>
+          <span>Special roles: {includedSpecialRoles.length ? includedSpecialRoles.join(', ') : 'None'}</span>
+          <span>Base: {preset.requiredRoles.join(', ')}</span>
+          <span>Fill: {summarizeRoles(preset.fillerRoles)}</span>
+        </section>
+      )}
 
       <section className="demo-board" aria-label="Demo table state">
         <div className="quest-track">
@@ -632,6 +652,11 @@ function DemoSimulator() {
         {demo.lastVote && <p className="hint">Last vote: {demo.lastVote.approveCount} approve, {demo.lastVote.rejectCount} reject. Team {demo.lastVote.passed ? 'approved' : 'rejected'}.</p>}
         {demo.lastMission && <p className="notice">Quest {demo.lastMission.roundIndex + 1} {demo.lastMission.outcome === 'success' ? 'succeeded' : 'failed'} with {demo.lastMission.failCount} fail card(s).</p>}
         {winner && <p className="notice">{winner} has reached three quests. Reset the table to try another setup.</p>}
+        {demo.phase === 'setup' && (
+          <div className="mission-step">
+            <p>Choose player count and roles, then start the tabletop.</p>
+          </div>
+        )}
         {demo.phase === 'proposal' && (
           <div className="mission-step">
             <p>Leader selects exactly {teamSize} players. Selected: {selectedPlayers.length ? selectedPlayers.join(', ') : 'none'}.</p>
@@ -790,7 +815,7 @@ function createDemoState(playerCount: number, roleOptions: RolePresetOptions): D
       role,
       revealRole: false,
     })),
-    phase: 'proposal',
+    phase: 'setup',
     roundIndex: 0,
     leaderIndex: 0,
     selectedTeamIds: [],
