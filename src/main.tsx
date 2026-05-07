@@ -421,6 +421,7 @@ interface DemoPlayer {
   seatIndex: number;
   role: Role;
   revealRole: boolean;
+  revealNightInfo: boolean;
   teamVote?: Vote;
   missionCard?: MissionCard;
 }
@@ -537,7 +538,18 @@ function DemoSimulator() {
   function toggleRoleReveal(playerId: string) {
     setDemo((current) => ({
       ...current,
-      players: current.players.map((player) => (player.id === playerId ? { ...player, revealRole: !player.revealRole } : player)),
+      players: current.players.map((player) => (
+        player.id === playerId ? { ...player, revealRole: !player.revealRole, revealNightInfo: false } : player
+      )),
+    }));
+  }
+
+  function toggleNightInfoReveal(playerId: string) {
+    setDemo((current) => ({
+      ...current,
+      players: current.players.map((player) => (
+        player.id === playerId ? { ...player, revealNightInfo: !player.revealNightInfo } : player
+      )),
     }));
   }
 
@@ -660,6 +672,7 @@ function DemoSimulator() {
             selectedTeamIds={demo.selectedTeamIds}
             teamSize={teamSize}
             onToggleRoleReveal={toggleRoleReveal}
+            onToggleNightInfoReveal={toggleNightInfoReveal}
             onToggleTeamPlayer={toggleTeamPlayer}
             onVote={vote}
             onPlayMissionCard={playMissionCard}
@@ -681,6 +694,7 @@ function DemoPhone({
   selectedTeamIds,
   teamSize,
   onToggleRoleReveal,
+  onToggleNightInfoReveal,
   onToggleTeamPlayer,
   onVote,
   onPlayMissionCard,
@@ -695,6 +709,7 @@ function DemoPhone({
   selectedTeamIds: string[];
   teamSize: number;
   onToggleRoleReveal: (playerId: string) => void;
+  onToggleNightInfoReveal: (playerId: string) => void;
   onToggleTeamPlayer: (playerId: string) => void;
   onVote: (playerId: string, vote: Vote) => void;
   onPlayMissionCard: (playerId: string, card: MissionCard) => void;
@@ -723,14 +738,11 @@ function DemoPhone({
       </div>
       <RoleRevealCard player={player} onToggleRoleReveal={onToggleRoleReveal} />
       {player.revealRole && (
-        <div className="phone-info">
-          <span>Night info</span>
-          {privateInfo.sees.length ? (
-            <ul>{privateInfo.sees.map((item) => <li key={item.playerId}>{item.name}: {item.hint}</li>)}</ul>
-          ) : (
-            <p>No extra information.</p>
-          )}
-        </div>
+        <NightInfoRevealCard
+          player={player}
+          privateInfo={privateInfo}
+          onToggleNightInfoReveal={onToggleNightInfoReveal}
+        />
       )}
       {phase === 'proposal' && isLeader && (
         <div className="phone-action">
@@ -809,25 +821,104 @@ function RoleRevealCard({
   player: DemoPlayer;
   onToggleRoleReveal: (playerId: string) => void;
 }) {
+  const allegiance = roleAllegiance(player.role);
+
+  return (
+    <PeekRevealCard
+      className="phone-role"
+      revealedClassName={`revealed ${allegiance}`}
+      coveredClassName="covered"
+      faceClassName="role-face"
+      revealed={player.revealRole}
+      onReveal={() => onToggleRoleReveal(player.id)}
+      onHide={() => onToggleRoleReveal(player.id)}
+      revealLabel={`Reveal ${player.displayName}'s hidden role`}
+      coverTitle="Role hidden"
+      coverHint="Slide to peek"
+      hideLabel="Hide role"
+    >
+      <strong>{player.role}</strong>
+      <span>{allegiance === 'good' ? 'Good' : 'Evil'}</span>
+    </PeekRevealCard>
+  );
+}
+
+function NightInfoRevealCard({
+  player,
+  privateInfo,
+  onToggleNightInfoReveal,
+}: {
+  player: DemoPlayer;
+  privateInfo: ReturnType<typeof getVisibilityInfo>;
+  onToggleNightInfoReveal: (playerId: string) => void;
+}) {
+  return (
+    <PeekRevealCard
+      className="phone-info phone-night-info"
+      faceClassName="night-info-face"
+      revealed={player.revealNightInfo}
+      onReveal={() => onToggleNightInfoReveal(player.id)}
+      onHide={() => onToggleNightInfoReveal(player.id)}
+      revealLabel={`Reveal ${player.displayName}'s hidden night information`}
+      coverTitle="Night info hidden"
+      coverHint="Slide to peek"
+      hideLabel="Hide night info"
+    >
+      <span>Night info</span>
+      {privateInfo.sees.length ? (
+        <ul>{privateInfo.sees.map((item) => <li key={item.playerId}>{item.name}: {item.hint}</li>)}</ul>
+      ) : (
+        <p>No extra information.</p>
+      )}
+    </PeekRevealCard>
+  );
+}
+
+function PeekRevealCard({
+  children,
+  className,
+  revealedClassName = 'revealed',
+  coveredClassName = 'covered',
+  faceClassName,
+  revealed,
+  onReveal,
+  onHide,
+  revealLabel,
+  coverTitle,
+  coverHint,
+  hideLabel,
+}: {
+  children: React.ReactNode;
+  className: string;
+  revealedClassName?: string;
+  coveredClassName?: string;
+  faceClassName: string;
+  revealed: boolean;
+  onReveal: () => void;
+  onHide: () => void;
+  revealLabel: string;
+  coverTitle: string;
+  coverHint: string;
+  hideLabel: string;
+}) {
   const cardRef = useRef<HTMLDivElement>(null);
   const dragStartX = useRef<number | undefined>(undefined);
   const dragged = useRef(false);
-  const [coverOffset, setCoverOffset] = useState(player.revealRole ? 100 : 0);
-  const allegiance = roleAllegiance(player.role);
+  const [coverOffset, setCoverOffset] = useState(revealed ? 100 : 0);
 
   useEffect(() => {
-    setCoverOffset(player.revealRole ? 100 : 0);
-  }, [player.revealRole]);
+    setCoverOffset(revealed ? 100 : 0);
+  }, [revealed]);
 
   function handlePointerDown(event: React.PointerEvent<HTMLButtonElement>) {
-    if (player.revealRole) return;
+    if (revealed) return;
     dragStartX.current = event.clientX;
     dragged.current = false;
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLButtonElement>) {
-    if (dragStartX.current === undefined || player.revealRole) return;
+    if (dragStartX.current === undefined || revealed) return;
     const width = Math.max(1, cardRef.current?.clientWidth ?? 1);
     const nextOffset = Math.min(100, Math.max(0, ((event.clientX - dragStartX.current) / width) * 100));
     dragged.current = dragged.current || nextOffset > 4;
@@ -835,10 +926,10 @@ function RoleRevealCard({
   }
 
   function handlePointerUp() {
-    if (dragStartX.current === undefined || player.revealRole) return;
+    if (dragStartX.current === undefined || revealed) return;
     dragStartX.current = undefined;
     if (coverOffset >= 58) {
-      onToggleRoleReveal(player.id);
+      onReveal();
       return;
     }
     setCoverOffset(0);
@@ -849,33 +940,32 @@ function RoleRevealCard({
       dragged.current = false;
       return;
     }
-    onToggleRoleReveal(player.id);
+    onReveal();
   }
 
   return (
-    <div className={`phone-role ${player.revealRole ? `revealed ${allegiance}` : 'covered'}`} ref={cardRef}>
-      <div className="role-face" aria-hidden={!player.revealRole}>
-        <strong>{player.role}</strong>
-        <span>{allegiance === 'good' ? 'Good' : 'Evil'}</span>
+    <div className={`${className} ${revealed ? revealedClassName : coveredClassName}`} ref={cardRef}>
+      <div className={faceClassName} aria-hidden={!revealed}>
+        {children}
       </div>
-      {!player.revealRole && (
+      {!revealed && (
         <button
           type="button"
-          className="role-cover"
+          className="peek-cover"
           style={{ transform: `translateX(${coverOffset}%)` }}
           onClick={handleCoverClick}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
-          aria-label={`Reveal ${player.displayName}'s hidden role`}
+          aria-label={revealLabel}
         >
-          <strong>Role hidden</strong>
-          <span>Slide to peek</span>
+          <strong>{coverTitle}</strong>
+          <span>{coverHint}</span>
         </button>
       )}
-      {player.revealRole && (
-        <button type="button" className="role-hide-button" onClick={() => onToggleRoleReveal(player.id)}>Hide role</button>
+      {revealed && (
+        <button type="button" className="peek-hide-button" onClick={onHide}>{hideLabel}</button>
       )}
     </div>
   );
@@ -933,6 +1023,7 @@ function createDemoState(playerCount: number, roleOptions: RolePresetOptions): D
       seatIndex: index,
       role,
       revealRole: false,
+      revealNightInfo: false,
     })),
     phase: 'setup',
     roundIndex: 0,

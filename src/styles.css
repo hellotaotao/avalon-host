@@ -623,11 +623,25 @@ label {
   background: #f4e7c6;
 }
 
-.role-face {
+.phone-night-info {
+  position: relative;
+  min-height: 132px;
+  overflow: hidden;
+}
+
+.role-face,
+.night-info-face {
   display: grid;
   gap: 0.25rem;
-  align-content: center;
   min-height: 74px;
+}
+
+.role-face {
+  align-content: center;
+}
+
+.night-info-face {
+  align-content: start;
 }
 
 .role-face strong {
@@ -644,7 +658,7 @@ label {
   text-transform: uppercase;
 }
 
-.role-cover {
+.peek-cover {
   position: absolute;
   inset: 0;
   display: grid;
@@ -665,11 +679,11 @@ label {
   transition: transform 160ms ease-out;
 }
 
-.role-cover:active {
+.peek-cover:active {
   transition: none;
 }
 
-.role-cover:hover:not(:disabled) {
+.peek-cover:hover:not(:disabled) {
   border: 0;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.12) 25%, transparent 25% 50%, rgba(255, 255, 255, 0.12) 50% 75%, transparent 75%) 0 0 / 24px 24px,
@@ -677,7 +691,7 @@ label {
   color: #fff7de;
 }
 
-.role-cover span {
+.peek-cover span {
   color: #f0dca9;
   font-size: 0.74rem;
   font-weight: 900;
@@ -685,7 +699,7 @@ label {
   text-transform: uppercase;
 }
 
-.role-hide-button {
+.peek-hide-button {
   min-height: 36px;
   width: fit-content;
   padding: 0.4rem 0.6rem;
@@ -695,6 +709,11 @@ label {
 .phone-action {
   border: 1px solid #caa15b;
   background: #fff4d0;
+}
+
+.phone-night-info.covered {
+  border-color: #9f8050;
+  background: #f4e7c6;
 }
 
 .phone-info ul {
