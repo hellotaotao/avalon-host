@@ -454,6 +454,7 @@ const optionalRoleControls: Array<{ key: keyof RolePresetOptions; role: Role; la
   { key: 'includeMordred', role: 'Mordred', label: 'Mordred', note: 'Evil, hidden from Merlin.' },
   { key: 'includeOberon', role: 'Oberon', label: 'Oberon', note: 'Evil, hidden from other evil.' },
 ];
+const DEMO_RESULT_AUTO_ADVANCE_MS = 2200;
 
 function DemoSimulator() {
   const [demo, setDemo] = useState(() => createDemoState(7, { includeMorgana: true }));
@@ -467,10 +468,21 @@ function DemoSimulator() {
   const missionCards = demo.players.filter((player) => demo.selectedTeamIds.includes(player.id) && player.missionCard);
   const goodScore = demo.missionResults.filter((result) => result.outcome === 'success').length;
   const evilScore = demo.missionResults.filter((result) => result.outcome === 'fail').length;
-  const winner = goodScore >= 3 ? 'good' : evilScore >= 3 ? 'evil' : undefined;
+  const winner = getDemoWinner(demo);
   const includedSpecialRoles = optionalRoleControls
     .filter((control) => demo.roleOptions[control.key])
     .map((control) => control.label);
+
+  useEffect(() => {
+    if (demo.phase !== 'result' || winner || demo.roundIndex >= 4) return undefined;
+    const timeout = window.setTimeout(() => {
+      setDemo((current) => {
+        if (current.phase !== 'result' || getDemoWinner(current) || current.roundIndex >= 4) return current;
+        return advanceDemoToNextQuest(current);
+      });
+    }, DEMO_RESULT_AUTO_ADVANCE_MS);
+    return () => window.clearTimeout(timeout);
+  }, [demo.phase, demo.roundIndex, demo.missionResults.length, winner]);
 
   function resetWith(playerCount: number, roleOptions: RolePresetOptions) {
     setDemo(createDemoState(playerCount, sanitizeRoleOptions(playerCount, roleOptions)));
@@ -520,19 +532,6 @@ function DemoSimulator() {
       const nextPlayers = current.players.map((player) => (player.id === playerId ? { ...player, missionCard } : player));
       return resolveDemoMissionIfReady(current, nextPlayers);
     });
-  }
-
-  function nextQuest() {
-    if (winner || demo.roundIndex >= 4) return;
-    setDemo((current) => ({
-      ...current,
-      phase: 'proposal',
-      roundIndex: current.roundIndex + 1,
-      leaderIndex: (current.leaderIndex + 1) % current.playerCount,
-      selectedTeamIds: [],
-      players: current.players.map((player) => ({ ...player, teamVote: undefined, missionCard: undefined })),
-      lastVote: undefined,
-    }));
   }
 
   function toggleRoleReveal(playerId: string) {
@@ -656,7 +655,7 @@ function DemoSimulator() {
         )}
         {demo.phase === 'result' && !winner && (
           <div className="mission-step">
-            <p>Quest result is public. The current leader can start the next quest from their phone.</p>
+            <p>Quest result is public on every phone. Next quest starts automatically.</p>
           </div>
         )}
       </section>
@@ -677,8 +676,8 @@ function DemoSimulator() {
             onVote={vote}
             onPlayMissionCard={playMissionCard}
             onProposeTeam={proposeTeam}
-            onNextQuest={nextQuest}
             winner={winner}
+            lastMission={demo.lastMission}
           />
         ))}
       </section>
@@ -699,8 +698,8 @@ function DemoPhone({
   onVote,
   onPlayMissionCard,
   onProposeTeam,
-  onNextQuest,
   winner,
+  lastMission,
 }: {
   player: DemoPlayer;
   players: DemoPlayer[];
@@ -714,15 +713,18 @@ function DemoPhone({
   onVote: (playerId: string, vote: Vote) => void;
   onPlayMissionCard: (playerId: string, card: MissionCard) => void;
   onProposeTeam: () => void;
-  onNextQuest: () => void;
   winner?: Allegiance;
+  lastMission?: DemoMissionResult;
 }) {
   const isLeader = player.id === leaderId;
   const onTeam = selectedTeamIds.includes(player.id);
   const selectedCount = selectedTeamIds.length;
   const canAddToTeam = selectedCount < teamSize;
   const publicRole = isLeader ? 'Current Leader' : 'Table player';
-  const outcomeClass = winner ? (roleAllegiance(player.role) === winner ? 'phone-winner' : 'phone-loser') : '';
+  const outcomeClass = [
+    winner ? (roleAllegiance(player.role) === winner ? 'phone-winner' : 'phone-loser') : '',
+    phase === 'result' && lastMission ? `mission-${lastMission.outcome}-phone` : '',
+  ].filter(Boolean).join(' ');
   const privateInfo = getVisibilityInfo(
     { id: player.id, name: player.displayName, role: player.role },
     players.map(toDemoAvalonPlayer),
@@ -799,16 +801,29 @@ function DemoPhone({
         <div className={`phone-action ${winner ? 'phone-result' : 'phone-readonly'}`}>
           <span>{winner ? 'Game result' : 'Quest result'}</span>
           {winner ? (
-            <p>{roleAllegiance(player.role) === winner ? 'Victory' : 'Defeat'} · {winner === 'good' ? 'Good wins' : 'Evil wins'}</p>
+            <>
+              {lastMission && <MissionResultReveal result={lastMission} />}
+              <p>{roleAllegiance(player.role) === winner ? 'Victory' : 'Defeat'} · {winner === 'good' ? 'Good wins' : 'Evil wins'}</p>
+            </>
           ) : (
             <>
-              <p>Quest resolved. Score is on the table board.</p>
-              {isLeader && <button type="button" className="primary" onClick={onNextQuest}>Next Quest</button>}
+              {lastMission && <MissionResultReveal result={lastMission} />}
+              <p>Next quest starts automatically.</p>
             </>
           )}
         </div>
       )}
     </article>
+  );
+}
+
+function MissionResultReveal({ result }: { result: DemoMissionResult }) {
+  const succeeded = result.outcome === 'success';
+  return (
+    <div className={`mission-result-reveal ${succeeded ? 'success' : 'fail'}`} aria-live="polite">
+      <strong>{succeeded ? 'Quest Success' : 'Quest Failed'}</strong>
+      <small>{result.failCount} fail card{result.failCount === 1 ? '' : 's'} · {result.requiredFails} needed to fail</small>
+    </div>
   );
 }
 
@@ -1007,6 +1022,26 @@ function resolveDemoMissionIfReady(current: DemoState, players: DemoPlayer[]): D
     missionResults: [...current.missionResults, result],
     lastMission: result,
   };
+}
+
+function advanceDemoToNextQuest(current: DemoState): DemoState {
+  return {
+    ...current,
+    phase: 'proposal',
+    roundIndex: current.roundIndex + 1,
+    leaderIndex: (current.leaderIndex + 1) % current.playerCount,
+    selectedTeamIds: [],
+    players: current.players.map((player) => ({ ...player, teamVote: undefined, missionCard: undefined })),
+    lastVote: undefined,
+  };
+}
+
+function getDemoWinner(demo: DemoState): Allegiance | undefined {
+  const goodScore = demo.missionResults.filter((result) => result.outcome === 'success').length;
+  const evilScore = demo.missionResults.filter((result) => result.outcome === 'fail').length;
+  if (goodScore >= 3) return 'good';
+  if (evilScore >= 3) return 'evil';
+  return undefined;
 }
 
 function createDemoState(playerCount: number, roleOptions: RolePresetOptions): DemoState {

@@ -529,6 +529,38 @@ label {
   border-color: #d1a34e;
 }
 
+.mission-success-phone {
+  border-color: #5f8c48;
+  animation: mission-success-pop 900ms ease-out;
+}
+
+.mission-fail-phone {
+  border-color: #9d3e2e;
+  animation: mission-fail-pulse 900ms ease-out;
+}
+
+.mission-success-phone::after,
+.mission-fail-phone::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  animation: mission-result-wash 1.3s ease-out;
+}
+
+.mission-success-phone::after {
+  background:
+    radial-gradient(circle at 50% 36%, rgba(105, 151, 75, 0.34), transparent 38%),
+    linear-gradient(180deg, rgba(226, 241, 209, 0.42), transparent 62%);
+}
+
+.mission-fail-phone::after {
+  background:
+    radial-gradient(circle at 50% 36%, rgba(157, 62, 46, 0.36), transparent 38%),
+    linear-gradient(180deg, rgba(248, 200, 169, 0.44), transparent 62%);
+}
+
 .phone-winner {
   border-color: #e9bc48;
   animation: phone-celebrate 900ms ease-out;
@@ -744,6 +776,40 @@ label {
 .phone-result p {
   color: #321a0c;
   font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.mission-result-reveal {
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+  border: 2px solid;
+  border-radius: 8px;
+  padding: 0.75rem 0.5rem;
+  text-align: center;
+  animation: mission-result-card 900ms ease-out;
+}
+
+.mission-result-reveal.success {
+  border-color: #5f8c48;
+  background: #dceccc;
+  color: #24371d;
+}
+
+.mission-result-reveal.fail {
+  border-color: #9d3e2e;
+  background: #f8c8a9;
+  color: #61170e;
+}
+
+.mission-result-reveal strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.35rem;
+  line-height: 1.05;
+}
+
+.mission-result-reveal small {
+  color: inherit;
   font-weight: 900;
 }
 
@@ -1012,6 +1078,62 @@ label {
   }
   100% {
     opacity: 0.78;
+  }
+}
+
+@keyframes mission-success-pop {
+  0% {
+    transform: scale(1);
+  }
+  38% {
+    transform: scale(1.018);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes mission-fail-pulse {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  18% {
+    transform: translateX(-3px);
+  }
+  36% {
+    transform: translateX(3px);
+  }
+  54% {
+    transform: translateX(-2px);
+  }
+}
+
+@keyframes mission-result-wash {
+  0% {
+    opacity: 0;
+  }
+  18%,
+  62% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes mission-result-card {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(0) scale(1.025);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
