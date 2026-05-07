@@ -602,7 +602,8 @@ label {
 
 .phone-role {
   position: relative;
-  min-height: 128px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 118px;
   overflow: hidden;
   border: 1px solid #b07a36;
   background: #fff8df;
@@ -625,7 +626,8 @@ label {
 
 .phone-night-info {
   position: relative;
-  min-height: 132px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 124px;
   overflow: hidden;
 }
 
@@ -633,7 +635,8 @@ label {
 .night-info-face {
   display: grid;
   gap: 0.25rem;
-  min-height: 74px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .role-face {
@@ -642,6 +645,8 @@ label {
 
 .night-info-face {
   align-content: start;
+  overflow-y: auto;
+  padding-right: 0.2rem;
 }
 
 .role-face strong {

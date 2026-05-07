@@ -539,7 +539,7 @@ function DemoSimulator() {
     setDemo((current) => ({
       ...current,
       players: current.players.map((player) => (
-        player.id === playerId ? { ...player, revealRole: !player.revealRole, revealNightInfo: false } : player
+        player.id === playerId ? { ...player, revealRole: !player.revealRole } : player
       )),
     }));
   }
@@ -737,13 +737,11 @@ function DemoPhone({
         {onTeam && <span className="phone-team-pill">Mission team</span>}
       </div>
       <RoleRevealCard player={player} onToggleRoleReveal={onToggleRoleReveal} />
-      {player.revealRole && (
-        <NightInfoRevealCard
-          player={player}
-          privateInfo={privateInfo}
-          onToggleNightInfoReveal={onToggleNightInfoReveal}
-        />
-      )}
+      <NightInfoRevealCard
+        player={player}
+        privateInfo={privateInfo}
+        onToggleNightInfoReveal={onToggleNightInfoReveal}
+      />
       {phase === 'proposal' && isLeader && (
         <div className="phone-action">
           <span>Propose team · {selectedCount}/{teamSize}</span>
