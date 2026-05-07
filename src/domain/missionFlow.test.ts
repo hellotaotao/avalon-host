@@ -8,6 +8,7 @@ import {
 } from './missionFlow';
 
 const playerIds = ['p1', 'p2', 'p3', 'p4', 'p5'];
+const sevenPlayerIds = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'];
 
 describe('mission flow', () => {
   it('creates a first proposal led by the host seat', () => {
@@ -73,5 +74,21 @@ describe('mission flow', () => {
     }
     expect(state.phase).toBe('finished');
     expect(state.winner).toBe('evil');
+  });
+
+  it('fails a 7-player fourth quest with one fail and succeeds with all success cards', () => {
+    const fourthQuest: MissionState = {
+      ...createInitialMissionState(sevenPlayerIds),
+      phase: 'mission',
+      roundIndex: 3,
+      selectedTeamIds: ['p1', 'p2', 'p3', 'p4'],
+    };
+
+    expect(advanceMissionResult(fourthQuest, sevenPlayerIds, 3, 1).missionResults).toMatchObject([
+      { roundIndex: 3, outcome: 'fail', successCount: 3, failCount: 1, requiredFails: 1 },
+    ]);
+    expect(advanceMissionResult(fourthQuest, sevenPlayerIds, 4, 0).missionResults).toMatchObject([
+      { roundIndex: 3, outcome: 'success', successCount: 4, failCount: 0, requiredFails: 1 },
+    ]);
   });
 });

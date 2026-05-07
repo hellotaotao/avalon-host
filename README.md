@@ -22,11 +22,11 @@ Demo supports:
 - Player counts from 5-10 with normal Avalon Good/Evil counts: 5=3/2, 6=4/2, 7=4/3, 8=5/3, 9=6/3, 10=6/4.
 - Role presets with Merlin and Assassin fixed. Normal Loyal Servant/Minion cards fill the remaining slots.
 - Optional special-role toggles for Percival, Morgana, Mordred, and Oberon when the selected table has enough Good/Evil slots.
-- Real Avalon quest team sizes and fail thresholds:
+- Avalon Lite quest team sizes; any fail card fails the quest:
   - 5: 2,3,2,3,3
   - 6: 2,3,4,3,4
-  - 7: 2,3,3,4(two fails),4
-  - 8-10: 3,4,4,5(two fails),5
+  - 7: 2,3,3,4,4
+  - 8-10: 3,4,4,5,5
 - A multi-phone table view where every player has a virtual phone. Each phone can show/hide that player's own role and night information.
 - Local table state for leader, quest round, team selection, public approve/reject votes, anonymous mission success/fail cards, and score progress.
 
