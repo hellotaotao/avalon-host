@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   buildRolePreset,
@@ -8,6 +8,7 @@ import {
   playerCountRange,
   resolveMission,
   roleAllegiance,
+  type Allegiance,
   type MissionCard,
   type Player,
   type Role,
@@ -465,7 +466,7 @@ function DemoSimulator() {
   const missionCards = demo.players.filter((player) => demo.selectedTeamIds.includes(player.id) && player.missionCard);
   const goodScore = demo.missionResults.filter((result) => result.outcome === 'success').length;
   const evilScore = demo.missionResults.filter((result) => result.outcome === 'fail').length;
-  const winner = goodScore >= 3 ? 'Good' : evilScore >= 3 ? 'Evil' : undefined;
+  const winner = goodScore >= 3 ? 'good' : evilScore >= 3 ? 'evil' : undefined;
   const includedSpecialRoles = optionalRoleControls
     .filter((control) => demo.roleOptions[control.key])
     .map((control) => control.label);
@@ -505,50 +506,19 @@ function DemoSimulator() {
 
   function vote(playerId: string, teamVote: Vote) {
     if (demo.phase !== 'vote') return;
-    setDemo((current) => ({
-      ...current,
-      players: current.players.map((player) => (player.id === playerId ? { ...player, teamVote } : player)),
-    }));
-  }
-
-  function resolveVote() {
-    if (demo.phase !== 'vote' || votedCount !== demo.playerCount) return;
-    const passed = approveCount > demo.playerCount / 2;
-    setDemo((current) => ({
-      ...current,
-      phase: passed ? 'mission' : 'proposal',
-      leaderIndex: passed ? current.leaderIndex : (current.leaderIndex + 1) % current.playerCount,
-      selectedTeamIds: passed ? current.selectedTeamIds : [],
-      lastVote: { approveCount, rejectCount, passed },
-      players: current.players.map((player) => ({ ...player, missionCard: undefined })),
-    }));
+    setDemo((current) => {
+      const nextPlayers = current.players.map((player) => (player.id === playerId ? { ...player, teamVote } : player));
+      const resolved = resolveDemoVoteIfReady(current, nextPlayers);
+      return { ...current, players: resolved.players, ...resolved.statePatch };
+    });
   }
 
   function playMissionCard(playerId: string, missionCard: MissionCard) {
     if (demo.phase !== 'mission') return;
-    setDemo((current) => ({
-      ...current,
-      players: current.players.map((player) => (player.id === playerId ? { ...player, missionCard } : player)),
-    }));
-  }
-
-  function revealMission() {
-    if (demo.phase !== 'mission' || missionCards.length !== demo.selectedTeamIds.length) return;
-    const cards = demo.selectedTeamIds.map((id) => demo.players.find((player) => player.id === id)?.missionCard ?? 'success');
-    const resolved = resolveMission(cards, demo.playerCount, demo.roundIndex);
-    const result: DemoMissionResult = {
-      roundIndex: demo.roundIndex,
-      outcome: resolved.outcome,
-      successCount: cards.filter((card) => card === 'success').length,
-      failCount: resolved.failCount,
-      requiredFails: resolved.requiredFails,
-    };
-    setDemo((current) => ({
-      ...current,
-      phase: 'result',
-      missionResults: [...current.missionResults, result],
-      lastMission: result,
-    }));
+    setDemo((current) => {
+      const nextPlayers = current.players.map((player) => (player.id === playerId ? { ...player, missionCard } : player));
+      return resolveDemoMissionIfReady(current, nextPlayers);
+    });
   }
 
   function nextQuest() {
@@ -651,7 +621,7 @@ function DemoSimulator() {
         </div>
         {demo.lastVote && <p className="hint">Last vote: {demo.lastVote.approveCount} approve, {demo.lastVote.rejectCount} reject. Team {demo.lastVote.passed ? 'approved' : 'rejected'}.</p>}
         {demo.lastMission && <p className="notice">Quest {demo.lastMission.roundIndex + 1} {demo.lastMission.outcome === 'success' ? 'succeeded' : 'failed'} with {demo.lastMission.failCount} fail card(s).</p>}
-        {winner && <p className="notice">{winner} has reached three quests. Reset the table to try another setup.</p>}
+        {winner && <p className="notice">{winner === 'good' ? 'Good' : 'Evil'} has reached three quests. Reset the table to try another setup.</p>}
         {demo.phase === 'setup' && (
           <div className="mission-step">
             <p>Choose player count and roles, then start the tabletop.</p>
@@ -659,25 +629,22 @@ function DemoSimulator() {
         )}
         {demo.phase === 'proposal' && (
           <div className="mission-step">
-            <p>Leader selects exactly {teamSize} players. Selected: {selectedPlayers.length ? selectedPlayers.join(', ') : 'none'}.</p>
-            <button type="button" className="primary" disabled={demo.selectedTeamIds.length !== teamSize} onClick={proposeTeam}>Propose Team</button>
+            <p>{demo.players[demo.leaderIndex]?.displayName} is choosing exactly {teamSize} players. Selected: {selectedPlayers.length ? selectedPlayers.join(', ') : 'none'}.</p>
           </div>
         )}
         {demo.phase === 'vote' && (
           <div className="mission-step">
-            <p>Everyone votes on {selectedPlayers.join(', ')}. Votes in: {votedCount}/{demo.playerCount}.</p>
-            <button type="button" className="primary" disabled={votedCount !== demo.playerCount} onClick={resolveVote}>Resolve Vote</button>
+            <p>Everyone votes on {selectedPlayers.join(', ')}. Votes in: {votedCount}/{demo.playerCount}; the table advances when every phone has voted.</p>
           </div>
         )}
         {demo.phase === 'mission' && (
           <div className="mission-step">
-            <p>Mission team plays cards anonymously. Cards in: {missionCards.length}/{demo.selectedTeamIds.length}.</p>
-            <button type="button" className="primary" disabled={missionCards.length !== demo.selectedTeamIds.length} onClick={revealMission}>Reveal Mission</button>
+            <p>Mission team plays cards anonymously. Cards in: {missionCards.length}/{demo.selectedTeamIds.length}; the quest resolves when the team is done.</p>
           </div>
         )}
         {demo.phase === 'result' && !winner && (
           <div className="mission-step">
-            <button type="button" className="primary" onClick={nextQuest}>Next Quest</button>
+            <p>Quest result is public. The current leader can start the next quest from their phone.</p>
           </div>
         )}
       </section>
@@ -696,6 +663,9 @@ function DemoSimulator() {
             onToggleTeamPlayer={toggleTeamPlayer}
             onVote={vote}
             onPlayMissionCard={playMissionCard}
+            onProposeTeam={proposeTeam}
+            onNextQuest={nextQuest}
+            winner={winner}
           />
         ))}
       </section>
@@ -714,6 +684,9 @@ function DemoPhone({
   onToggleTeamPlayer,
   onVote,
   onPlayMissionCard,
+  onProposeTeam,
+  onNextQuest,
+  winner,
 }: {
   player: DemoPlayer;
   players: DemoPlayer[];
@@ -725,9 +698,16 @@ function DemoPhone({
   onToggleTeamPlayer: (playerId: string) => void;
   onVote: (playerId: string, vote: Vote) => void;
   onPlayMissionCard: (playerId: string, card: MissionCard) => void;
+  onProposeTeam: () => void;
+  onNextQuest: () => void;
+  winner?: Allegiance;
 }) {
   const isLeader = player.id === leaderId;
   const onTeam = selectedTeamIds.includes(player.id);
+  const selectedCount = selectedTeamIds.length;
+  const canAddToTeam = selectedCount < teamSize;
+  const publicRole = isLeader ? 'Current Leader' : 'Table player';
+  const outcomeClass = winner ? (roleAllegiance(player.role) === winner ? 'phone-winner' : 'phone-loser') : '';
   const privateInfo = getVisibilityInfo(
     { id: player.id, name: player.displayName, role: player.role },
     players.map(toDemoAvalonPlayer),
@@ -735,23 +715,13 @@ function DemoPhone({
   const canFailMission = roleAllegiance(player.role) === 'evil';
 
   return (
-    <article className={`demo-phone ${isLeader ? 'leader-phone' : ''}`}>
+    <article className={`demo-phone ${isLeader ? 'leader-phone' : ''} ${outcomeClass}`}>
       <div className="phone-top">
-        <span>Seat {player.seatIndex + 1}</span>
         <strong>{player.displayName}</strong>
-        <small>{isLeader ? 'Leader' : onTeam ? 'On team' : 'Table player'}</small>
+        <small>Seat {player.seatIndex + 1} · {publicRole}</small>
+        {onTeam && <span className="phone-team-pill">Mission team</span>}
       </div>
-      <div className={`phone-role ${roleAllegiance(player.role)}`}>
-        {player.revealRole ? (
-          <>
-            <strong>{player.role}</strong>
-            <span>{roleAllegiance(player.role) === 'good' ? 'Good' : 'Evil'}</span>
-          </>
-        ) : (
-          <strong>Role hidden</strong>
-        )}
-        <button type="button" onClick={() => onToggleRoleReveal(player.id)}>{player.revealRole ? 'Hide role' : 'Show role'}</button>
-      </div>
+      <RoleRevealCard player={player} onToggleRoleReveal={onToggleRoleReveal} />
       {player.revealRole && (
         <div className="phone-info">
           <span>Night info</span>
@@ -764,13 +734,26 @@ function DemoPhone({
       )}
       {phase === 'proposal' && isLeader && (
         <div className="phone-action">
-          <span>Select {teamSize}</span>
+          <span>Propose team · {selectedCount}/{teamSize}</span>
           {players.map((candidate) => (
             <label key={candidate.id} className="check">
-              <input type="checkbox" checked={selectedTeamIds.includes(candidate.id)} onChange={() => onToggleTeamPlayer(candidate.id)} />
+              <input
+                type="checkbox"
+                checked={selectedTeamIds.includes(candidate.id)}
+                disabled={!selectedTeamIds.includes(candidate.id) && !canAddToTeam}
+                onChange={() => onToggleTeamPlayer(candidate.id)}
+              />
               {candidate.displayName}
             </label>
           ))}
+          <button type="button" className="primary" disabled={selectedCount !== teamSize} onClick={onProposeTeam}>Propose Team</button>
+        </div>
+      )}
+      {phase === 'proposal' && !isLeader && (
+        <div className="phone-action phone-readonly">
+          <span>Proposal</span>
+          <p>{players.find((candidate) => candidate.id === leaderId)?.displayName ?? 'Leader'} is choosing {teamSize} players.</p>
+          <p>Selected: {selectedCount}/{teamSize}</p>
         </div>
       )}
       {phase === 'vote' && (
@@ -782,24 +765,160 @@ function DemoPhone({
           </div>
         </div>
       )}
-      {phase === 'mission' && onTeam && (
+      {phase === 'mission' && (
         <div className="phone-action">
-          <span>Mission card</span>
-          <div className="choice-row">
-            <button type="button" className={player.missionCard === 'success' ? 'selected' : ''} onClick={() => onPlayMissionCard(player.id, 'success')}>Success</button>
-            <button
-              type="button"
-              className={player.missionCard === 'fail' ? 'selected danger-choice' : ''}
-              disabled={!canFailMission}
-              onClick={() => onPlayMissionCard(player.id, 'fail')}
-            >
-              Fail
-            </button>
-          </div>
+          <span>{onTeam ? 'Mission card' : 'Mission'}</span>
+          {onTeam ? (
+            <div className="choice-row">
+              <button type="button" className={player.missionCard === 'success' ? 'selected' : ''} onClick={() => onPlayMissionCard(player.id, 'success')}>Success</button>
+              <button
+                type="button"
+                className={player.missionCard === 'fail' ? 'selected danger-choice' : ''}
+                disabled={!canFailMission}
+                onClick={() => onPlayMissionCard(player.id, 'fail')}
+              >
+                Fail
+              </button>
+            </div>
+          ) : (
+            <p>{selectedTeamIds.length} players are on the mission. Wait for their cards.</p>
+          )}
+        </div>
+      )}
+      {phase === 'result' && (
+        <div className={`phone-action ${winner ? 'phone-result' : 'phone-readonly'}`}>
+          <span>{winner ? 'Game result' : 'Quest result'}</span>
+          {winner ? (
+            <p>{roleAllegiance(player.role) === winner ? 'Victory' : 'Defeat'} · {winner === 'good' ? 'Good wins' : 'Evil wins'}</p>
+          ) : (
+            <>
+              <p>Quest resolved. Score is on the table board.</p>
+              {isLeader && <button type="button" className="primary" onClick={onNextQuest}>Next Quest</button>}
+            </>
+          )}
         </div>
       )}
     </article>
   );
+}
+
+function RoleRevealCard({
+  player,
+  onToggleRoleReveal,
+}: {
+  player: DemoPlayer;
+  onToggleRoleReveal: (playerId: string) => void;
+}) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const dragStartX = useRef<number | undefined>(undefined);
+  const dragged = useRef(false);
+  const [coverOffset, setCoverOffset] = useState(player.revealRole ? 100 : 0);
+  const allegiance = roleAllegiance(player.role);
+
+  useEffect(() => {
+    setCoverOffset(player.revealRole ? 100 : 0);
+  }, [player.revealRole]);
+
+  function handlePointerDown(event: React.PointerEvent<HTMLButtonElement>) {
+    if (player.revealRole) return;
+    dragStartX.current = event.clientX;
+    dragged.current = false;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event: React.PointerEvent<HTMLButtonElement>) {
+    if (dragStartX.current === undefined || player.revealRole) return;
+    const width = Math.max(1, cardRef.current?.clientWidth ?? 1);
+    const nextOffset = Math.min(100, Math.max(0, ((event.clientX - dragStartX.current) / width) * 100));
+    dragged.current = dragged.current || nextOffset > 4;
+    setCoverOffset(nextOffset);
+  }
+
+  function handlePointerUp() {
+    if (dragStartX.current === undefined || player.revealRole) return;
+    dragStartX.current = undefined;
+    if (coverOffset >= 58) {
+      onToggleRoleReveal(player.id);
+      return;
+    }
+    setCoverOffset(0);
+  }
+
+  function handleCoverClick() {
+    if (dragged.current) {
+      dragged.current = false;
+      return;
+    }
+    onToggleRoleReveal(player.id);
+  }
+
+  return (
+    <div className={`phone-role ${player.revealRole ? `revealed ${allegiance}` : 'covered'}`} ref={cardRef}>
+      <div className="role-face" aria-hidden={!player.revealRole}>
+        <strong>{player.role}</strong>
+        <span>{allegiance === 'good' ? 'Good' : 'Evil'}</span>
+      </div>
+      {!player.revealRole && (
+        <button
+          type="button"
+          className="role-cover"
+          style={{ transform: `translateX(${coverOffset}%)` }}
+          onClick={handleCoverClick}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          aria-label={`Reveal ${player.displayName}'s hidden role`}
+        >
+          <strong>Role hidden</strong>
+          <span>Slide to peek</span>
+        </button>
+      )}
+      {player.revealRole && (
+        <button type="button" className="role-hide-button" onClick={() => onToggleRoleReveal(player.id)}>Hide role</button>
+      )}
+    </div>
+  );
+}
+
+function resolveDemoVoteIfReady(
+  current: DemoState,
+  players: DemoPlayer[],
+): { players: DemoPlayer[]; statePatch: Partial<DemoState> } {
+  const approveCount = players.filter((player) => player.teamVote === 'approve').length;
+  const rejectCount = players.filter((player) => player.teamVote === 'reject').length;
+  if (approveCount + rejectCount !== current.playerCount) return { players, statePatch: {} };
+  const passed = approveCount > current.playerCount / 2;
+  return {
+    players: players.map((player) => ({ ...player, missionCard: undefined })),
+    statePatch: {
+      phase: passed ? 'mission' : 'proposal',
+      leaderIndex: passed ? current.leaderIndex : (current.leaderIndex + 1) % current.playerCount,
+      selectedTeamIds: passed ? current.selectedTeamIds : [],
+      lastVote: { approveCount, rejectCount, passed },
+    },
+  };
+}
+
+function resolveDemoMissionIfReady(current: DemoState, players: DemoPlayer[]): DemoState {
+  const missionCards = players.filter((player) => current.selectedTeamIds.includes(player.id) && player.missionCard);
+  if (missionCards.length !== current.selectedTeamIds.length) return { ...current, players };
+  const cards = current.selectedTeamIds.map((id) => players.find((player) => player.id === id)?.missionCard ?? 'success');
+  const resolved = resolveMission(cards, current.playerCount, current.roundIndex);
+  const result: DemoMissionResult = {
+    roundIndex: current.roundIndex,
+    outcome: resolved.outcome,
+    successCount: cards.filter((card) => card === 'success').length,
+    failCount: resolved.failCount,
+    requiredFails: resolved.requiredFails,
+  };
+  return {
+    ...current,
+    players,
+    phase: 'result',
+    missionResults: [...current.missionResults, result],
+    lastMission: result,
+  };
 }
 
 function createDemoState(playerCount: number, roleOptions: RolePresetOptions): DemoState {
