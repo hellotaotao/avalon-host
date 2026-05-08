@@ -75,7 +75,7 @@ The smoke test uses the local room service with mocked browser storage. It creat
 7. Host can start only when the room has 5-10 players and every player, including the host, is ready.
 8. Starting locks the room, assigns Avalon Lite roles from the actual joined player count, and shows each device its own private reveal.
 9. The host can run the Mission MVP from the Table Quest panel: pick the leader's team, record public team vote counts, record mission card counts, and advance the score.
-10. Three successful missions enter the Assassin endgame. Normal missions pause, every player sees the Assassin warning, and the current Assassin can choose a Merlin target from their private role panel. Hitting Merlin gives Evil the win; missing Merlin gives Good the win.
+10. Three successful missions enter the Assassin endgame. Normal missions pause, every player sees the Assassin warning, and the current Assassin can choose a Merlin target from the dedicated Assassin phase panel. Hitting Merlin gives Evil the win; missing Merlin gives Good the win.
 
 ## Share Join
 
@@ -85,7 +85,7 @@ Room screens keep the 5-digit room code prominent for table readout. They also s
 
 Mission flow state is stored in `rooms.settings.missionState` so the existing room subscription updates work without changing the realtime publication. Demo mode updates the local snapshot only and does not write to Supabase.
 
-This MVP is mostly host-driven. Non-host players can view the table state but cannot mutate mission proposals, votes, or mission results. The exception is the final Assassin endgame: after three successful quests, the assigned Assassin can submit the Merlin guess from their own private role panel. Three failed quests finish with Evil winning; an Assassin hit on Merlin also gives Evil the win; an Assassin miss gives Good the win.
+This MVP is mostly host-driven. Non-host players can view the table state but cannot mutate mission proposals, votes, or mission results. The exception is the final Assassin endgame: after three successful quests, the assigned Assassin can submit the Merlin guess from the dedicated Assassin phase panel. Three failed quests finish with Evil winning; an Assassin hit on Merlin also gives Evil the win; an Assassin miss gives Good the win.
 
 ## Supabase Status
 

@@ -1140,9 +1140,50 @@ function toRoomAvalonPlayer(player: RoomPlayer): Player {
 function AssassinPhaseBanner() {
   return (
     <section className="assassin-phase-banner" aria-live="assertive">
-      <p className="eyebrow">Final endgame</p>
-      <h2>Assassin Phase</h2>
-      <p>Good has completed three quests. Normal missions are paused while the Assassin prepares a Merlin target.</p>
+      <p className="eyebrow">Mandatory endgame</p>
+      <h2>Assassin is choosing a target</h2>
+      <p>Good has completed three quests. Normal mission play is paused until the Assassin resolves the Merlin guess.</p>
+    </section>
+  );
+}
+
+function AssassinPhaseActionPanel({
+  targets,
+  selectedTargetId,
+  onSelectTarget,
+  onAssassination,
+}: {
+  targets: RoomPlayer[];
+  selectedTargetId: string;
+  onSelectTarget: (targetPlayerId: string) => void;
+  onAssassination: (targetPlayerId: string) => void;
+}) {
+  return (
+    <section className="panel assassin-action-panel" aria-labelledby="assassin-action-title">
+      <p className="eyebrow">Assassin phase action</p>
+      <h2 id="assassin-action-title">Choose Merlin</h2>
+      <p>Pick one target. Hitting Merlin gives Evil the win; missing Merlin gives Good the win.</p>
+      <div className="assassination-targets">
+        {targets.map((player) => (
+          <label key={player.id} className="check">
+            <input
+              type="radio"
+              name="assassinationTarget"
+              checked={selectedTargetId === player.id}
+              onChange={() => onSelectTarget(player.id)}
+            />
+            {player.displayName}
+          </label>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="primary"
+        disabled={!selectedTargetId}
+        onClick={() => onAssassination(selectedTargetId)}
+      >
+        Confirm Assassination
+      </button>
     </section>
   );
 }
@@ -1212,6 +1253,14 @@ function RoomView({
       {missionState?.phase === 'assassin' && (
         <AssassinPhaseBanner />
       )}
+      {missionState?.phase === 'assassin' && privateInfo?.role === 'Assassin' && (
+        <AssassinPhaseActionPanel
+          targets={assassinationTargets}
+          selectedTargetId={assassinationTargetId}
+          onSelectTarget={setAssassinationTargetId}
+          onAssassination={onAssassination}
+        />
+      )}
       {missionState?.phase === 'finished' && missionState.assassination && (
         <AssassinationResultBanner missionState={missionState} players={snapshot.players} />
       )}
@@ -1280,33 +1329,6 @@ function RoomView({
               <ul>{privateInfo.sees.map((item) => <li key={item.playerId}>{item.name}: {item.hint}</li>)}</ul>
             ) : (
               <p>No extra night information.</p>
-            )}
-            {missionState?.phase === 'assassin' && privateInfo.role === 'Assassin' && (
-              <div className="assassination-action">
-                <h4>Assassination</h4>
-                <p>Choose Merlin. The game ends immediately after this guess.</p>
-                <div className="assassination-targets">
-                  {assassinationTargets.map((player) => (
-                    <label key={player.id} className="check">
-                      <input
-                        type="radio"
-                        name="assassinationTarget"
-                        checked={assassinationTargetId === player.id}
-                        onChange={() => setAssassinationTargetId(player.id)}
-                      />
-                      {player.displayName}
-                    </label>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={!assassinationTargetId}
-                  onClick={() => onAssassination(assassinationTargetId)}
-                >
-                  Submit Assassination
-                </button>
-              </div>
             )}
           </div>
         )}

@@ -1044,20 +1044,18 @@ label {
     #4b1d21;
 }
 
-.assassination-action,
+.assassin-action-panel,
 .assassination-targets {
   display: grid;
   gap: 0.6rem;
 }
 
-.assassination-action {
-  border: 1px solid #7a3f99;
-  border-radius: 8px;
+.assassin-action-panel {
+  border-color: #7a3f99;
   background: #f1ddff;
-  padding: 0.8rem;
 }
 
-.assassination-action h4 {
+.assassin-action-panel h2 {
   margin: 0;
   color: #62247a;
 }
