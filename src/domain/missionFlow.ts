@@ -1,4 +1,4 @@
-import { getTeamSize, resolveMission, votePasses, type MissionCard, type Vote } from './avalon';
+import { assassinWins, getTeamSize, resolveMission, votePasses, type MissionCard, type Player, type Vote } from './avalon';
 
 export type MissionPhase = 'proposal' | 'vote' | 'mission' | 'assassin' | 'finished';
 export type MissionWinner = 'good' | 'evil';
@@ -17,6 +17,12 @@ export interface MissionResultState {
   requiredFails: number;
 }
 
+export interface AssassinationState {
+  assassinPlayerId: string;
+  targetPlayerId: string;
+  hitMerlin: boolean;
+}
+
 export interface MissionState {
   phase: MissionPhase;
   roundIndex: number;
@@ -25,6 +31,7 @@ export interface MissionState {
   proposalIndex: number;
   teamVote?: TeamVoteState;
   missionResults: MissionResultState[];
+  assassination?: AssassinationState;
   winner?: MissionWinner;
 }
 
@@ -120,6 +127,26 @@ export function advanceMissionResult(state: MissionState, playerIds: string[], s
     proposalIndex: 0,
     teamVote: undefined,
     missionResults,
+  };
+}
+
+export function resolveAssassination(state: MissionState, players: Player[], assassinPlayerId: string, targetPlayerId: string): MissionState {
+  assertPhase(state, 'assassin');
+  assertPlayablePlayers(players.map((player) => player.id));
+  const assassin = players.find((player) => player.id === assassinPlayerId);
+  if (!assassin) throw new Error('Assassin player is not in this room.');
+  if (assassin.role !== 'Assassin') throw new Error('Only the Assassin can submit the assassination.');
+  if (targetPlayerId === assassinPlayerId) throw new Error('Assassin cannot target themselves.');
+  const target = players.find((player) => player.id === targetPlayerId);
+  if (!target) throw new Error('Assassination target is not in this room.');
+  if (!target.role) throw new Error('Assassination target has no role.');
+  const hitMerlin = assassinWins(targetPlayerId, players);
+  return {
+    ...state,
+    phase: 'finished',
+    selectedTeamIds: [],
+    assassination: { assassinPlayerId, targetPlayerId, hitMerlin },
+    winner: hitMerlin ? 'evil' : 'good',
   };
 }
 

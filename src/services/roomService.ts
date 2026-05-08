@@ -1,5 +1,5 @@
 import { assignRoles, getVisibilityInfo, type AssignmentOptions, type Player as AvalonPlayer, type Role } from '../domain/avalon';
-import { createInitialMissionState, type MissionState } from '../domain/missionFlow';
+import { createInitialMissionState, ensureMissionState, resolveAssassination, type MissionState } from '../domain/missionFlow';
 import { isDevSessionActive } from '../sessionKeys';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
@@ -156,6 +156,10 @@ export async function updateMissionState(roomId: string, missionState: MissionSt
   return repository().updateMissionState(roomId, missionState);
 }
 
+export async function submitAssassination(roomId: string, assassinPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot> {
+  return repository().submitAssassination(roomId, assassinPlayerId, targetPlayerId);
+}
+
 export async function removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot> {
   return repository().removePlayer(roomId, hostPlayerId, targetPlayerId);
 }
@@ -279,6 +283,18 @@ const localRepository = {
     const snapshot = requireById(data, roomId);
     snapshot.room.settings = { ...snapshot.room.settings, missionState };
     snapshot.room.status = missionState.phase;
+    writeRooms(data);
+    return snapshot;
+  },
+
+  async submitAssassination(roomId: string, assassinPlayerId: string, targetPlayerId: string) {
+    const data = readRooms();
+    const snapshot = requireById(data, roomId);
+    const playerIds = snapshot.players.map((player) => player.id);
+    const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
+    const nextMissionState = resolveAssassination(missionState, snapshot.players.map(toAvalonPlayer), assassinPlayerId, targetPlayerId);
+    snapshot.room.settings = { ...snapshot.room.settings, missionState: nextMissionState };
+    snapshot.room.status = nextMissionState.phase;
     writeRooms(data);
     return snapshot;
   },
@@ -445,6 +461,18 @@ const supabaseRepository = {
     const supabase = await getSupabaseRequired();
     const settings = { ...snapshot.room.settings, missionState };
     const { error } = await supabase.from('rooms').update({ settings, status: missionState.phase }).eq('id', roomId);
+    if (error) throw error;
+    return fetchSnapshot(roomId);
+  },
+
+  async submitAssassination(roomId: string, assassinPlayerId: string, targetPlayerId: string) {
+    const snapshot = await fetchSnapshot(roomId);
+    const playerIds = snapshot.players.map((player) => player.id);
+    const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
+    const nextMissionState = resolveAssassination(missionState, snapshot.players.map(toAvalonPlayer), assassinPlayerId, targetPlayerId);
+    const supabase = await getSupabaseRequired();
+    const settings = { ...snapshot.room.settings, missionState: nextMissionState };
+    const { error } = await supabase.from('rooms').update({ settings, status: nextMissionState.phase }).eq('id', roomId);
     if (error) throw error;
     return fetchSnapshot(roomId);
   },
@@ -653,7 +681,7 @@ function makeDemoPlayer(roomId: string, id: string, displayName: string, seatInd
 }
 
 function toAvalonPlayer(player: RoomPlayer): AvalonPlayer {
-  return { id: player.id, name: player.displayName };
+  return { id: player.id, name: player.displayName, role: player.role };
 }
 
 function mapRoom(row: Record<string, unknown>): Room {

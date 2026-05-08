@@ -3,9 +3,11 @@ import {
   advanceMissionResult,
   createInitialMissionState,
   recordTeamVote,
+  resolveAssassination,
   selectMissionTeam,
   type MissionState,
 } from './missionFlow';
+import type { Player } from './avalon';
 
 const playerIds = ['p1', 'p2', 'p3', 'p4', 'p5'];
 const sevenPlayerIds = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'];
@@ -54,15 +56,41 @@ describe('mission flow', () => {
     expect(next.missionResults).toMatchObject([{ outcome: 'success', successCount: 2, failCount: 0 }]);
   });
 
-  it('enters the assassin placeholder after three good quest successes', () => {
-    let state: MissionState = createInitialMissionState(playerIds);
-    for (const team of [['p1', 'p2'], ['p2', 'p3', 'p4'], ['p3', 'p4']] as string[][]) {
-      state = selectMissionTeam(state, playerIds, team);
-      state = recordTeamVote(state, playerIds, 3, 2);
-      state = advanceMissionResult(state, playerIds, team.length, 0);
-    }
+  it('enters the assassin phase after three good quest successes', () => {
+    const state = createAssassinPhaseState();
     expect(state.phase).toBe('assassin');
     expect(state.winner).toBeUndefined();
+  });
+
+  it('finishes with Evil winning when the assassin guesses Merlin', () => {
+    const next = resolveAssassination(createAssassinPhaseState(), rolePlayers, 'p2', 'p1');
+    expect(next).toMatchObject({
+      phase: 'finished',
+      winner: 'evil',
+      assassination: { assassinPlayerId: 'p2', targetPlayerId: 'p1', hitMerlin: true },
+    });
+  });
+
+  it('finishes with Good winning when the assassin guesses a non-Merlin target', () => {
+    const next = resolveAssassination(createAssassinPhaseState(), rolePlayers, 'p2', 'p3');
+    expect(next).toMatchObject({
+      phase: 'finished',
+      winner: 'good',
+      assassination: { assassinPlayerId: 'p2', targetPlayerId: 'p3', hitMerlin: false },
+    });
+  });
+
+  it('rejects assassination outside the assassin phase', () => {
+    expect(() => resolveAssassination(createInitialMissionState(playerIds), rolePlayers, 'p2', 'p1')).toThrow(
+      'Mission flow is in proposal, not assassin.',
+    );
+  });
+
+  it('rejects invalid assassination target and non-assassin submitter', () => {
+    const state = createAssassinPhaseState();
+    expect(() => resolveAssassination(state, rolePlayers, 'p3', 'p1')).toThrow('Only the Assassin can submit the assassination.');
+    expect(() => resolveAssassination(state, rolePlayers, 'p2', 'missing')).toThrow('Assassination target is not in this room.');
+    expect(() => resolveAssassination(state, rolePlayers, 'p2', 'p2')).toThrow('Assassin cannot target themselves.');
   });
 
   it('finishes with Evil winning after three failed quests', () => {
@@ -92,3 +120,21 @@ describe('mission flow', () => {
     ]);
   });
 });
+
+const rolePlayers: Player[] = [
+  { id: 'p1', name: 'Merlin', role: 'Merlin' },
+  { id: 'p2', name: 'Assassin', role: 'Assassin' },
+  { id: 'p3', name: 'Servant 1', role: 'Loyal Servant' },
+  { id: 'p4', name: 'Servant 2', role: 'Loyal Servant' },
+  { id: 'p5', name: 'Minion', role: 'Minion' },
+];
+
+function createAssassinPhaseState(): MissionState {
+  let state: MissionState = createInitialMissionState(playerIds);
+  for (const team of [['p1', 'p2'], ['p2', 'p3', 'p4'], ['p3', 'p4']] as string[][]) {
+    state = selectMissionTeam(state, playerIds, team);
+    state = recordTeamVote(state, playerIds, 3, 2);
+    state = advanceMissionResult(state, playerIds, team.length, 0);
+  }
+  return state;
+}

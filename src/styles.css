@@ -992,6 +992,80 @@ label {
   padding-left: 1.2rem;
 }
 
+.assassin-phase-banner,
+.assassin-result-banner {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 0.55rem;
+  min-height: min(58vh, 520px);
+  align-content: center;
+  border: 2px solid #e7bd63;
+  border-radius: 8px;
+  background:
+    linear-gradient(145deg, rgba(31, 18, 42, 0.98), rgba(72, 28, 32, 0.98) 62%, rgba(84, 50, 22, 0.98)),
+    #321a2f;
+  color: #fff7de;
+  padding: clamp(1.2rem, 6vw, 3rem);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.36), inset 0 0 0 2px rgba(255, 230, 157, 0.12);
+}
+
+.assassin-phase-banner h2,
+.assassin-result-banner h2 {
+  margin: 0;
+  color: #ffe39b;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2.3rem, 10vw, 4.6rem);
+  line-height: 0.95;
+  letter-spacing: 0;
+  text-shadow: 0 3px 0 #3b1a0f;
+}
+
+.assassin-phase-banner p,
+.assassin-result-banner p {
+  max-width: 42rem;
+  margin: 0;
+  color: #f0dca9;
+  font-size: 1.05rem;
+  font-weight: 900;
+  line-height: 1.4;
+}
+
+.assassin-result-banner.good-win {
+  border-color: #9fc36d;
+  background:
+    linear-gradient(145deg, rgba(33, 55, 37, 0.98), rgba(87, 120, 61, 0.96)),
+    #2b472e;
+}
+
+.assassin-result-banner.evil-win {
+  border-color: #d77a65;
+  background:
+    linear-gradient(145deg, rgba(61, 22, 28, 0.98), rgba(110, 42, 34, 0.96)),
+    #4b1d21;
+}
+
+.assassination-action,
+.assassination-targets {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.assassination-action {
+  border: 1px solid #7a3f99;
+  border-radius: 8px;
+  background: #f1ddff;
+  padding: 0.8rem;
+}
+
+.assassination-action h4 {
+  margin: 0;
+  color: #62247a;
+}
+
+.assassination-targets {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .status {
   display: grid;
   gap: 0.5rem;
@@ -1043,6 +1117,14 @@ label {
 
 .team-picker {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.assassin-warning-card {
+  border: 1px solid #9d3e2e;
+  border-radius: 8px;
+  background: #f8c8a9;
+  color: #61170e;
+  padding: 0.8rem;
 }
 
 @keyframes phone-celebrate {
@@ -1148,7 +1230,8 @@ label {
 
   .share-actions,
   .count-row,
-  .team-picker {
+  .team-picker,
+  .assassination-targets {
     grid-template-columns: 1fr;
   }
 }

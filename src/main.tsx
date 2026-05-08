@@ -19,6 +19,7 @@ import {
   advanceMissionResult,
   ensureMissionState,
   recordTeamVote,
+  resolveAssassination,
   selectMissionTeam,
   type MissionState,
 } from './domain/missionFlow';
@@ -36,6 +37,7 @@ import {
   removePlayer,
   setReady,
   startGame,
+  submitAssassination,
   subscribeToRoom,
   updateNickname,
   updateMissionState,
@@ -225,6 +227,34 @@ function App() {
     }
   }
 
+  async function handleAssassination(targetPlayerId: string) {
+    if (!snapshot || !currentPlayer) return;
+    setMessage('');
+    if (isDemoMode) {
+      try {
+        const playerIds = snapshot.players.map((player) => player.id);
+        const currentMissionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
+        const nextMissionState = resolveAssassination(currentMissionState, snapshot.players.map(toRoomAvalonPlayer), currentPlayer.id, targetPlayerId);
+        setSnapshot({
+          ...snapshot,
+          room: {
+            ...snapshot.room,
+            status: nextMissionState.phase,
+            settings: { ...snapshot.room.settings, missionState: nextMissionState },
+          },
+        });
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'Could not submit assassination.');
+      }
+      return;
+    }
+    try {
+      setSnapshot(await submitAssassination(snapshot.room.id, currentPlayer.id, targetPlayerId));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not submit assassination.');
+    }
+  }
+
   async function handleRemovePlayer(targetPlayerId: string) {
     if (!snapshot || !currentPlayer?.isHost) return;
     setMessage('');
@@ -397,6 +427,7 @@ function App() {
           onRemovePlayer={handleRemovePlayer}
           onLeave={handleLeaveRoom}
           onMissionStateChange={handleMissionStateChange}
+          onAssassination={handleAssassination}
           isDemoMode={isDemoMode}
         />
       )}
@@ -1102,6 +1133,37 @@ function toDemoAvalonPlayer(player: DemoPlayer): Player {
   return { id: player.id, name: player.displayName, role: player.role };
 }
 
+function toRoomAvalonPlayer(player: RoomPlayer): Player {
+  return { id: player.id, name: player.displayName, role: player.role };
+}
+
+function AssassinPhaseBanner() {
+  return (
+    <section className="assassin-phase-banner" aria-live="assertive">
+      <p className="eyebrow">Final endgame</p>
+      <h2>Assassin Phase</h2>
+      <p>Good has completed three quests. Normal missions are paused while the Assassin prepares a Merlin target.</p>
+    </section>
+  );
+}
+
+function AssassinationResultBanner({ missionState, players }: { missionState: MissionState; players: RoomPlayer[] }) {
+  const target = players.find((player) => player.id === missionState.assassination?.targetPlayerId);
+  const assassin = players.find((player) => player.id === missionState.assassination?.assassinPlayerId);
+  const hitMerlin = Boolean(missionState.assassination?.hitMerlin);
+  return (
+    <section className={`assassin-result-banner ${missionState.winner === 'evil' ? 'evil-win' : 'good-win'}`} aria-live="polite">
+      <p className="eyebrow">Assassination resolved</p>
+      <h2>{missionState.winner === 'evil' ? 'Evil Wins' : 'Good Wins'}</h2>
+      <p>
+        {assassin?.displayName ?? 'The Assassin'} chose {target?.displayName ?? 'an unknown target'}.
+        {' '}
+        {hitMerlin ? 'The target was Merlin.' : 'The target was not Merlin.'}
+      </p>
+    </section>
+  );
+}
+
 function RoomView({
   snapshot,
   currentPlayer,
@@ -1113,6 +1175,7 @@ function RoomView({
   onRemovePlayer,
   onLeave,
   onMissionStateChange,
+  onAssassination,
   isDemoMode,
 }: {
   snapshot: RoomSnapshot;
@@ -1125,20 +1188,33 @@ function RoomView({
   onRemovePlayer: (targetPlayerId: string) => void;
   onLeave: () => void;
   onMissionStateChange: (missionState: MissionState) => void;
+  onAssassination: (targetPlayerId: string) => void;
   isDemoMode: boolean;
 }) {
   const started = snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup';
   const playerIds = snapshot.players.map((player) => player.id);
   const missionState = started && snapshot.players.length >= 5 ? ensureMissionState(snapshot.room.settings.missionState, playerIds) : undefined;
   const currentTeamSize = missionState ? getTeamSize(snapshot.players.length, missionState.roundIndex) : 0;
+  const [assassinationTargetId, setAssassinationTargetId] = useState('');
   const readyCount = snapshot.players.filter((player) => player.isReady).length;
   const neededPlayers = Math.max(0, 5 - snapshot.players.length);
   const canStart = canStartGame(snapshot.players);
   const joinLinkPath = buildJoinUrl(window.location.href, snapshot.room.code);
   const joinLink = `${window.location.origin}${joinLinkPath}`;
+  const assassinationTargets = snapshot.players.filter((player) => player.id !== currentPlayer?.id);
+
+  useEffect(() => {
+    setAssassinationTargetId('');
+  }, [missionState?.phase, currentPlayer?.id]);
 
   return (
     <section className="room-grid">
+      {missionState?.phase === 'assassin' && (
+        <AssassinPhaseBanner />
+      )}
+      {missionState?.phase === 'finished' && missionState.assassination && (
+        <AssassinationResultBanner missionState={missionState} players={snapshot.players} />
+      )}
       <div className="room-code">
         <span>{isDemoMode ? 'Demo Room Code' : 'Room Code'}</span>
         <strong>{snapshot.room.code}</strong>
@@ -1204,6 +1280,33 @@ function RoomView({
               <ul>{privateInfo.sees.map((item) => <li key={item.playerId}>{item.name}: {item.hint}</li>)}</ul>
             ) : (
               <p>No extra night information.</p>
+            )}
+            {missionState?.phase === 'assassin' && privateInfo.role === 'Assassin' && (
+              <div className="assassination-action">
+                <h4>Assassination</h4>
+                <p>Choose Merlin. The game ends immediately after this guess.</p>
+                <div className="assassination-targets">
+                  {assassinationTargets.map((player) => (
+                    <label key={player.id} className="check">
+                      <input
+                        type="radio"
+                        name="assassinationTarget"
+                        checked={assassinationTargetId === player.id}
+                        onChange={() => setAssassinationTargetId(player.id)}
+                      />
+                      {player.displayName}
+                    </label>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={!assassinationTargetId}
+                  onClick={() => onAssassination(assassinationTargetId)}
+                >
+                  Submit Assassination
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -1386,9 +1489,29 @@ function MissionPanel({
         </div>
       )}
 
-      {missionState.phase === 'assassin' && <p>Good completed three quests - Assassin phase next.</p>}
-      {missionState.phase === 'finished' && <p>{missionState.winner === 'evil' ? 'Evil wins after three failed quests.' : 'Good wins.'}</p>}
-      {!currentPlayer?.isHost && <p className="hint">Only the host can update the table quest flow.</p>}
+      {missionState.phase === 'assassin' && (
+        <div className="mission-step assassin-warning-card">
+          <strong>Assassin phase is active.</strong>
+          <p>Good completed three quests. Normal mission play is paused while the Assassin chooses a Merlin target.</p>
+        </div>
+      )}
+      {missionState.phase === 'finished' && (
+        <div className="mission-step">
+          {missionState.assassination ? (
+            <>
+              <p>
+                Assassin target: {players.find((player) => player.id === missionState.assassination?.targetPlayerId)?.displayName ?? 'Unknown'}.
+                {' '}
+                {missionState.assassination.hitMerlin ? 'Merlin was found.' : 'Merlin survived.'}
+              </p>
+              <p>{missionState.winner === 'evil' ? 'Evil wins.' : 'Good wins.'}</p>
+            </>
+          ) : (
+            <p>{missionState.winner === 'evil' ? 'Evil wins after three failed quests.' : 'Good wins.'}</p>
+          )}
+        </div>
+      )}
+      {!currentPlayer?.isHost && <p className="hint">Only the host can update proposals, votes, and mission results.</p>}
     </section>
   );
 }
