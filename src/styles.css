@@ -510,7 +510,7 @@ label {
   gap: 0.85rem;
 }
 
-.demo-phone {
+.player-phone {
   display: grid;
   position: relative;
   align-content: start;
@@ -523,6 +523,10 @@ label {
   color: #26170e;
   padding: 0.75rem;
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.28);
+}
+
+.live-player-phone {
+  min-height: 0;
 }
 
 .leader-phone {

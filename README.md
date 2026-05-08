@@ -28,6 +28,7 @@ Demo supports:
   - 7: 2,3,3,4,4
   - 8-10: 3,4,4,5,5
 - A multi-phone table view where every player has a virtual phone. Each phone can show/hide that player's own role and night information.
+- Demo and live play share the same `PlayerPhone` surface for role, night information, and player-facing phase states. Demo mode controls reveal state persistently for operating many phones; live mode uses protected per-player peek controls.
 - Local table state for leader, quest round, team selection, public approve/reject votes, anonymous mission success/fail cards, and score progress.
 
 ## Developer 5-Player Simulator
@@ -76,6 +77,8 @@ The smoke test uses the local room service with mocked browser storage. It creat
 8. Starting locks the room, assigns Avalon Lite roles from the actual joined player count, and shows each device its own private reveal.
 9. The host can run the Mission MVP from the Table Quest panel: pick the leader's team, record public team vote counts, record mission card counts, and advance the score.
 10. Three successful missions enter the Assassin endgame. Normal missions pause, every player sees the Assassin warning, and the current Assassin can choose a Merlin target from the dedicated Assassin phase panel. Hitting Merlin gives Evil the win; missing Merlin gives Good the win.
+
+Live private reveal and the demo's multi-phone cards now render through the shared `PlayerPhone` component. The live room keeps role/night information behind protected peek covers, while demo mode can keep individual phone reveals open for tabletop simulation.
 
 ## Share Join
 

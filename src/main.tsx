@@ -13,6 +13,7 @@ import {
   type Player,
   type Role,
   type RolePresetOptions,
+  type VisibilityInfo,
   type Vote,
 } from './domain/avalon';
 import {
@@ -21,6 +22,7 @@ import {
   recordTeamVote,
   resolveAssassination,
   selectMissionTeam,
+  type MissionResultState,
   type MissionState,
 } from './domain/missionFlow';
 import { buildJoinUrl, buildStepUrl, parseEntryStep, parseJoinCodeFromUrl, type EntryScreen } from './navigationState';
@@ -749,13 +751,6 @@ function DemoPhone({
 }) {
   const isLeader = player.id === leaderId;
   const onTeam = selectedTeamIds.includes(player.id);
-  const selectedCount = selectedTeamIds.length;
-  const canAddToTeam = selectedCount < teamSize;
-  const publicRole = isLeader ? 'Current Leader' : 'Table player';
-  const outcomeClass = [
-    winner ? (roleAllegiance(player.role) === winner ? 'phone-winner' : 'phone-loser') : '',
-    phase === 'result' && lastMission ? `mission-${lastMission.outcome}-phone` : '',
-  ].filter(Boolean).join(' ');
   const privateInfo = getVisibilityInfo(
     { id: player.id, name: player.displayName, role: player.role },
     players.map(toDemoAvalonPlayer),
@@ -763,92 +758,402 @@ function DemoPhone({
   const canFailMission = roleAllegiance(player.role) === 'evil';
 
   return (
-    <article className={`demo-phone ${isLeader ? 'leader-phone' : ''} ${outcomeClass}`}>
+    <PlayerPhone
+      mode="demo"
+      player={player}
+      privateInfo={privateInfo}
+      leaderId={leaderId}
+      selectedTeamIds={selectedTeamIds}
+      winner={winner}
+      result={phase === 'result' ? lastMission : undefined}
+      roleReveal={{ revealed: player.revealRole, onToggle: onToggleRoleReveal }}
+      nightInfoReveal={{ revealed: player.revealNightInfo, onToggle: onToggleNightInfoReveal }}
+      action={getDemoPhoneAction({
+        player,
+        players,
+        leaderId,
+        phase,
+        isLeader,
+        onTeam,
+        selectedTeamIds,
+        teamSize,
+        canFailMission,
+        winner,
+        lastMission,
+        onToggleTeamPlayer,
+        onVote,
+        onPlayMissionCard,
+        onProposeTeam,
+      })}
+    />
+  );
+}
+
+interface PlayerPhonePerson {
+  id: string;
+  displayName: string;
+  seatIndex: number;
+  role?: Role;
+  teamVote?: Vote;
+  missionCard?: MissionCard;
+}
+
+type PlayerPhoneMode = 'demo' | 'live';
+type PlayerPhoneResult = DemoMissionResult | MissionResultState;
+
+interface PlayerPhoneRevealControl {
+  revealed?: boolean;
+  onToggle?: (playerId: string) => void;
+}
+
+type PlayerPhoneAction =
+  | {
+      kind: 'proposal';
+      isLeader: boolean;
+      leaderName: string;
+      teamSize: number;
+      selectedTeamIds: string[];
+      players: PlayerPhonePerson[];
+      canEdit: boolean;
+      onToggleTeamPlayer?: (playerId: string) => void;
+      onProposeTeam?: () => void;
+    }
+  | {
+      kind: 'vote';
+      selectedTeamNames: string[];
+      currentVote?: Vote;
+      onVote?: (vote: Vote) => void;
+    }
+  | {
+      kind: 'mission';
+      onTeam: boolean;
+      selectedTeamCount: number;
+      canFailMission: boolean;
+      currentMissionCard?: MissionCard;
+      onPlayMissionCard?: (card: MissionCard) => void;
+    }
+  | {
+      kind: 'result';
+      winner?: Allegiance;
+      playerWon?: boolean;
+      result?: PlayerPhoneResult;
+    }
+  | {
+      kind: 'assassin';
+      isAssassin: boolean;
+    }
+  | {
+      kind: 'finished';
+      winner?: Allegiance;
+      playerWon?: boolean;
+      result?: PlayerPhoneResult;
+    };
+
+function PlayerPhone({
+  mode,
+  player,
+  privateInfo,
+  leaderId,
+  selectedTeamIds = [],
+  winner,
+  result,
+  roleReveal,
+  nightInfoReveal,
+  action,
+}: {
+  mode: PlayerPhoneMode;
+  player: PlayerPhonePerson;
+  privateInfo?: VisibilityInfo;
+  leaderId?: string;
+  selectedTeamIds?: string[];
+  winner?: Allegiance;
+  result?: PlayerPhoneResult;
+  roleReveal?: PlayerPhoneRevealControl;
+  nightInfoReveal?: PlayerPhoneRevealControl;
+  action?: PlayerPhoneAction;
+}) {
+  const isLeader = player.id === leaderId;
+  const onTeam = selectedTeamIds.includes(player.id);
+  const publicRole = isLeader ? 'Current Leader' : mode === 'live' ? 'Your phone' : 'Table player';
+  const outcomeClass = [
+    winner && player.role ? (roleAllegiance(player.role) === winner ? 'phone-winner' : 'phone-loser') : '',
+    result ? `mission-${result.outcome}-phone` : '',
+  ].filter(Boolean).join(' ');
+  const [rolePeekOpen, setRolePeekOpen] = useState(false);
+  const [nightInfoPeekOpen, setNightInfoPeekOpen] = useState(false);
+  const roleRevealed = roleReveal?.revealed ?? rolePeekOpen;
+  const nightInfoRevealed = nightInfoReveal?.revealed ?? nightInfoPeekOpen;
+
+  useEffect(() => {
+    if (mode !== 'live') return;
+    setRolePeekOpen(false);
+    setNightInfoPeekOpen(false);
+  }, [mode, player.id, player.role]);
+
+  function setRoleRevealed(nextRevealed: boolean) {
+    if (roleReveal?.onToggle) {
+      if (roleRevealed !== nextRevealed) roleReveal.onToggle(player.id);
+      return;
+    }
+    setRolePeekOpen(nextRevealed);
+  }
+
+  function setNightInfoRevealed(nextRevealed: boolean) {
+    if (nightInfoReveal?.onToggle) {
+      if (nightInfoRevealed !== nextRevealed) nightInfoReveal.onToggle(player.id);
+      return;
+    }
+    setNightInfoPeekOpen(nextRevealed);
+  }
+
+  return (
+    <article className={`player-phone ${mode === 'demo' ? 'demo-phone' : 'live-player-phone'} ${isLeader ? 'leader-phone' : ''} ${outcomeClass}`}>
       <div className="phone-top">
         <strong>{player.displayName}</strong>
         <small>Seat {player.seatIndex + 1} · {publicRole}</small>
         {onTeam && <span className="phone-team-pill">Mission team</span>}
       </div>
-      <RoleRevealCard player={player} onToggleRoleReveal={onToggleRoleReveal} />
-      <NightInfoRevealCard
-        player={player}
-        privateInfo={privateInfo}
-        onToggleNightInfoReveal={onToggleNightInfoReveal}
-      />
-      {phase === 'proposal' && isLeader && (
-        <div className="phone-action">
-          <span>Propose team · {selectedCount}/{teamSize}</span>
-          {players.map((candidate) => (
-            <label key={candidate.id} className="check">
-              <input
-                type="checkbox"
-                checked={selectedTeamIds.includes(candidate.id)}
-                disabled={!selectedTeamIds.includes(candidate.id) && !canAddToTeam}
-                onChange={() => onToggleTeamPlayer(candidate.id)}
-              />
-              {candidate.displayName}
-            </label>
-          ))}
-          <button type="button" className="primary" disabled={selectedCount !== teamSize} onClick={onProposeTeam}>Propose Team</button>
-        </div>
+      {player.role && (
+        <RoleRevealCard
+          playerName={player.displayName}
+          role={player.role}
+          revealed={roleRevealed}
+          onReveal={() => setRoleRevealed(true)}
+          onHide={() => setRoleRevealed(false)}
+        />
       )}
-      {phase === 'proposal' && !isLeader && (
-        <div className="phone-action phone-readonly">
-          <span>Proposal</span>
-          <p>{players.find((candidate) => candidate.id === leaderId)?.displayName ?? 'Leader'} is choosing {teamSize} players.</p>
-          <p>Selected: {selectedCount}/{teamSize}</p>
-        </div>
+      {privateInfo && (
+        <NightInfoRevealCard
+          playerName={player.displayName}
+          privateInfo={privateInfo}
+          revealed={nightInfoRevealed}
+          onReveal={() => setNightInfoRevealed(true)}
+          onHide={() => setNightInfoRevealed(false)}
+        />
       )}
-      {phase === 'vote' && (
-        <div className="phone-action">
-          <span>Team vote</span>
-          <div className="choice-row">
-            <button type="button" className={player.teamVote === 'approve' ? 'selected' : ''} onClick={() => onVote(player.id, 'approve')}>Approve</button>
-            <button type="button" className={player.teamVote === 'reject' ? 'selected' : ''} onClick={() => onVote(player.id, 'reject')}>Reject</button>
-          </div>
-        </div>
-      )}
-      {phase === 'mission' && (
-        <div className="phone-action">
-          <span>{onTeam ? 'Mission card' : 'Mission'}</span>
-          {onTeam ? (
-            <div className="choice-row">
-              <button type="button" className={player.missionCard === 'success' ? 'selected' : ''} onClick={() => onPlayMissionCard(player.id, 'success')}>Success</button>
-              <button
-                type="button"
-                className={player.missionCard === 'fail' ? 'selected danger-choice' : ''}
-                disabled={!canFailMission}
-                onClick={() => onPlayMissionCard(player.id, 'fail')}
-              >
-                Fail
-              </button>
-            </div>
-          ) : (
-            <p>{selectedTeamIds.length} players are on the mission. Wait for their cards.</p>
-          )}
-        </div>
-      )}
-      {phase === 'result' && (
-        <div className={`phone-action ${winner ? 'phone-result' : 'phone-readonly'}`}>
-          <span>{winner ? 'Game result' : 'Quest result'}</span>
-          {winner ? (
-            <>
-              {lastMission && <MissionResultReveal result={lastMission} />}
-              <p>{roleAllegiance(player.role) === winner ? 'Victory' : 'Defeat'} · {winner === 'good' ? 'Good wins' : 'Evil wins'}</p>
-            </>
-          ) : (
-            <>
-              {lastMission && <MissionResultReveal result={lastMission} />}
-              <p>Next quest starts automatically.</p>
-            </>
-          )}
-        </div>
-      )}
+      {action && <PlayerPhoneActionPanel action={action} />}
     </article>
   );
 }
 
-function MissionResultReveal({ result }: { result: DemoMissionResult }) {
+function getDemoPhoneAction({
+  player,
+  players,
+  leaderId,
+  phase,
+  isLeader,
+  onTeam,
+  selectedTeamIds,
+  teamSize,
+  canFailMission,
+  winner,
+  lastMission,
+  onToggleTeamPlayer,
+  onVote,
+  onPlayMissionCard,
+  onProposeTeam,
+}: {
+  player: DemoPlayer;
+  players: DemoPlayer[];
+  leaderId?: string;
+  phase: DemoState['phase'];
+  isLeader: boolean;
+  onTeam: boolean;
+  selectedTeamIds: string[];
+  teamSize: number;
+  canFailMission: boolean;
+  winner?: Allegiance;
+  lastMission?: DemoMissionResult;
+  onToggleTeamPlayer: (playerId: string) => void;
+  onVote: (playerId: string, vote: Vote) => void;
+  onPlayMissionCard: (playerId: string, card: MissionCard) => void;
+  onProposeTeam: () => void;
+}): PlayerPhoneAction | undefined {
+  if (phase === 'proposal') {
+    return {
+      kind: 'proposal',
+      isLeader,
+      leaderName: players.find((candidate) => candidate.id === leaderId)?.displayName ?? 'Leader',
+      teamSize,
+      selectedTeamIds,
+      players,
+      canEdit: isLeader,
+      onToggleTeamPlayer,
+      onProposeTeam,
+    };
+  }
+  if (phase === 'vote') {
+    return {
+      kind: 'vote',
+      selectedTeamNames: selectedTeamIds.map((id) => players.find((candidate) => candidate.id === id)?.displayName ?? id),
+      currentVote: player.teamVote,
+      onVote: (vote) => onVote(player.id, vote),
+    };
+  }
+  if (phase === 'mission') {
+    return {
+      kind: 'mission',
+      onTeam,
+      selectedTeamCount: selectedTeamIds.length,
+      canFailMission,
+      currentMissionCard: player.missionCard,
+      onPlayMissionCard: (card) => onPlayMissionCard(player.id, card),
+    };
+  }
+  if (phase === 'result') {
+    return {
+      kind: 'result',
+      winner,
+      playerWon: winner && roleAllegiance(player.role) === winner,
+      result: lastMission,
+    };
+  }
+  return undefined;
+}
+
+function getLivePhoneAction({
+  player,
+  players,
+  missionState,
+  currentTeamSize,
+}: {
+  player: RoomPlayer;
+  players: RoomPlayer[];
+  missionState?: MissionState;
+  currentTeamSize: number;
+}): PlayerPhoneAction | undefined {
+  if (!missionState) return undefined;
+  const selectedTeamNames = missionState.selectedTeamIds.map((id) => players.find((candidate) => candidate.id === id)?.displayName ?? id);
+  const lastResult = missionState.missionResults.at(-1);
+  if (missionState.phase === 'proposal') {
+    return {
+      kind: 'proposal',
+      isLeader: missionState.leaderPlayerId === player.id,
+      leaderName: players.find((candidate) => candidate.id === missionState.leaderPlayerId)?.displayName ?? 'Leader',
+      teamSize: currentTeamSize,
+      selectedTeamIds: missionState.selectedTeamIds,
+      players,
+      canEdit: false,
+    };
+  }
+  if (missionState.phase === 'vote') {
+    return { kind: 'vote', selectedTeamNames };
+  }
+  if (missionState.phase === 'mission') {
+    return {
+      kind: 'mission',
+      onTeam: missionState.selectedTeamIds.includes(player.id),
+      selectedTeamCount: missionState.selectedTeamIds.length,
+      canFailMission: player.role ? roleAllegiance(player.role) === 'evil' : false,
+    };
+  }
+  if (missionState.phase === 'assassin') {
+    return { kind: 'assassin', isAssassin: player.role === 'Assassin' };
+  }
+  return {
+    kind: 'finished',
+    winner: missionState.winner,
+    playerWon: Boolean(missionState.winner && player.role && roleAllegiance(player.role) === missionState.winner),
+    result: lastResult,
+  };
+}
+
+function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
+  if (action.kind === 'proposal') {
+    const selectedCount = action.selectedTeamIds.length;
+    const canAddToTeam = selectedCount < action.teamSize;
+    return (
+      <div className={`phone-action ${action.canEdit ? '' : 'phone-readonly'}`}>
+        <span>{action.canEdit ? `Propose team · ${selectedCount}/${action.teamSize}` : 'Proposal'}</span>
+        {action.canEdit ? (
+          <>
+            {action.players.map((candidate) => (
+              <label key={candidate.id} className="check">
+                <input
+                  type="checkbox"
+                  checked={action.selectedTeamIds.includes(candidate.id)}
+                  disabled={!action.selectedTeamIds.includes(candidate.id) && !canAddToTeam}
+                  onChange={() => action.onToggleTeamPlayer?.(candidate.id)}
+                />
+                {candidate.displayName}
+              </label>
+            ))}
+            <button type="button" className="primary" disabled={selectedCount !== action.teamSize} onClick={action.onProposeTeam}>Propose Team</button>
+          </>
+        ) : (
+          <>
+            <p>{action.isLeader ? 'You are choosing the quest team.' : `${action.leaderName} is choosing ${action.teamSize} players.`}</p>
+            <p>Selected: {selectedCount}/{action.teamSize}</p>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  if (action.kind === 'vote') {
+    return (
+      <div className={`phone-action ${action.onVote ? '' : 'phone-readonly'}`}>
+        <span>Team vote</span>
+        {action.selectedTeamNames.length > 0 && <p>Team: {action.selectedTeamNames.join(', ')}</p>}
+        {action.onVote ? (
+          <div className="choice-row">
+            <button type="button" className={action.currentVote === 'approve' ? 'selected' : ''} onClick={() => action.onVote?.('approve')}>Approve</button>
+            <button type="button" className={action.currentVote === 'reject' ? 'selected' : ''} onClick={() => action.onVote?.('reject')}>Reject</button>
+          </div>
+        ) : (
+          <p>Wait for the host to record the table vote.</p>
+        )}
+      </div>
+    );
+  }
+
+  if (action.kind === 'mission') {
+    return (
+      <div className={`phone-action ${action.onTeam && action.onPlayMissionCard ? '' : 'phone-readonly'}`}>
+        <span>{action.onTeam ? 'Mission card' : 'Mission'}</span>
+        {action.onTeam && action.onPlayMissionCard ? (
+          <div className="choice-row">
+            <button type="button" className={action.currentMissionCard === 'success' ? 'selected' : ''} onClick={() => action.onPlayMissionCard?.('success')}>Success</button>
+            <button
+              type="button"
+              className={action.currentMissionCard === 'fail' ? 'selected danger-choice' : ''}
+              disabled={!action.canFailMission}
+              onClick={() => action.onPlayMissionCard?.('fail')}
+            >
+              Fail
+            </button>
+          </div>
+        ) : (
+          <p>{action.onTeam ? 'You are on the mission. Follow the host instructions.' : `${action.selectedTeamCount} players are on the mission. Wait for their cards.`}</p>
+        )}
+      </div>
+    );
+  }
+
+  if (action.kind === 'assassin') {
+    return (
+      <div className="phone-action phone-readonly">
+        <span>Assassin phase</span>
+        <p>{action.isAssassin ? 'Choose Merlin from the Assassin panel.' : 'Good completed three quests. The Assassin is choosing Merlin.'}</p>
+      </div>
+    );
+  }
+
+  const isFinished = action.kind === 'finished';
+  return (
+    <div className={`phone-action ${action.winner ? 'phone-result' : 'phone-readonly'}`}>
+      <span>{action.winner || isFinished ? 'Game result' : 'Quest result'}</span>
+      {action.result && <MissionResultReveal result={action.result} />}
+      {action.winner ? (
+        <p>{action.playerWon ? 'Victory' : 'Defeat'} · {action.winner === 'good' ? 'Good wins' : 'Evil wins'}</p>
+      ) : (
+        <p>{isFinished ? 'Game finished.' : 'Next quest starts automatically.'}</p>
+      )}
+    </div>
+  );
+}
+
+function MissionResultReveal({ result }: { result: PlayerPhoneResult }) {
   const succeeded = result.outcome === 'success';
   return (
     <div className={`mission-result-reveal ${succeeded ? 'success' : 'fail'}`} aria-live="polite">
@@ -859,13 +1164,19 @@ function MissionResultReveal({ result }: { result: DemoMissionResult }) {
 }
 
 function RoleRevealCard({
-  player,
-  onToggleRoleReveal,
+  playerName,
+  role,
+  revealed,
+  onReveal,
+  onHide,
 }: {
-  player: DemoPlayer;
-  onToggleRoleReveal: (playerId: string) => void;
+  playerName: string;
+  role: Role;
+  revealed: boolean;
+  onReveal: () => void;
+  onHide: () => void;
 }) {
-  const allegiance = roleAllegiance(player.role);
+  const allegiance = roleAllegiance(role);
 
   return (
     <PeekRevealCard
@@ -873,37 +1184,41 @@ function RoleRevealCard({
       revealedClassName={`revealed ${allegiance}`}
       coveredClassName="covered"
       faceClassName="role-face"
-      revealed={player.revealRole}
-      onReveal={() => onToggleRoleReveal(player.id)}
-      onHide={() => onToggleRoleReveal(player.id)}
-      revealLabel={`Reveal ${player.displayName}'s hidden role`}
+      revealed={revealed}
+      onReveal={onReveal}
+      onHide={onHide}
+      revealLabel={`Reveal ${playerName}'s hidden role`}
       coverTitle="Role hidden"
       coverHint="Slide to peek"
       hideLabel="Hide role"
     >
-      <strong>{player.role}</strong>
+      <strong>{role}</strong>
       <span>{allegiance === 'good' ? 'Good' : 'Evil'}</span>
     </PeekRevealCard>
   );
 }
 
 function NightInfoRevealCard({
-  player,
+  playerName,
   privateInfo,
-  onToggleNightInfoReveal,
+  revealed,
+  onReveal,
+  onHide,
 }: {
-  player: DemoPlayer;
-  privateInfo: ReturnType<typeof getVisibilityInfo>;
-  onToggleNightInfoReveal: (playerId: string) => void;
+  playerName: string;
+  privateInfo: VisibilityInfo;
+  revealed: boolean;
+  onReveal: () => void;
+  onHide: () => void;
 }) {
   return (
     <PeekRevealCard
       className="phone-info phone-night-info"
       faceClassName="night-info-face"
-      revealed={player.revealNightInfo}
-      onReveal={() => onToggleNightInfoReveal(player.id)}
-      onHide={() => onToggleNightInfoReveal(player.id)}
-      revealLabel={`Reveal ${player.displayName}'s hidden night information`}
+      revealed={revealed}
+      onReveal={onReveal}
+      onHide={onHide}
+      revealLabel={`Reveal ${playerName}'s hidden night information`}
       coverTitle="Night info hidden"
       coverHint="Slide to peek"
       hideLabel="Hide night info"
@@ -1319,18 +1634,17 @@ function RoomView({
           </div>
         )}
 
-        {started && privateInfo && (
-          <div className="role-box">
-            <p className="eyebrow">Only for {currentPlayer?.displayName}</p>
-            <h3>{privateInfo.role}</h3>
-            <p>{privateInfo.allegiance === 'good' ? 'Good team' : 'Evil team'}</p>
-            <h4>Night information</h4>
-            {privateInfo.sees.length ? (
-              <ul>{privateInfo.sees.map((item) => <li key={item.playerId}>{item.name}: {item.hint}</li>)}</ul>
-            ) : (
-              <p>No extra night information.</p>
-            )}
-          </div>
+        {started && currentPlayer && privateInfo && (
+          <PlayerPhone
+            mode="live"
+            player={currentPlayer}
+            privateInfo={privateInfo}
+            leaderId={missionState?.leaderPlayerId}
+            selectedTeamIds={missionState?.selectedTeamIds}
+            winner={missionState?.winner}
+            result={missionState?.phase === 'finished' ? missionState.missionResults.at(-1) : undefined}
+            action={getLivePhoneAction({ player: currentPlayer, players: snapshot.players, missionState, currentTeamSize })}
+          />
         )}
       </section>
 
