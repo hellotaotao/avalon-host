@@ -1795,35 +1795,37 @@ function RoomView({
         )}
       </section>
 
-      <section className="panel">
-        <h2>Players</h2>
-        {!started && <p className="hint">{readyCount}/{snapshot.players.length} ready. Minimum 5 players.</p>}
-        <ol className="players">
-          {snapshot.players.map((player) => (
-            <li key={player.id} className={player.id === currentPlayer?.id ? 'me' : ''}>
-              <span>{player.displayName}</span>
-              <small>{player.isHost ? 'Host' : `Seat ${player.seatIndex + 1}`}</small>
-              <strong>{started ? (player.id === currentPlayer?.id ? player.role : 'Locked') : player.isReady ? 'Ready' : 'Waiting'}</strong>
-              {!started && currentPlayer?.isHost && !player.isHost && !isDemoMode && (
-                <button type="button" className="small-danger" onClick={() => onRemovePlayer(player.id)}>Remove</button>
-              )}
-            </li>
-          ))}
-        </ol>
-        {!started && currentPlayer && (
-          <button type="button"
-            className="primary"
-            disabled={!canStart}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onStart();
-            }}
-          >
-            {canStart ? 'Start Game' : startValidation}
-          </button>
-        )}
-      </section>
+      {!started && (
+        <section className="panel">
+          <h2>Players</h2>
+          <p className="hint">{readyCount}/{snapshot.players.length} ready. Minimum 5 players.</p>
+          <ol className="players">
+            {snapshot.players.map((player) => (
+              <li key={player.id} className={player.id === currentPlayer?.id ? 'me' : ''}>
+                <span>{player.displayName}</span>
+                <small>{player.isHost ? 'Host' : `Seat ${player.seatIndex + 1}`}</small>
+                <strong>{player.isReady ? 'Ready' : 'Waiting'}</strong>
+                {currentPlayer?.isHost && !player.isHost && !isDemoMode && (
+                  <button type="button" className="small-danger" onClick={() => onRemovePlayer(player.id)}>Remove</button>
+                )}
+              </li>
+            ))}
+          </ol>
+          {currentPlayer && (
+            <button type="button"
+              className="primary"
+              disabled={!canStart}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onStart();
+              }}
+            >
+              {canStart ? 'Start Game' : startValidation}
+            </button>
+          )}
+        </section>
+      )}
 
       {started && (
         <MissionPanel
