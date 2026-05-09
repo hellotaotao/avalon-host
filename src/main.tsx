@@ -1566,6 +1566,68 @@ function summarizeRoles(roles: Role[]): string {
     .join(', ');
 }
 
+const publicRoleOrder: Role[] = ['Merlin', 'Percival', 'Loyal Servant', 'Assassin', 'Morgana', 'Mordred', 'Oberon', 'Minion'];
+
+function summarizePublicRoleLineup(players: RoomPlayer[]): Array<{ role: Role; count: number }> {
+  const roles = players.map((player) => player.role).filter((role): role is Role => Boolean(role));
+  const fallbackRoles = roles.length === players.length ? roles : buildRolePreset(players.length).roles;
+  const counts = fallbackRoles.reduce<Map<Role, number>>((summary, role) => {
+    summary.set(role, (summary.get(role) ?? 0) + 1);
+    return summary;
+  }, new Map<Role, number>());
+  return publicRoleOrder
+    .filter((role) => counts.has(role))
+    .map((role) => ({ role, count: counts.get(role) ?? 0 }));
+}
+
+function summarizeAllegianceCounts(players: RoomPlayer[]): { good?: number; evil?: number } {
+  const roles = players.map((player) => player.role).filter((role): role is Role => Boolean(role));
+  if (roles.length !== players.length) return {};
+  return {
+    good: roles.filter((role) => roleAllegiance(role) === 'good').length,
+    evil: roles.filter((role) => roleAllegiance(role) === 'evil').length,
+  };
+}
+
+function getMissionPhaseLabel(missionState: MissionState): string {
+  if (missionState.phase === 'proposal') return 'Choosing crew';
+  if (missionState.phase === 'vote') return 'Council vote';
+  if (missionState.phase === 'mission') return 'Quest underway';
+  if (missionState.phase === 'assassin') return 'Assassin endgame';
+  return missionState.winner === 'evil' ? 'Evil victory' : 'Good victory';
+}
+
+function getMissionPhaseCopy({
+  missionState,
+  currentTeamSize,
+  submittedVoteCount,
+  submittedCardCount,
+  playerCount,
+}: {
+  missionState: MissionState;
+  currentTeamSize: number;
+  submittedVoteCount: number;
+  submittedCardCount: number;
+  playerCount: number;
+}): string {
+  if (missionState.phase === 'proposal') {
+    return `The captain is choosing exactly ${currentTeamSize} players before the table votes.`;
+  }
+  if (missionState.phase === 'vote') {
+    return `${submittedVoteCount}/${playerCount} phones have voted on the proposed crew.`;
+  }
+  if (missionState.phase === 'mission') {
+    return `${submittedCardCount}/${missionState.selectedTeamIds.length} mission cards are in. The quest resolves when the crew is done.`;
+  }
+  if (missionState.phase === 'assassin') {
+    return 'Good reached three successful quests. The Assassin now chooses a Merlin target.';
+  }
+  if (missionState.assassination) {
+    return missionState.winner === 'evil' ? 'The Assassin found Merlin and stole the endgame.' : 'Merlin survived the final guess.';
+  }
+  return missionState.winner === 'evil' ? 'Evil wins after three failed quests.' : 'Good wins after three successful quests.';
+}
+
 function toDemoAvalonPlayer(player: DemoPlayer): Player {
   return { id: player.id, name: player.displayName, role: player.role };
 }
@@ -1862,8 +1924,6 @@ function MissionPanel({
   const [flowError, setFlowError] = useState('');
   const canEdit = Boolean(currentPlayer?.isHost && missionState && missionState.phase !== 'assassin' && missionState.phase !== 'finished');
   const playerIds = players.map((player) => player.id);
-  const successes = missionState?.missionResults.filter((result) => result.outcome === 'success').length ?? 0;
-  const fails = missionState?.missionResults.filter((result) => result.outcome === 'fail').length ?? 0;
   const submittedVoteCount = Object.keys(missionState?.teamVotes ?? {}).length;
   const submittedCardCount = missionState?.missionCardSubmissions?.submittedPlayerIds.length ?? 0;
 
@@ -1876,6 +1936,22 @@ function MissionPanel({
   }, [missionState?.phase, missionState?.roundIndex, missionState?.selectedTeamIds.join('|')]);
 
   if (!missionState) return null;
+
+  const rule = getPlayerCountRule(players.length);
+  const leaderName = players.find((player) => player.id === missionState.leaderPlayerId)?.displayName ?? 'Unknown captain';
+  const selectedTeamNames = missionState.selectedTeamIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id);
+  const visibleTeamIds = missionState.phase === 'proposal' && selectedTeamIds.length > 0 ? selectedTeamIds : missionState.selectedTeamIds;
+  const visibleTeamNames = visibleTeamIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id);
+  const roleSummary = summarizePublicRoleLineup(players);
+  const allegianceCounts = summarizeAllegianceCounts(players);
+  const phaseLabel = getMissionPhaseLabel(missionState);
+  const phaseCopy = getMissionPhaseCopy({
+    missionState,
+    currentTeamSize,
+    submittedVoteCount,
+    submittedCardCount,
+    playerCount: players.length,
+  });
 
   function togglePlayer(playerId: string) {
     setSelectedTeamIds((current) => (current.includes(playerId) ? current.filter((id) => id !== playerId) : [...current, playerId]));
@@ -1913,99 +1989,176 @@ function MissionPanel({
 
   return (
     <section className="panel mission-panel">
-      <h2>Table Quest</h2>
-      <div className="quest-track">
-        {[0, 1, 2, 3, 4].map((roundIndex) => {
-          const result = missionState.missionResults.find((item) => item.roundIndex === roundIndex);
-          return (
-            <span key={roundIndex} className={result?.outcome ?? (roundIndex === missionState.roundIndex ? 'current' : '')}>
-              Q{roundIndex + 1}: {getTeamSize(players.length, roundIndex)}
-            </span>
-          );
-        })}
+      <div className="mission-panel-heading">
+        <div>
+          <p className="eyebrow">Shared board</p>
+          <h2>Table Quest</h2>
+        </div>
+        <span className={`phase-badge phase-${missionState.phase}`}>{phaseLabel}</span>
       </div>
-      <div className="status">
-        <span>Phase: {missionState.phase}</span>
-        <span>Score: Good {successes} / Evil {fails}</span>
-        <span>Leader: {players.find((player) => player.id === missionState.leaderPlayerId)?.displayName ?? 'Unknown'}</span>
-      </div>
-      {flowError && <p className="notice">{flowError}</p>}
 
-      {missionState.phase === 'proposal' && (
-        <div className="mission-step">
-          <p>
-            Quest {missionState.roundIndex + 1} needs exactly {currentTeamSize} team members.
-            {' '}
-            {canEdit ? 'Host backup controls are available below.' : 'The leader proposes from their phone.'}
-          </p>
-          <div className="team-picker">
-            {players.map((player) => (
-              <label key={player.id} className="check">
-                <input
-                  type="checkbox"
-                  checked={selectedTeamIds.includes(player.id)}
-                  disabled={!canEdit}
-                  onChange={() => togglePlayer(player.id)}
-                />
-                {player.displayName}
-              </label>
+      <section className="mission-board-section table-makeup" aria-label="Game setup and table makeup">
+        <div className="mission-section-heading">
+          <h3>Table Makeup</h3>
+          <span>{players.length} players</span>
+        </div>
+        <div className="makeup-grid">
+          <div className="makeup-tile">
+            <span>Total</span>
+            <strong>{players.length}</strong>
+            <small>at the table</small>
+          </div>
+          <div className="makeup-tile good-tile">
+            <span>Good</span>
+            <strong>{allegianceCounts.good ?? rule.goodCount}</strong>
+            <small>loyal side</small>
+          </div>
+          <div className="makeup-tile evil-tile">
+            <span>Evil</span>
+            <strong>{allegianceCounts.evil ?? rule.evilCount}</strong>
+            <small>hidden side</small>
+          </div>
+        </div>
+        <div className="role-lineup" aria-label="Public role lineup">
+          <span>Roles in play</span>
+          <div>
+            {roleSummary.map((item) => (
+              <span key={item.role} className={`role-chip ${roleAllegiance(item.role)}`}>
+                {item.count > 1 ? `${item.count} ${item.role}` : item.role}
+              </span>
             ))}
           </div>
-          {canEdit && <button type="button" className="primary" onClick={submitTeam}>Propose Team</button>}
         </div>
-      )}
+      </section>
 
-      {missionState.phase === 'vote' && (
-        <div className="mission-step">
-          <p>Team: {missionState.selectedTeamIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id).join(', ')}</p>
-          <p>Phone votes in: {submittedVoteCount}/{players.length}. The table advances when every player has voted.</p>
-          {canEdit && (
-            <div className="count-row">
-              <input value={approveCount} onChange={(event) => setApproveCount(event.target.value)} inputMode="numeric" placeholder="Approve" aria-label="Approve count" />
-              <input value={rejectCount} onChange={(event) => setRejectCount(event.target.value)} inputMode="numeric" placeholder="Reject" aria-label="Reject count" />
-              <button type="button" className="primary" onClick={submitVote}>Record Vote</button>
+      <section className="mission-board-section" aria-label="Quest track">
+        <div className="mission-section-heading">
+          <h3>Quest Track</h3>
+          <span>First side to three wins</span>
+        </div>
+        <div className="quest-track mission-quest-track">
+          {[0, 1, 2, 3, 4].map((roundIndex) => {
+            const result = missionState.missionResults.find((item) => item.roundIndex === roundIndex);
+            const state = result?.outcome ?? (roundIndex === missionState.roundIndex && missionState.phase !== 'finished' ? 'current' : 'pending');
+            return (
+              <div key={roundIndex} className={`quest-card ${state}`}>
+                <span>Q{roundIndex + 1}</span>
+                <strong>{getTeamSize(players.length, roundIndex)}</strong>
+                <small>
+                  {result
+                    ? result.outcome === 'success' ? 'Good won' : 'Evil won'
+                    : roundIndex === missionState.roundIndex && missionState.phase !== 'finished' ? 'Current' : 'Pending'}
+                </small>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="mission-board-section expedition-board" aria-label="Current expedition">
+        <div className="mission-section-heading">
+          <h3>Current Expedition</h3>
+          <span>Quest {missionState.roundIndex + 1} of 5</span>
+        </div>
+        <div className="expedition-summary">
+          <div className="captain-card">
+            <span>Captain</span>
+            <strong>{leaderName}</strong>
+          </div>
+          <div className="expedition-state-card">
+            <span>{phaseLabel}</span>
+            <p>{phaseCopy}</p>
+          </div>
+        </div>
+        <div className="team-roster">
+          <div className="team-roster-heading">
+            <span>{missionState.phase === 'proposal' ? 'Proposed crew' : 'Locked crew'}</span>
+            <strong>{visibleTeamNames.length}/{currentTeamSize}</strong>
+          </div>
+          {visibleTeamNames.length > 0 ? (
+            <div className="member-chips">
+              {visibleTeamNames.map((name) => <span key={name}>{name}</span>)}
             </div>
-          )}
-        </div>
-      )}
-
-      {missionState.phase === 'mission' && (
-        <div className="mission-step">
-          <p>Team approved. Mission cards in: {submittedCardCount}/{missionState.selectedTeamIds.length}. The quest resolves when all selected players submit.</p>
-          {canEdit && (
-            <div className="count-row">
-              <input value={successCount} onChange={(event) => setSuccessCount(event.target.value)} inputMode="numeric" placeholder="Success" aria-label="Success cards" />
-              <input value={failCount} onChange={(event) => setFailCount(event.target.value)} inputMode="numeric" placeholder="Fail" aria-label="Fail cards" />
-              <button type="button" className="primary" onClick={submitMission}>Record Mission</button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {missionState.phase === 'assassin' && (
-        <div className="mission-step assassin-warning-card">
-          <strong>Assassin phase is active.</strong>
-          <p>Good completed three quests. Normal mission play is paused while the Assassin chooses a Merlin target.</p>
-        </div>
-      )}
-      {missionState.phase === 'finished' && (
-        <div className="mission-step">
-          {missionState.assassination ? (
-            <>
-              <p>
-                Assassin target: {players.find((player) => player.id === missionState.assassination?.targetPlayerId)?.displayName ?? 'Unknown'}.
-                {' '}
-                {missionState.assassination.hitMerlin ? 'Merlin was found.' : 'Merlin survived.'}
-              </p>
-              <p>{missionState.winner === 'evil' ? 'Evil wins.' : 'Good wins.'}</p>
-            </>
           ) : (
-            <p>{missionState.winner === 'evil' ? 'Evil wins after three failed quests.' : 'Good wins.'}</p>
+            <p className="empty-team">No crew is on the board yet.</p>
           )}
         </div>
-      )}
-      {!currentPlayer?.isHost && missionState.phase !== 'finished' && (
-        <p className="hint">Use your phone panel for any action assigned to you this phase.</p>
+        {missionState.phase === 'vote' && (
+          <div className="progress-rune" aria-label="Vote progress">
+            <span style={{ width: `${Math.round((submittedVoteCount / players.length) * 100)}%` }} />
+            <strong>{submittedVoteCount}/{players.length} phones voted</strong>
+          </div>
+        )}
+        {missionState.phase === 'mission' && (
+          <div className="progress-rune" aria-label="Mission card progress">
+            <span style={{ width: `${Math.round((submittedCardCount / Math.max(1, missionState.selectedTeamIds.length)) * 100)}%` }} />
+            <strong>{submittedCardCount}/{missionState.selectedTeamIds.length} cards submitted</strong>
+          </div>
+        )}
+        {missionState.teamVote && missionState.phase !== 'vote' && missionState.phase !== 'mission' && (
+          <p className="hint">Last proposal: {missionState.teamVote.approveCount} approve, {missionState.teamVote.rejectCount} reject. Crew {missionState.teamVote.passed ? 'approved' : 'rejected'}.</p>
+        )}
+        {missionState.phase === 'finished' && missionState.assassination && (
+          <p className="hint">
+            Assassin target: {players.find((player) => player.id === missionState.assassination?.targetPlayerId)?.displayName ?? 'Unknown'}.
+            {' '}
+            {missionState.assassination.hitMerlin ? 'Merlin was found.' : 'Merlin survived.'}
+          </p>
+        )}
+      </section>
+
+      {flowError && <p className="notice">{flowError}</p>}
+
+      {canEdit ? (
+        <section className="mission-admin">
+          <div className="mission-section-heading">
+            <h3>Host Backup</h3>
+            <span>Admin override</span>
+          </div>
+          {missionState.phase === 'proposal' && (
+            <div className="mission-step">
+              <p>Use only if the captain phone cannot submit. Quest {missionState.roundIndex + 1} needs exactly {currentTeamSize} crew members.</p>
+              <div className="team-picker">
+                {players.map((player) => (
+                  <label key={player.id} className="check">
+                    <input
+                      type="checkbox"
+                      checked={selectedTeamIds.includes(player.id)}
+                      disabled={!canEdit}
+                      onChange={() => togglePlayer(player.id)}
+                    />
+                    {player.displayName}
+                  </label>
+                ))}
+              </div>
+              <button type="button" className="primary" onClick={submitTeam}>Submit Backup Proposal</button>
+            </div>
+          )}
+
+          {missionState.phase === 'vote' && (
+            <div className="mission-step">
+              <p>Use only if phone votes need manual recovery. Crew: {selectedTeamNames.join(', ')}.</p>
+              <div className="count-row">
+                <input value={approveCount} onChange={(event) => setApproveCount(event.target.value)} inputMode="numeric" placeholder="Approve" aria-label="Approve count" />
+                <input value={rejectCount} onChange={(event) => setRejectCount(event.target.value)} inputMode="numeric" placeholder="Reject" aria-label="Reject count" />
+                <button type="button" className="primary" onClick={submitVote}>Record Vote</button>
+              </div>
+            </div>
+          )}
+
+          {missionState.phase === 'mission' && (
+            <div className="mission-step">
+              <p>Use only if mission cards need manual recovery after the crew has acted.</p>
+              <div className="count-row">
+                <input value={successCount} onChange={(event) => setSuccessCount(event.target.value)} inputMode="numeric" placeholder="Success" aria-label="Success cards" />
+                <input value={failCount} onChange={(event) => setFailCount(event.target.value)} inputMode="numeric" placeholder="Fail" aria-label="Fail cards" />
+                <button type="button" className="primary" onClick={submitMission}>Record Mission</button>
+              </div>
+            </div>
+          )}
+        </section>
+      ) : (
+        missionState.phase !== 'finished' && <p className="hint">Use your private phone area for any action assigned to you.</p>
       )}
     </section>
   );

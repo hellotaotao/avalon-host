@@ -1089,6 +1089,176 @@ label {
   gap: 0.75rem;
 }
 
+.mission-panel {
+  border-color: #d3b15f;
+  background:
+    linear-gradient(145deg, rgba(48, 36, 28, 0.96), rgba(92, 58, 29, 0.94) 42%, rgba(41, 54, 39, 0.96)),
+    #3c2b23;
+  color: #fff7de;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34), inset 0 0 0 2px rgba(255, 230, 157, 0.12);
+}
+
+.mission-panel h2,
+.mission-panel h3 {
+  color: #ffe39b;
+}
+
+.mission-panel-heading,
+.mission-section-heading,
+.expedition-summary,
+.team-roster-heading {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.mission-panel-heading,
+.mission-section-heading,
+.team-roster-heading {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.mission-panel-heading h2 {
+  font-size: 1.7rem;
+}
+
+.phase-badge,
+.mission-section-heading span,
+.team-roster-heading strong {
+  border: 1px solid rgba(240, 199, 107, 0.68);
+  border-radius: 999px;
+  background: rgba(255, 240, 189, 0.14);
+  color: #ffe9aa;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.phase-badge.phase-vote {
+  border-color: #d7b1ee;
+  color: #f1ddff;
+}
+
+.phase-badge.phase-mission {
+  border-color: #9fc36d;
+  color: #d9e7ca;
+}
+
+.phase-badge.phase-assassin,
+.phase-badge.phase-finished {
+  border-color: #d77a65;
+  color: #ffd3c6;
+}
+
+.mission-board-section,
+.mission-admin {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid rgba(240, 199, 107, 0.55);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 248, 221, 0.13), rgba(24, 20, 16, 0.12)),
+    rgba(24, 20, 16, 0.26);
+  padding: 0.85rem;
+}
+
+.table-makeup {
+  background:
+    linear-gradient(135deg, rgba(255, 240, 189, 0.17), rgba(48, 71, 45, 0.18)),
+    rgba(24, 20, 16, 0.28);
+}
+
+.makeup-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.makeup-tile,
+.captain-card,
+.expedition-state-card,
+.team-roster {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid rgba(240, 199, 107, 0.56);
+  border-radius: 8px;
+  background: rgba(255, 240, 189, 0.9);
+  color: #321a0c;
+  padding: 0.7rem;
+}
+
+.makeup-tile span,
+.captain-card span,
+.expedition-state-card span,
+.role-lineup > span,
+.team-roster-heading span {
+  color: #7a341d;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.makeup-tile strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.85rem;
+  line-height: 1;
+}
+
+.makeup-tile small {
+  color: #6a4b30;
+  font-weight: 800;
+}
+
+.good-tile {
+  border-color: #8baa5f;
+  background: #d9e7ca;
+}
+
+.evil-tile {
+  border-color: #c06956;
+  background: #f8c8a9;
+}
+
+.role-lineup {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.role-lineup > span {
+  color: #f2ddae;
+}
+
+.role-lineup div,
+.member-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.role-chip,
+.member-chips span {
+  border: 1px solid #ac7b38;
+  border-radius: 999px;
+  background: #fff0bd;
+  color: #321a0c;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.role-chip.good {
+  border-color: #8baa5f;
+  background: #d9e7ca;
+  color: #26351f;
+}
+
+.role-chip.evil {
+  border-color: #c06956;
+  background: #f8c8a9;
+  color: #61170e;
+}
+
 .quest-track {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
@@ -1115,6 +1285,139 @@ label {
 .quest-track .fail {
   border-color: #9d3e2e;
   background: #f8c8a9;
+}
+
+.mission-quest-track {
+  gap: 0.55rem;
+}
+
+.mission-quest-track .quest-card {
+  display: grid;
+  min-height: 92px;
+  align-content: center;
+  gap: 0.25rem;
+  border: 1px solid #ac7b38;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 246, 223, 0.95), rgba(228, 196, 132, 0.96)),
+    #fff0bd;
+  color: #321a0c;
+  padding: 0.65rem 0.45rem;
+  text-align: center;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.24), 0 4px 0 rgba(34, 16, 8, 0.18);
+}
+
+.mission-quest-track .quest-card span {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  color: #7a341d;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.mission-quest-track .quest-card strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.mission-quest-track .quest-card small {
+  color: #6a4b30;
+  font-weight: 900;
+}
+
+.mission-quest-track .quest-card.current {
+  border-color: #d7b1ee;
+  background:
+    linear-gradient(180deg, rgba(250, 236, 255, 0.98), rgba(207, 169, 226, 0.96)),
+    #f1ddff;
+}
+
+.mission-quest-track .quest-card.success {
+  border-color: #8baa5f;
+  background:
+    linear-gradient(180deg, rgba(231, 242, 215, 0.98), rgba(172, 201, 132, 0.96)),
+    #d9e7ca;
+}
+
+.mission-quest-track .quest-card.fail {
+  border-color: #c06956;
+  background:
+    linear-gradient(180deg, rgba(255, 219, 203, 0.98), rgba(217, 133, 101, 0.94)),
+    #f8c8a9;
+}
+
+.mission-quest-track .quest-card.pending {
+  opacity: 0.82;
+}
+
+.expedition-summary {
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.4fr);
+}
+
+.captain-card strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.45rem;
+  color: #5a2517;
+}
+
+.expedition-state-card p,
+.empty-team {
+  color: #3e2618;
+  font-weight: 800;
+}
+
+.team-roster {
+  background: rgba(255, 248, 221, 0.94);
+}
+
+.member-chips span {
+  border-color: #6b3d8f;
+  background: #f1ddff;
+  color: #3a2148;
+}
+
+.progress-rune {
+  position: relative;
+  min-height: 42px;
+  overflow: hidden;
+  border: 1px solid #d1a34e;
+  border-radius: 999px;
+  background: rgba(255, 240, 189, 0.2);
+  color: #ffe9aa;
+}
+
+.progress-rune span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 10px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #7a3f99, #d1a34e);
+}
+
+.progress-rune strong {
+  position: relative;
+  display: grid;
+  min-height: 42px;
+  place-items: center;
+  padding: 0 0.75rem;
+  font-size: 0.86rem;
+  text-align: center;
+}
+
+.mission-admin {
+  border-style: dashed;
+  border-color: rgba(216, 173, 88, 0.7);
+  background: rgba(17, 18, 16, 0.22);
+}
+
+.mission-admin .mission-step p {
+  color: #f2ddae;
+  font-weight: 800;
 }
 
 .team-picker {
@@ -1224,6 +1527,31 @@ label {
 @media (max-width: 420px) {
   .inline-form {
     grid-template-columns: 1fr;
+  }
+
+  .mission-panel-heading,
+  .mission-section-heading,
+  .expedition-summary,
+  .makeup-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mission-quest-track {
+    grid-template-columns: repeat(5, minmax(42px, 1fr));
+    gap: 0.35rem;
+  }
+
+  .mission-quest-track .quest-card {
+    min-height: 76px;
+    padding: 0.5rem 0.25rem;
+  }
+
+  .mission-quest-track .quest-card strong {
+    font-size: 1.45rem;
+  }
+
+  .mission-quest-track .quest-card small {
+    font-size: 0.68rem;
   }
 
   .players li {
