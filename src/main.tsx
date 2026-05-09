@@ -1681,8 +1681,9 @@ function RoomView({
   const currentTeamSize = missionState ? getTeamSize(snapshot.players.length, missionState.roundIndex) : 0;
   const [assassinationTargetId, setAssassinationTargetId] = useState('');
   const readyCount = snapshot.players.filter((player) => player.isReady).length;
-  const neededPlayers = Math.max(0, 5 - snapshot.players.length);
   const canStart = canStartGame(snapshot.players);
+  const isFinished = snapshot.room.status === 'finished' || missionState?.phase === 'finished';
+  const showJoinPanel = !started || isFinished;
   const joinLinkPath = buildJoinUrl(window.location.href, snapshot.room.code);
   const joinLink = `${window.location.origin}${joinLinkPath}`;
   const assassinationTargets = snapshot.players.filter((player) => player.id !== currentPlayer?.id);
@@ -1716,33 +1717,35 @@ function RoomView({
       {missionState?.phase === 'finished' && missionState.assassination && (
         <AssassinationResultBanner missionState={missionState} players={snapshot.players} />
       )}
-      <div className="room-code">
-        <span>{isDemoMode ? 'Demo Room Code' : 'Room Code'}</span>
-        <strong>{snapshot.room.code}</strong>
-        <p>
-          {started
-            ? 'Room is locked for private role reveal.'
-            : isDemoMode
-              ? 'Sandbox demo with bot players. This is not a real shareable room.'
-              : 'Share this code with players at the table.'}
-        </p>
-        <div className="share-panel">
-          <input value={joinLink} readOnly aria-label="Join link" onFocus={(event) => event.currentTarget.select()} />
-          <div className="share-actions">
-            <button type="button" onClick={() => copyText(joinLink)}>Copy Link</button>
-            <button type="button" onClick={() => copyText(snapshot.room.code)}>Copy Code</button>
-            {'share' in navigator && (
-              <button type="button" onClick={() => void navigator.share({ title: 'Join Avalon Host', text: `Avalon room ${snapshot.room.code}`, url: joinLink })}>
-                Share
-              </button>
-            )}
+      {showJoinPanel && (
+        <div className="room-code">
+          <span>{isDemoMode ? 'Demo Room Code' : 'Room Code'}</span>
+          <strong>{snapshot.room.code}</strong>
+          <p>
+            {isFinished
+              ? 'Game finished. The room code is visible again for the next table.'
+              : isDemoMode
+                ? 'Sandbox demo with bot players. This is not a real shareable room.'
+                : 'Share this code with players at the table.'}
+          </p>
+          <div className="share-panel">
+            <input value={joinLink} readOnly aria-label="Join link" onFocus={(event) => event.currentTarget.select()} />
+            <div className="share-actions">
+              <button type="button" onClick={() => copyText(joinLink)}>Copy Link</button>
+              <button type="button" onClick={() => copyText(snapshot.room.code)}>Copy Code</button>
+              {'share' in navigator && (
+                <button type="button" onClick={() => void navigator.share({ title: 'Join Avalon Host', text: `Avalon room ${snapshot.room.code}`, url: joinLink })}>
+                  Share
+                </button>
+              )}
+            </div>
+            <QrCodePanel value={joinLink} />
           </div>
-          <QrCodePanel value={joinLink} />
+          {currentPlayer && !started && (
+            <button type="button" className="small-danger room-leave" onClick={onLeave}>Leave Room</button>
+          )}
         </div>
-        {currentPlayer && !started && (
-          <button type="button" className="small-danger room-leave" onClick={onLeave}>Leave Room</button>
-        )}
-      </div>
+      )}
 
       <section className="panel">
         <h2>{started ? 'Private Reveal' : 'Current Room'}</h2>
@@ -1760,13 +1763,11 @@ function RoomView({
 
         {!started && (
           <div className="next-step">
-            <strong>{canStart ? 'Everyone is ready.' : 'Waiting to start'}</strong>
+            <strong>{canStart ? 'Ready players can start.' : 'Waiting to start'}</strong>
             <span>
               {canStart
-                ? 'Any ready player can start the game now.'
-                : neededPlayers > 0
-                  ? `${neededPlayers} more player${neededPlayers === 1 ? '' : 's'} needed.`
-                  : startValidation}
+                ? 'Starting now will leave unready players out of this game.'
+                : startValidation}
             </span>
           </div>
         )}
@@ -1798,7 +1799,7 @@ function RoomView({
       {!started && (
         <section className="panel">
           <h2>Players</h2>
-          <p className="hint">{readyCount}/{snapshot.players.length} ready. Minimum 5 players.</p>
+          <p className="hint">{readyCount}/{snapshot.players.length} ready. Minimum 5 ready players.</p>
           <ol className="players">
             {snapshot.players.map((player) => (
               <li key={player.id} className={player.id === currentPlayer?.id ? 'me' : ''}>

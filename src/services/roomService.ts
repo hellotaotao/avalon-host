@@ -82,14 +82,28 @@ export function normalizeRoomCode(code: string): string {
 }
 
 export function getStartValidation(players: RoomPlayer[]): string | undefined {
-  if (players.length < 5) return 'Need at least 5 players to start.';
-  if (players.length > 10) return 'Avalon Lite supports at most 10 players.';
-  if (players.some((player) => !player.isReady)) return 'Every player, including the host, must be ready.';
+  const startableCount = getStartablePlayers(players).length;
+  if (startableCount < 5) {
+    const neededCount = 5 - startableCount;
+    return `Need ${neededCount} more ready player${neededCount === 1 ? '' : 's'} to start.`;
+  }
+  if (startableCount > 10) return 'Avalon Lite supports at most 10 players.';
   return undefined;
 }
 
 export function canStartGame(players: RoomPlayer[]): boolean {
   return !getStartValidation(players);
+}
+
+export function getStartablePlayers(players: RoomPlayer[]): RoomPlayer[] {
+  const host = players.find((player) => player.isHost);
+  const activePlayers = players.filter((player) => player.isReady || player.id === host?.id);
+  return activePlayers.map((player, index) => ({
+    ...player,
+    seatIndex: index,
+    isHost: host ? player.id === host.id : index === 0,
+    isReady: true,
+  }));
 }
 
 export function createHostDemoRoom(displayName: string): { snapshot: RoomSnapshot; currentPlayerId: string } {
@@ -116,10 +130,11 @@ export function createJoinDemoRoom(displayName: string): { snapshot: RoomSnapsho
 export function startDemoSnapshot(snapshot: RoomSnapshot): StartResult {
   const reason = getStartValidation(snapshot.players);
   if (reason) return { ok: false, reason, snapshot };
+  const players = getStartablePlayers(snapshot.players);
   const assigned = assignRoles(
-    snapshot.players.map(toAvalonPlayer),
+    players.map(toAvalonPlayer),
     snapshot.room.settings,
-    `${snapshot.room.code}-${snapshot.players.map((player) => player.id).join('|')}`,
+    `${snapshot.room.code}-${players.map((player) => player.id).join('|')}`,
   );
   return {
     ok: true,
@@ -130,10 +145,10 @@ export function startDemoSnapshot(snapshot: RoomSnapshot): StartResult {
         status: 'reveal',
         settings: {
           ...snapshot.room.settings,
-          missionState: createInitialMissionState(snapshot.players.map((player) => player.id)),
+          missionState: createInitialMissionState(players.map((player) => player.id)),
         },
       },
-      players: snapshot.players.map((player) => ({
+      players: players.map((player) => ({
         ...player,
         role: assigned.find((assignedPlayer) => assignedPlayer.id === player.id)?.role,
       })),
@@ -284,14 +299,15 @@ const localRepository = {
     const snapshot = requireById(data, roomId);
     const reason = getStartValidation(snapshot.players);
     if (reason) return { ok: false, reason, snapshot };
+    const players = getStartablePlayers(snapshot.players);
     const assigned = assignRoles(
-      snapshot.players.map(toAvalonPlayer),
+      players.map(toAvalonPlayer),
       snapshot.room.settings,
-      `${snapshot.room.code}-${snapshot.players.map((player) => player.id).join('|')}`,
+      `${snapshot.room.code}-${players.map((player) => player.id).join('|')}`,
     );
     snapshot.room.status = 'reveal';
-    snapshot.room.settings.missionState = createInitialMissionState(snapshot.players.map((player) => player.id));
-    snapshot.players = snapshot.players.map((player) => ({
+    snapshot.room.settings.missionState = createInitialMissionState(players.map((player) => player.id));
+    snapshot.players = players.map((player) => ({
       ...player,
       role: assigned.find((assignedPlayer) => assignedPlayer.id === player.id)?.role,
     }));
@@ -490,20 +506,32 @@ const supabaseRepository = {
     const snapshot = await fetchSnapshot(roomId);
     const reason = getStartValidation(snapshot.players);
     if (reason) return { ok: false, reason, snapshot };
+    const players = getStartablePlayers(snapshot.players);
+    const activePlayerIds = new Set(players.map((player) => player.id));
+    const removedPlayerIds = snapshot.players.filter((player) => !activePlayerIds.has(player.id)).map((player) => player.id);
     const assigned = assignRoles(
-      snapshot.players.map(toAvalonPlayer),
+      players.map(toAvalonPlayer),
       snapshot.room.settings,
-      `${snapshot.room.code}-${snapshot.players.map((player) => player.id).join('|')}`,
+      `${snapshot.room.code}-${players.map((player) => player.id).join('|')}`,
     );
     const supabase = await getSupabaseRequired();
-    const settings = { ...snapshot.room.settings, missionState: createInitialMissionState(snapshot.players.map((player) => player.id)) };
+    if (removedPlayerIds.length > 0) {
+      const { error: deleteError } = await supabase.from('players').delete().eq('room_id', roomId).in('id', removedPlayerIds);
+      if (deleteError) throw deleteError;
+    }
+    const settings = { ...snapshot.room.settings, missionState: createInitialMissionState(players.map((player) => player.id)) };
     const { error: roomError } = await supabase.from('rooms').update({ status: 'reveal', settings }).eq('id', roomId);
     if (roomError) throw roomError;
     await Promise.all(
-      assigned.map((player) =>
+      players.map((player) =>
         supabase
           .from('players')
-          .update({ role: player.role })
+          .update({
+            seat_index: player.seatIndex,
+            is_host: player.isHost,
+            is_ready: player.isReady,
+            role: assigned.find((assignedPlayer) => assignedPlayer.id === player.id)?.role,
+          })
           .eq('id', player.id)
           .then(({ error }: { error: Error | null }) => {
             if (error) throw error;

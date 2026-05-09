@@ -9,6 +9,7 @@ import {
   findPlayerByDeviceToken,
   findPlayerByDisplayName,
   generateRoomCode,
+  getStartablePlayers,
   getStartValidation,
   leavePlayerFromSnapshot,
   normalizeRoomCode,
@@ -40,17 +41,36 @@ describe('room service rules', () => {
   });
 
   it('validates lobby start constraints', () => {
-    expect(getStartValidation(makePlayers(4))).toBe('Need at least 5 players to start.');
+    expect(getStartValidation(makePlayers(4))).toBe('Need 1 more ready player to start.');
     expect(getStartValidation(makePlayers(11))).toBe('Avalon Lite supports at most 10 players.');
-    expect(getStartValidation(makePlayers(5, [2]))).toBe('Every player, including the host, must be ready.');
+    expect(getStartValidation(makePlayers(5, [2]))).toBe('Need 1 more ready player to start.');
+    expect(getStartValidation(makePlayers(6, [2]))).toBeUndefined();
     expect(getStartValidation(makePlayers(5))).toBeUndefined();
   });
 
-  it('allows the room to start once every player is ready regardless of who will press start', () => {
+  it('allows the room to start once enough players are ready', () => {
     const players = makePlayers(5);
     expect(players.some((player) => !player.isHost && player.isReady)).toBe(true);
     expect(canStartGame(players)).toBe(true);
+    expect(canStartGame(makePlayers(6, [3]))).toBe(true);
     expect(canStartGame(makePlayers(5, [3]))).toBe(false);
+  });
+
+  it('excludes unready non-host players and compacts seats for start', () => {
+    const players = getStartablePlayers(makePlayers(7, [2, 5]));
+    expect(players.map((player) => player.id)).toEqual(['p1', 'p2', 'p4', 'p5', 'p7']);
+    expect(players.map((player) => player.seatIndex)).toEqual([0, 1, 2, 3, 4]);
+    expect(players.filter((player) => player.isHost)).toHaveLength(1);
+    expect(players[0]).toMatchObject({ id: 'p1', isHost: true, isReady: true });
+  });
+
+  it('preserves an unready host when preparing players for start', () => {
+    const sourcePlayers = makePlayers(6, [0, 5]);
+    expect(getStartValidation(sourcePlayers)).toBeUndefined();
+
+    const players = getStartablePlayers(sourcePlayers);
+    expect(players.map((player) => player.id)).toEqual(['p1', 'p2', 'p3', 'p4', 'p5']);
+    expect(players[0]).toMatchObject({ id: 'p1', isHost: true, isReady: true, seatIndex: 0 });
   });
 
   it('assigns roles from the actual joined player count', () => {
@@ -157,6 +177,20 @@ describe('room service rules', () => {
     expect(started.ok).toBe(true);
     expect(started.snapshot?.room.status).toBe('reveal');
     expect(started.snapshot?.players.every((player) => player.role)).toBe(true);
+  });
+
+  it('starts a demo room with unready players excluded from roles and mission state', () => {
+    const snapshot = makeSnapshot(7);
+    snapshot.players[2].isReady = false;
+    snapshot.players[5].isReady = false;
+    const started = startDemoSnapshot(snapshot);
+
+    expect(started.ok).toBe(true);
+    expect(started.snapshot?.players.map((player) => player.id)).toEqual(['p1', 'p2', 'p4', 'p5', 'p7']);
+    expect(started.snapshot?.players.map((player) => player.seatIndex)).toEqual([0, 1, 2, 3, 4]);
+    expect(started.snapshot?.players.filter((player) => player.isHost)).toHaveLength(1);
+    expect(started.snapshot?.players.every((player) => player.role)).toBe(true);
+    expect(started.snapshot?.room.settings.missionState?.leaderPlayerId).toBe('p1');
   });
 
   it('can auto-start a join demo room for a guest without persistence', () => {

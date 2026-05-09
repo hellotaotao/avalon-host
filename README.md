@@ -73,8 +73,8 @@ The smoke test uses the local room service with mocked browser storage. It creat
 4. The lobby shows seats, host marker, current player marker, and ready state.
 5. Refreshing the same browser restores its current room/player session, and rejoining from the same device reuses the existing seat.
 6. Before the game starts, the host can remove stale players from the lobby so abandoned seats do not block start.
-7. Host can start only when the room has 5-10 players and every player, including the host, is ready.
-8. Starting locks the room, assigns Avalon Lite roles from the actual joined player count, and shows each device its own private reveal.
+7. Host can start once 5-10 players are ready; unready non-host players are left out of that game.
+8. Starting locks the room, assigns Avalon Lite roles from the active ready player count, and shows each device its own private reveal.
 9. Mission play runs from the players' own phones: the current leader proposes the team, every player votes approve/reject, and selected mission players submit Success/Fail cards. Good players cannot submit Fail.
 10. Three successful missions enter the Assassin endgame. Normal missions pause, every player sees the Assassin warning, and the current Assassin can choose a Merlin target from the dedicated Assassin phase panel. Hitting Merlin gives Evil the win; missing Merlin gives Good the win.
 
@@ -82,7 +82,7 @@ Live private reveal and the demo's multi-phone cards now render through the shar
 
 ## Share Join
 
-Room screens keep the 5-digit room code prominent for table readout. They also show a readable join link, Copy Link and Copy Code controls, an optional Web Share action when the browser supports it, and a scannable QR code for the join URL. The numeric code remains the fallback.
+Room screens keep the 5-digit room code prominent for table readout before the game starts and after it finishes. They also show a readable join link, Copy Link and Copy Code controls, an optional Web Share action when the browser supports it, and a scannable QR code for the join URL. The numeric code remains the fallback.
 
 ## Mission MVP Status
 
