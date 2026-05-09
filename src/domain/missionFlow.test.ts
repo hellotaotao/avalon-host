@@ -5,6 +5,9 @@ import {
   recordTeamVote,
   resolveAssassination,
   selectMissionTeam,
+  submitMissionCard,
+  submitTeamProposal,
+  submitTeamVote,
   type MissionState,
 } from './missionFlow';
 import type { Player } from './avalon';
@@ -32,6 +35,64 @@ describe('mission flow', () => {
     const state = selectMissionTeam(createInitialMissionState(playerIds), playerIds, ['p1', 'p2']);
     expect(state.phase).toBe('vote');
     expect(state.selectedTeamIds).toEqual(['p1', 'p2']);
+  });
+
+  it('lets only the current leader submit a live phone proposal', () => {
+    const state = createInitialMissionState(playerIds);
+    expect(() => submitTeamProposal(state, playerIds, 'p2', ['p1', 'p2'])).toThrow('Only the current leader can propose the mission team.');
+
+    const proposed = submitTeamProposal(state, playerIds, 'p1', ['p1', 'p2']);
+    expect(proposed).toMatchObject({ phase: 'vote', selectedTeamIds: ['p1', 'p2'] });
+  });
+
+  it('records individual live votes and advances automatically when everyone has voted', () => {
+    let state = selectMissionTeam(createInitialMissionState(playerIds), playerIds, ['p1', 'p2']);
+    state = submitTeamVote(state, playerIds, 'p1', 'approve');
+    expect(state).toMatchObject({
+      phase: 'vote',
+      teamVotes: { p1: 'approve' },
+      teamVote: undefined,
+    });
+
+    state = submitTeamVote(state, playerIds, 'p2', 'approve');
+    state = submitTeamVote(state, playerIds, 'p3', 'approve');
+    state = submitTeamVote(state, playerIds, 'p4', 'reject');
+    state = submitTeamVote(state, playerIds, 'p5', 'reject');
+
+    expect(state).toMatchObject({
+      phase: 'mission',
+      teamVotes: { p1: 'approve', p2: 'approve', p3: 'approve', p4: 'reject', p5: 'reject' },
+      teamVote: { approveCount: 3, rejectCount: 2, passed: true },
+    });
+  });
+
+  it('records anonymous live mission cards and resolves only after the selected team has submitted', () => {
+    let state = selectMissionTeam(createInitialMissionState(playerIds), playerIds, ['p2', 'p3']);
+    state = recordTeamVote(state, playerIds, 3, 2);
+
+    state = submitMissionCard(state, playerIds, rolePlayers, 'p2', 'fail');
+    expect(state.phase).toBe('mission');
+    expect(state.missionResults).toEqual([]);
+    expect(state.missionCardSubmissions).toMatchObject({
+      submittedPlayerIds: ['p2'],
+      cards: ['fail'],
+    });
+
+    state = submitMissionCard(state, playerIds, rolePlayers, 'p3', 'success');
+    expect(state).toMatchObject({
+      phase: 'proposal',
+      roundIndex: 1,
+      missionResults: [{ outcome: 'fail', successCount: 1, failCount: 1 }],
+      missionCardSubmissions: undefined,
+    });
+  });
+
+  it('rejects live mission cards from non-team players and fail cards from Good players', () => {
+    const state = recordTeamVote(selectMissionTeam(createInitialMissionState(playerIds), playerIds, ['p1', 'p2']), playerIds, 3, 2);
+    expect(() => submitMissionCard(state, playerIds, rolePlayers, 'p3', 'success')).toThrow(
+      'Only selected mission team players can submit mission cards.',
+    );
+    expect(() => submitMissionCard(state, playerIds, rolePlayers, 'p1', 'fail')).toThrow('Good players cannot submit Fail cards.');
   });
 
   it('returns to proposal with the next leader when a team vote fails', () => {

@@ -1,4 +1,4 @@
-import { assassinWins, getTeamSize, resolveMission, votePasses, type MissionCard, type Player, type Vote } from './avalon';
+import { assassinWins, getTeamSize, resolveMission, roleAllegiance, votePasses, type MissionCard, type Player, type Vote } from './avalon';
 
 export type MissionPhase = 'proposal' | 'vote' | 'mission' | 'assassin' | 'finished';
 export type MissionWinner = 'good' | 'evil';
@@ -23,6 +23,11 @@ export interface AssassinationState {
   hitMerlin: boolean;
 }
 
+export interface MissionCardSubmissionState {
+  submittedPlayerIds: string[];
+  cards: MissionCard[];
+}
+
 export interface MissionState {
   phase: MissionPhase;
   roundIndex: number;
@@ -30,6 +35,8 @@ export interface MissionState {
   selectedTeamIds: string[];
   proposalIndex: number;
   teamVote?: TeamVoteState;
+  teamVotes?: Record<string, Vote>;
+  missionCardSubmissions?: MissionCardSubmissionState;
   missionResults: MissionResultState[];
   assassination?: AssassinationState;
   winner?: MissionWinner;
@@ -65,7 +72,16 @@ export function selectMissionTeam(state: MissionState, playerIds: string[], sele
     phase: 'vote',
     selectedTeamIds: uniqueSelection,
     teamVote: undefined,
+    teamVotes: undefined,
+    missionCardSubmissions: undefined,
   };
+}
+
+export function submitTeamProposal(state: MissionState, playerIds: string[], leaderPlayerId: string, selectedTeamIds: string[]): MissionState {
+  assertPhase(state, 'proposal');
+  assertPlayerInRoom(playerIds, leaderPlayerId);
+  if (state.leaderPlayerId !== leaderPlayerId) throw new Error('Only the current leader can propose the mission team.');
+  return selectMissionTeam(state, playerIds, selectedTeamIds);
 }
 
 export function recordTeamVote(state: MissionState, playerIds: string[], approveCount: number, rejectCount: number): MissionState {
@@ -88,9 +104,24 @@ export function recordTeamVote(state: MissionState, playerIds: string[], approve
       selectedTeamIds: [],
       proposalIndex: state.proposalIndex + 1,
       teamVote,
+      teamVotes: undefined,
+      missionCardSubmissions: undefined,
     };
   }
-  return { ...state, phase: 'mission', teamVote };
+  return { ...state, phase: 'mission', teamVote, missionCardSubmissions: undefined };
+}
+
+export function submitTeamVote(state: MissionState, playerIds: string[], playerId: string, vote: Vote): MissionState {
+  assertPhase(state, 'vote');
+  assertPlayablePlayers(playerIds);
+  assertPlayerInRoom(playerIds, playerId);
+  const teamVotes = { ...(state.teamVotes ?? {}), [playerId]: vote };
+  const votes = playerIds.map((id) => teamVotes[id]).filter((item): item is Vote => item === 'approve' || item === 'reject');
+  if (votes.length < playerIds.length) return { ...state, teamVotes, teamVote: undefined };
+
+  const approveCount = votes.filter((item) => item === 'approve').length;
+  const rejectCount = votes.length - approveCount;
+  return recordTeamVote({ ...state, teamVotes }, playerIds, approveCount, rejectCount);
 }
 
 export function advanceMissionResult(state: MissionState, playerIds: string[], successCount: number, failCount: number): MissionState {
@@ -116,8 +147,10 @@ export function advanceMissionResult(state: MissionState, playerIds: string[], s
   ];
   const successTotal = missionResults.filter((result) => result.outcome === 'success').length;
   const failTotal = missionResults.filter((result) => result.outcome === 'fail').length;
-  if (failTotal >= 3) return finishState(state, missionResults, 'evil');
-  if (successTotal >= 3) return { ...state, phase: 'assassin', missionResults, selectedTeamIds: [] };
+  if (failTotal >= 3) return finishState({ ...state, missionCardSubmissions: undefined, teamVotes: undefined }, missionResults, 'evil');
+  if (successTotal >= 3) {
+    return { ...state, phase: 'assassin', missionResults, selectedTeamIds: [], missionCardSubmissions: undefined, teamVotes: undefined };
+  }
   return {
     ...state,
     phase: 'proposal',
@@ -126,8 +159,32 @@ export function advanceMissionResult(state: MissionState, playerIds: string[], s
     selectedTeamIds: [],
     proposalIndex: 0,
     teamVote: undefined,
+    teamVotes: undefined,
+    missionCardSubmissions: undefined,
     missionResults,
   };
+}
+
+export function submitMissionCard(state: MissionState, playerIds: string[], players: Player[], playerId: string, card: MissionCard): MissionState {
+  assertPhase(state, 'mission');
+  assertPlayablePlayers(playerIds);
+  assertPlayerInRoom(playerIds, playerId);
+  if (!state.selectedTeamIds.includes(playerId)) throw new Error('Only selected mission team players can submit mission cards.');
+  const player = players.find((candidate) => candidate.id === playerId);
+  if (!player?.role) throw new Error('Mission player has no role.');
+  if (card === 'fail' && roleAllegiance(player.role) !== 'evil') throw new Error('Good players cannot submit Fail cards.');
+  const currentSubmissions = state.missionCardSubmissions ?? { submittedPlayerIds: [], cards: [] };
+  if (currentSubmissions.submittedPlayerIds.includes(playerId)) throw new Error('This player has already submitted a mission card.');
+  const missionCardSubmissions: MissionCardSubmissionState = {
+    submittedPlayerIds: [...currentSubmissions.submittedPlayerIds, playerId],
+    cards: [...currentSubmissions.cards, card],
+  };
+  if (missionCardSubmissions.submittedPlayerIds.length < state.selectedTeamIds.length) {
+    return { ...state, missionCardSubmissions };
+  }
+  const failCount = missionCardSubmissions.cards.filter((item) => item === 'fail').length;
+  const successCount = missionCardSubmissions.cards.length - failCount;
+  return advanceMissionResult({ ...state, missionCardSubmissions }, playerIds, successCount, failCount);
 }
 
 export function resolveAssassination(state: MissionState, players: Player[], assassinPlayerId: string, targetPlayerId: string): MissionState {
@@ -161,6 +218,10 @@ function nextLeader(playerIds: string[], currentLeaderPlayerId: string): string 
 
 function assertPlayablePlayers(playerIds: string[]) {
   if (playerIds.length < 5 || playerIds.length > 10) throw new Error('Avalon Lite missions need 5-10 players.');
+}
+
+function assertPlayerInRoom(playerIds: string[], playerId: string) {
+  if (!playerIds.includes(playerId)) throw new Error('Player is not in this room.');
 }
 
 function assertPhase(state: MissionState, phase: MissionPhase) {

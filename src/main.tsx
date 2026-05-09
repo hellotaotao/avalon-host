@@ -22,6 +22,9 @@ import {
   recordTeamVote,
   resolveAssassination,
   selectMissionTeam,
+  submitMissionCard as submitMissionCardToState,
+  submitTeamProposal,
+  submitTeamVote as submitTeamVoteToState,
   type MissionResultState,
   type MissionState,
 } from './domain/missionFlow';
@@ -36,10 +39,13 @@ import {
   joinRoom,
   leaveRoom,
   normalizeRoomCode,
+  proposeMissionTeam,
   removePlayer,
   setReady,
   startGame,
   submitAssassination,
+  submitMissionCard,
+  submitTeamVote,
   subscribeToRoom,
   updateNickname,
   updateMissionState,
@@ -209,7 +215,7 @@ function App() {
   }
 
   async function handleMissionStateChange(nextMissionState: MissionState) {
-    if (!snapshot || !currentPlayer?.isHost) return;
+    if (!snapshot || !currentPlayer) return;
     const nextSnapshot = {
       ...snapshot,
       room: {
@@ -226,6 +232,69 @@ function App() {
       setSnapshot(await updateMissionState(snapshot.room.id, nextMissionState));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not update mission flow.');
+    }
+  }
+
+  async function handleProposeMissionTeam(selectedTeamIds: string[]) {
+    if (!snapshot || !currentPlayer) return;
+    setMessage('');
+    if (isDemoMode) {
+      try {
+        const playerIds = snapshot.players.map((player) => player.id);
+        const currentMissionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
+        const nextMissionState = submitTeamProposal(currentMissionState, playerIds, currentPlayer.id, selectedTeamIds);
+        await handleMissionStateChange(nextMissionState);
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'Could not propose team.');
+      }
+      return;
+    }
+    try {
+      setSnapshot(await proposeMissionTeam(snapshot.room.id, currentPlayer.id, selectedTeamIds));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not propose team.');
+    }
+  }
+
+  async function handleSubmitTeamVote(vote: Vote) {
+    if (!snapshot || !currentPlayer) return;
+    setMessage('');
+    if (isDemoMode) {
+      try {
+        const playerIds = snapshot.players.map((player) => player.id);
+        const currentMissionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
+        const nextMissionState = submitTeamVoteToState(currentMissionState, playerIds, currentPlayer.id, vote);
+        await handleMissionStateChange(nextMissionState);
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'Could not submit vote.');
+      }
+      return;
+    }
+    try {
+      setSnapshot(await submitTeamVote(snapshot.room.id, currentPlayer.id, vote));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not submit vote.');
+    }
+  }
+
+  async function handleSubmitMissionCard(card: MissionCard) {
+    if (!snapshot || !currentPlayer) return;
+    setMessage('');
+    if (isDemoMode) {
+      try {
+        const playerIds = snapshot.players.map((player) => player.id);
+        const currentMissionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
+        const nextMissionState = submitMissionCardToState(currentMissionState, playerIds, snapshot.players.map(toRoomAvalonPlayer), currentPlayer.id, card);
+        await handleMissionStateChange(nextMissionState);
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'Could not submit mission card.');
+      }
+      return;
+    }
+    try {
+      setSnapshot(await submitMissionCard(snapshot.room.id, currentPlayer.id, card));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not submit mission card.');
     }
   }
 
@@ -429,6 +498,9 @@ function App() {
           onRemovePlayer={handleRemovePlayer}
           onLeave={handleLeaveRoom}
           onMissionStateChange={handleMissionStateChange}
+          onProposeMissionTeam={handleProposeMissionTeam}
+          onSubmitTeamVote={handleSubmitTeamVote}
+          onSubmitMissionCard={handleSubmitMissionCard}
           onAssassination={handleAssassination}
           isDemoMode={isDemoMode}
         />
@@ -822,6 +894,8 @@ type PlayerPhoneAction =
       kind: 'vote';
       selectedTeamNames: string[];
       currentVote?: Vote;
+      submittedVoteCount?: number;
+      playerCount?: number;
       onVote?: (vote: Vote) => void;
     }
   | {
@@ -830,6 +904,8 @@ type PlayerPhoneAction =
       selectedTeamCount: number;
       canFailMission: boolean;
       currentMissionCard?: MissionCard;
+      missionCardSubmitted?: boolean;
+      submittedCardCount?: number;
       onPlayMissionCard?: (card: MissionCard) => void;
     }
   | {
@@ -987,6 +1063,8 @@ function getDemoPhoneAction({
       kind: 'vote',
       selectedTeamNames: selectedTeamIds.map((id) => players.find((candidate) => candidate.id === id)?.displayName ?? id),
       currentVote: player.teamVote,
+      submittedVoteCount: players.filter((candidate) => candidate.teamVote).length,
+      playerCount: players.length,
       onVote: (vote) => onVote(player.id, vote),
     };
   }
@@ -997,6 +1075,8 @@ function getDemoPhoneAction({
       selectedTeamCount: selectedTeamIds.length,
       canFailMission,
       currentMissionCard: player.missionCard,
+      missionCardSubmitted: Boolean(player.missionCard),
+      submittedCardCount: players.filter((candidate) => selectedTeamIds.includes(candidate.id) && candidate.missionCard).length,
       onPlayMissionCard: (card) => onPlayMissionCard(player.id, card),
     };
   }
@@ -1016,35 +1096,61 @@ function getLivePhoneAction({
   players,
   missionState,
   currentTeamSize,
+  draftSelectedTeamIds,
+  onToggleTeamPlayer,
+  onProposeTeam,
+  onVote,
+  onPlayMissionCard,
 }: {
   player: RoomPlayer;
   players: RoomPlayer[];
   missionState?: MissionState;
   currentTeamSize: number;
+  draftSelectedTeamIds: string[];
+  onToggleTeamPlayer: (playerId: string) => void;
+  onProposeTeam: () => void;
+  onVote: (vote: Vote) => void;
+  onPlayMissionCard: (card: MissionCard) => void;
 }): PlayerPhoneAction | undefined {
   if (!missionState) return undefined;
   const selectedTeamNames = missionState.selectedTeamIds.map((id) => players.find((candidate) => candidate.id === id)?.displayName ?? id);
   const lastResult = missionState.missionResults.at(-1);
+  const submittedMissionCardIds = missionState.missionCardSubmissions?.submittedPlayerIds ?? [];
   if (missionState.phase === 'proposal') {
+    const isLeader = missionState.leaderPlayerId === player.id;
     return {
       kind: 'proposal',
-      isLeader: missionState.leaderPlayerId === player.id,
+      isLeader,
       leaderName: players.find((candidate) => candidate.id === missionState.leaderPlayerId)?.displayName ?? 'Leader',
       teamSize: currentTeamSize,
-      selectedTeamIds: missionState.selectedTeamIds,
+      selectedTeamIds: isLeader ? draftSelectedTeamIds : missionState.selectedTeamIds,
       players,
-      canEdit: false,
+      canEdit: isLeader,
+      onToggleTeamPlayer,
+      onProposeTeam,
     };
   }
   if (missionState.phase === 'vote') {
-    return { kind: 'vote', selectedTeamNames };
+    return {
+      kind: 'vote',
+      selectedTeamNames,
+      currentVote: missionState.teamVotes?.[player.id],
+      submittedVoteCount: Object.keys(missionState.teamVotes ?? {}).length,
+      playerCount: players.length,
+      onVote,
+    };
   }
   if (missionState.phase === 'mission') {
+    const onTeam = missionState.selectedTeamIds.includes(player.id);
+    const missionCardSubmitted = submittedMissionCardIds.includes(player.id);
     return {
       kind: 'mission',
-      onTeam: missionState.selectedTeamIds.includes(player.id),
+      onTeam,
       selectedTeamCount: missionState.selectedTeamIds.length,
       canFailMission: player.role ? roleAllegiance(player.role) === 'evil' : false,
+      missionCardSubmitted,
+      submittedCardCount: submittedMissionCardIds.length,
+      onPlayMissionCard: onTeam && !missionCardSubmitted ? onPlayMissionCard : undefined,
     };
   }
   if (missionState.phase === 'assassin') {
@@ -1096,12 +1202,17 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
         <span>Team vote</span>
         {action.selectedTeamNames.length > 0 && <p>Team: {action.selectedTeamNames.join(', ')}</p>}
         {action.onVote ? (
-          <div className="choice-row">
-            <button type="button" className={action.currentVote === 'approve' ? 'selected' : ''} onClick={() => action.onVote?.('approve')}>Approve</button>
-            <button type="button" className={action.currentVote === 'reject' ? 'selected' : ''} onClick={() => action.onVote?.('reject')}>Reject</button>
-          </div>
+          <>
+            <div className="choice-row">
+              <button type="button" className={action.currentVote === 'approve' ? 'selected' : ''} onClick={() => action.onVote?.('approve')}>Approve</button>
+              <button type="button" className={action.currentVote === 'reject' ? 'selected' : ''} onClick={() => action.onVote?.('reject')}>Reject</button>
+            </div>
+            {typeof action.submittedVoteCount === 'number' && action.playerCount && (
+              <p>Votes in: {action.submittedVoteCount}/{action.playerCount}</p>
+            )}
+          </>
         ) : (
-          <p>Wait for the host to record the table vote.</p>
+          <p>Waiting for all players to vote.</p>
         )}
       </div>
     );
@@ -1112,19 +1223,30 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
       <div className={`phone-action ${action.onTeam && action.onPlayMissionCard ? '' : 'phone-readonly'}`}>
         <span>{action.onTeam ? 'Mission card' : 'Mission'}</span>
         {action.onTeam && action.onPlayMissionCard ? (
-          <div className="choice-row">
-            <button type="button" className={action.currentMissionCard === 'success' ? 'selected' : ''} onClick={() => action.onPlayMissionCard?.('success')}>Success</button>
-            <button
-              type="button"
-              className={action.currentMissionCard === 'fail' ? 'selected danger-choice' : ''}
-              disabled={!action.canFailMission}
-              onClick={() => action.onPlayMissionCard?.('fail')}
-            >
-              Fail
-            </button>
-          </div>
+          <>
+            <div className="choice-row">
+              <button type="button" className={action.currentMissionCard === 'success' ? 'selected' : ''} onClick={() => action.onPlayMissionCard?.('success')}>Success</button>
+              <button
+                type="button"
+                className={action.currentMissionCard === 'fail' ? 'selected danger-choice' : ''}
+                disabled={!action.canFailMission}
+                onClick={() => action.onPlayMissionCard?.('fail')}
+              >
+                Fail
+              </button>
+            </div>
+            {typeof action.submittedCardCount === 'number' && (
+              <p>Cards in: {action.submittedCardCount}/{action.selectedTeamCount}</p>
+            )}
+          </>
         ) : (
-          <p>{action.onTeam ? 'You are on the mission. Follow the host instructions.' : `${action.selectedTeamCount} players are on the mission. Wait for their cards.`}</p>
+          <p>
+            {action.onTeam
+              ? action.missionCardSubmitted
+                ? `Card submitted. Cards in: ${action.submittedCardCount ?? 0}/${action.selectedTeamCount}.`
+                : 'Waiting for your mission card.'
+              : `${action.selectedTeamCount} players are on the mission. Wait for their cards.`}
+          </p>
         )}
       </div>
     );
@@ -1531,6 +1653,9 @@ function RoomView({
   onRemovePlayer,
   onLeave,
   onMissionStateChange,
+  onProposeMissionTeam,
+  onSubmitTeamVote,
+  onSubmitMissionCard,
   onAssassination,
   isDemoMode,
 }: {
@@ -1544,6 +1669,9 @@ function RoomView({
   onRemovePlayer: (targetPlayerId: string) => void;
   onLeave: () => void;
   onMissionStateChange: (missionState: MissionState) => void;
+  onProposeMissionTeam: (selectedTeamIds: string[]) => void;
+  onSubmitTeamVote: (vote: Vote) => void;
+  onSubmitMissionCard: (card: MissionCard) => void;
   onAssassination: (targetPlayerId: string) => void;
   isDemoMode: boolean;
 }) {
@@ -1558,10 +1686,19 @@ function RoomView({
   const joinLinkPath = buildJoinUrl(window.location.href, snapshot.room.code);
   const joinLink = `${window.location.origin}${joinLinkPath}`;
   const assassinationTargets = snapshot.players.filter((player) => player.id !== currentPlayer?.id);
+  const [liveSelectedTeamIds, setLiveSelectedTeamIds] = useState<string[]>([]);
 
   useEffect(() => {
     setAssassinationTargetId('');
   }, [missionState?.phase, currentPlayer?.id]);
+
+  useEffect(() => {
+    if (missionState?.phase !== 'proposal') setLiveSelectedTeamIds([]);
+  }, [missionState?.phase, missionState?.roundIndex, missionState?.proposalIndex]);
+
+  function toggleLiveTeamPlayer(playerId: string) {
+    setLiveSelectedTeamIds((current) => (current.includes(playerId) ? current.filter((id) => id !== playerId) : [...current, playerId]));
+  }
 
   return (
     <section className="room-grid">
@@ -1643,7 +1780,17 @@ function RoomView({
             selectedTeamIds={missionState?.selectedTeamIds}
             winner={missionState?.winner}
             result={missionState?.phase === 'finished' ? missionState.missionResults.at(-1) : undefined}
-            action={getLivePhoneAction({ player: currentPlayer, players: snapshot.players, missionState, currentTeamSize })}
+            action={getLivePhoneAction({
+              player: currentPlayer,
+              players: snapshot.players,
+              missionState,
+              currentTeamSize,
+              draftSelectedTeamIds: liveSelectedTeamIds,
+              onToggleTeamPlayer: toggleLiveTeamPlayer,
+              onProposeTeam: () => onProposeMissionTeam(liveSelectedTeamIds),
+              onVote: onSubmitTeamVote,
+              onPlayMissionCard: onSubmitMissionCard,
+            })}
           />
         )}
       </section>
@@ -1714,6 +1861,8 @@ function MissionPanel({
   const playerIds = players.map((player) => player.id);
   const successes = missionState?.missionResults.filter((result) => result.outcome === 'success').length ?? 0;
   const fails = missionState?.missionResults.filter((result) => result.outcome === 'fail').length ?? 0;
+  const submittedVoteCount = Object.keys(missionState?.teamVotes ?? {}).length;
+  const submittedCardCount = missionState?.missionCardSubmissions?.submittedPlayerIds.length ?? 0;
 
   useEffect(() => {
     setSelectedTeamIds(missionState?.selectedTeamIds ?? []);
@@ -1781,7 +1930,11 @@ function MissionPanel({
 
       {missionState.phase === 'proposal' && (
         <div className="mission-step">
-          <p>Quest {missionState.roundIndex + 1} needs exactly {currentTeamSize} team members.</p>
+          <p>
+            Quest {missionState.roundIndex + 1} needs exactly {currentTeamSize} team members.
+            {' '}
+            {canEdit ? 'Host backup controls are available below.' : 'The leader proposes from their phone.'}
+          </p>
           <div className="team-picker">
             {players.map((player) => (
               <label key={player.id} className="check">
@@ -1802,6 +1955,7 @@ function MissionPanel({
       {missionState.phase === 'vote' && (
         <div className="mission-step">
           <p>Team: {missionState.selectedTeamIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id).join(', ')}</p>
+          <p>Phone votes in: {submittedVoteCount}/{players.length}. The table advances when every player has voted.</p>
           {canEdit && (
             <div className="count-row">
               <input value={approveCount} onChange={(event) => setApproveCount(event.target.value)} inputMode="numeric" placeholder="Approve" aria-label="Approve count" />
@@ -1814,7 +1968,7 @@ function MissionPanel({
 
       {missionState.phase === 'mission' && (
         <div className="mission-step">
-          <p>Team approved. Record the mission cards from the table.</p>
+          <p>Team approved. Mission cards in: {submittedCardCount}/{missionState.selectedTeamIds.length}. The quest resolves when all selected players submit.</p>
           {canEdit && (
             <div className="count-row">
               <input value={successCount} onChange={(event) => setSuccessCount(event.target.value)} inputMode="numeric" placeholder="Success" aria-label="Success cards" />
@@ -1847,7 +2001,9 @@ function MissionPanel({
           )}
         </div>
       )}
-      {!currentPlayer?.isHost && <p className="hint">Only the host can update proposals, votes, and mission results.</p>}
+      {!currentPlayer?.isHost && missionState.phase !== 'finished' && (
+        <p className="hint">Use your phone panel for any action assigned to you this phase.</p>
+      )}
     </section>
   );
 }

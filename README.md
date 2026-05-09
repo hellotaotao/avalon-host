@@ -28,7 +28,7 @@ Demo supports:
   - 7: 2,3,3,4,4
   - 8-10: 3,4,4,5,5
 - A multi-phone table view where every player has a virtual phone. Each phone can show/hide that player's own role and night information.
-- Demo and live play share the same `PlayerPhone` surface for role, night information, and player-facing phase states. Demo mode controls reveal state persistently for operating many phones; live mode uses protected per-player peek controls.
+- Demo and live play share the same `PlayerPhone` surface for role, night information, and player-facing phase actions. Demo mode controls reveal state persistently for operating many phones; live mode uses protected per-player peek controls.
 - Local table state for leader, quest round, team selection, public approve/reject votes, anonymous mission success/fail cards, and score progress.
 
 ## Developer 5-Player Simulator
@@ -75,7 +75,7 @@ The smoke test uses the local room service with mocked browser storage. It creat
 6. Before the game starts, the host can remove stale players from the lobby so abandoned seats do not block start.
 7. Host can start only when the room has 5-10 players and every player, including the host, is ready.
 8. Starting locks the room, assigns Avalon Lite roles from the actual joined player count, and shows each device its own private reveal.
-9. The host can run the Mission MVP from the Table Quest panel: pick the leader's team, record public team vote counts, record mission card counts, and advance the score.
+9. Mission play runs from the players' own phones: the current leader proposes the team, every player votes approve/reject, and selected mission players submit Success/Fail cards. Good players cannot submit Fail.
 10. Three successful missions enter the Assassin endgame. Normal missions pause, every player sees the Assassin warning, and the current Assassin can choose a Merlin target from the dedicated Assassin phase panel. Hitting Merlin gives Evil the win; missing Merlin gives Good the win.
 
 Live private reveal and the demo's multi-phone cards now render through the shared `PlayerPhone` component. The live room keeps role/night information behind protected peek covers, while demo mode can keep individual phone reveals open for tabletop simulation.
@@ -86,9 +86,9 @@ Room screens keep the 5-digit room code prominent for table readout. They also s
 
 ## Mission MVP Status
 
-Mission flow state is stored in `rooms.settings.missionState` so the existing room subscription updates work without changing the realtime publication. Demo mode updates the local snapshot only and does not write to Supabase.
+Mission flow state is stored in `rooms.settings.missionState` so the existing room subscription updates work without changing the realtime publication. Live phone actions submit through `roomService`; demo mode updates the local snapshot only and does not write to Supabase.
 
-This MVP is mostly host-driven. Non-host players can view the table state but cannot mutate mission proposals, votes, or mission results. The exception is the final Assassin endgame: after three successful quests, the assigned Assassin can submit the Merlin guess from the dedicated Assassin phase panel. Three failed quests finish with Evil winning; an Assassin hit on Merlin also gives Evil the win; an Assassin miss gives Good the win.
+Normal live play is phone-driven. The Table Quest panel remains a status surface with host backup controls, but it is no longer the only way to progress proposals, votes, or mission results. Individual team votes are tracked in mission state, and mission cards are stored as submitted-player markers plus an anonymous card pile until every selected player has submitted; only then is the public success/fail aggregate revealed. After three successful quests, the assigned Assassin can submit the Merlin guess from the dedicated Assassin phase panel. Three failed quests finish with Evil winning; an Assassin hit on Merlin also gives Evil the win; an Assassin miss gives Good the win.
 
 ## Supabase Status
 

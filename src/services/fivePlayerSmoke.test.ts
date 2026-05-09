@@ -10,9 +10,12 @@ import {
   createRoom,
   getPrivateRoleInfo,
   joinRoom,
+  proposeMissionTeam,
   setReady,
   startGame,
   submitAssassination,
+  submitMissionCard,
+  submitTeamVote,
   updateMissionState,
   type RoomSnapshot,
 } from './roomService';
@@ -91,6 +94,51 @@ describe('five-player local room smoke', () => {
       phase: 'finished',
       winner: 'evil',
       assassination: { assassinPlayerId: assassin!.id, targetPlayerId: merlin!.id, hitMerlin: true },
+    });
+  });
+
+  it('runs a live phone mission flow through proposal, individual votes, and mission cards', async () => {
+    let snapshot = await startReadyFivePlayerRoom();
+    const playerIds = snapshot.players.map((player) => player.id);
+    const leaderId = snapshot.room.settings.missionState!.leaderPlayerId;
+    const selectedTeamIds = [playerIds[0], playerIds[1]];
+
+    snapshot = await proposeMissionTeam(snapshot.room.id, leaderId, selectedTeamIds);
+    expect(snapshot.room.status).toBe('vote');
+    expect(snapshot.room.settings.missionState).toMatchObject({
+      phase: 'vote',
+      selectedTeamIds,
+    });
+
+    for (const playerId of playerIds) {
+      snapshot = await submitTeamVote(snapshot.room.id, playerId, playerId === playerIds[4] ? 'reject' : 'approve');
+    }
+
+    expect(snapshot.room.status).toBe('mission');
+    expect(snapshot.room.settings.missionState).toMatchObject({
+      phase: 'mission',
+      teamVotes: {
+        [playerIds[0]]: 'approve',
+        [playerIds[1]]: 'approve',
+        [playerIds[2]]: 'approve',
+        [playerIds[3]]: 'approve',
+        [playerIds[4]]: 'reject',
+      },
+      teamVote: { approveCount: 4, rejectCount: 1, passed: true },
+    });
+
+    snapshot = await submitMissionCard(snapshot.room.id, selectedTeamIds[0], 'success');
+    expect(snapshot.room.status).toBe('mission');
+    expect(snapshot.room.settings.missionState?.missionResults).toEqual([]);
+    expect(snapshot.room.settings.missionState?.missionCardSubmissions?.submittedPlayerIds).toEqual([selectedTeamIds[0]]);
+
+    snapshot = await submitMissionCard(snapshot.room.id, selectedTeamIds[1], 'success');
+    expect(snapshot.room.status).toBe('proposal');
+    expect(snapshot.room.settings.missionState).toMatchObject({
+      phase: 'proposal',
+      roundIndex: 1,
+      missionResults: [{ roundIndex: 0, outcome: 'success', successCount: 2, failCount: 0, requiredFails: 1 }],
+      missionCardSubmissions: undefined,
     });
   });
 });

@@ -1,5 +1,14 @@
 import { assignRoles, getVisibilityInfo, type AssignmentOptions, type Player as AvalonPlayer, type Role } from '../domain/avalon';
-import { createInitialMissionState, ensureMissionState, resolveAssassination, type MissionState } from '../domain/missionFlow';
+import {
+  createInitialMissionState,
+  ensureMissionState,
+  resolveAssassination,
+  submitMissionCard as submitMissionCardToState,
+  submitTeamProposal,
+  submitTeamVote as submitTeamVoteToState,
+  type MissionState,
+} from '../domain/missionFlow';
+import type { MissionCard, Vote } from '../domain/avalon';
 import { isDevSessionActive } from '../sessionKeys';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
@@ -156,6 +165,18 @@ export async function updateMissionState(roomId: string, missionState: MissionSt
   return repository().updateMissionState(roomId, missionState);
 }
 
+export async function proposeMissionTeam(roomId: string, leaderPlayerId: string, selectedTeamIds: string[]): Promise<RoomSnapshot> {
+  return repository().proposeMissionTeam(roomId, leaderPlayerId, selectedTeamIds);
+}
+
+export async function submitTeamVote(roomId: string, playerId: string, vote: Vote): Promise<RoomSnapshot> {
+  return repository().submitTeamVote(roomId, playerId, vote);
+}
+
+export async function submitMissionCard(roomId: string, playerId: string, card: MissionCard): Promise<RoomSnapshot> {
+  return repository().submitMissionCard(roomId, playerId, card);
+}
+
 export async function submitAssassination(roomId: string, assassinPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot> {
   return repository().submitAssassination(roomId, assassinPlayerId, targetPlayerId);
 }
@@ -283,6 +304,42 @@ const localRepository = {
     const snapshot = requireById(data, roomId);
     snapshot.room.settings = { ...snapshot.room.settings, missionState };
     snapshot.room.status = missionState.phase;
+    writeRooms(data);
+    return snapshot;
+  },
+
+  async proposeMissionTeam(roomId: string, leaderPlayerId: string, selectedTeamIds: string[]) {
+    const data = readRooms();
+    const snapshot = requireById(data, roomId);
+    const playerIds = snapshot.players.map((player) => player.id);
+    const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
+    const nextMissionState = submitTeamProposal(missionState, playerIds, leaderPlayerId, selectedTeamIds);
+    snapshot.room.settings = { ...snapshot.room.settings, missionState: nextMissionState };
+    snapshot.room.status = nextMissionState.phase;
+    writeRooms(data);
+    return snapshot;
+  },
+
+  async submitTeamVote(roomId: string, playerId: string, vote: Vote) {
+    const data = readRooms();
+    const snapshot = requireById(data, roomId);
+    const playerIds = snapshot.players.map((player) => player.id);
+    const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
+    const nextMissionState = submitTeamVoteToState(missionState, playerIds, playerId, vote);
+    snapshot.room.settings = { ...snapshot.room.settings, missionState: nextMissionState };
+    snapshot.room.status = nextMissionState.phase;
+    writeRooms(data);
+    return snapshot;
+  },
+
+  async submitMissionCard(roomId: string, playerId: string, card: MissionCard) {
+    const data = readRooms();
+    const snapshot = requireById(data, roomId);
+    const playerIds = snapshot.players.map((player) => player.id);
+    const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
+    const nextMissionState = submitMissionCardToState(missionState, playerIds, snapshot.players.map(toAvalonPlayer), playerId, card);
+    snapshot.room.settings = { ...snapshot.room.settings, missionState: nextMissionState };
+    snapshot.room.status = nextMissionState.phase;
     writeRooms(data);
     return snapshot;
   },
@@ -465,6 +522,30 @@ const supabaseRepository = {
     return fetchSnapshot(roomId);
   },
 
+  async proposeMissionTeam(roomId: string, leaderPlayerId: string, selectedTeamIds: string[]) {
+    const snapshot = await fetchSnapshot(roomId);
+    const playerIds = snapshot.players.map((player) => player.id);
+    const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
+    const nextMissionState = submitTeamProposal(missionState, playerIds, leaderPlayerId, selectedTeamIds);
+    return updateRoomMissionState(roomId, snapshot, nextMissionState);
+  },
+
+  async submitTeamVote(roomId: string, playerId: string, vote: Vote) {
+    const snapshot = await fetchSnapshot(roomId);
+    const playerIds = snapshot.players.map((player) => player.id);
+    const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
+    const nextMissionState = submitTeamVoteToState(missionState, playerIds, playerId, vote);
+    return updateRoomMissionState(roomId, snapshot, nextMissionState);
+  },
+
+  async submitMissionCard(roomId: string, playerId: string, card: MissionCard) {
+    const snapshot = await fetchSnapshot(roomId);
+    const playerIds = snapshot.players.map((player) => player.id);
+    const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
+    const nextMissionState = submitMissionCardToState(missionState, playerIds, snapshot.players.map(toAvalonPlayer), playerId, card);
+    return updateRoomMissionState(roomId, snapshot, nextMissionState);
+  },
+
   async submitAssassination(roomId: string, assassinPlayerId: string, targetPlayerId: string) {
     const snapshot = await fetchSnapshot(roomId);
     const playerIds = snapshot.players.map((player) => player.id);
@@ -559,6 +640,14 @@ const supabaseRepository = {
     };
   },
 };
+
+async function updateRoomMissionState(roomId: string, snapshot: RoomSnapshot, missionState: MissionState): Promise<RoomSnapshot> {
+  const supabase = await getSupabaseRequired();
+  const settings = { ...snapshot.room.settings, missionState };
+  const { error } = await supabase.from('rooms').update({ settings, status: missionState.phase }).eq('id', roomId);
+  if (error) throw error;
+  return fetchSnapshot(roomId);
+}
 
 async function fetchSnapshot(roomId: string): Promise<RoomSnapshot> {
   const supabase = await getSupabaseRequired();
