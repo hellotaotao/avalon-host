@@ -1,8 +1,8 @@
-import { assignRoles, getVisibilityInfo, type AssignmentOptions, type Player as AvalonPlayer, type Role } from '../domain/avalon';
+import { assignRoles, getVisibilityInfo, type AssignmentOptions, type Player as AvalonPlayer, type Role } from '../domain/avalon.js';
 import {
   createInitialMissionState,
   type MissionState,
-} from '../domain/missionFlow';
+} from '../domain/missionFlow.js';
 
 export type RoomStatus = 'setup' | 'lobby' | 'locked' | 'reveal' | 'proposal' | 'vote' | 'mission' | 'assassin' | 'finished';
 

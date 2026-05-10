@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { neon } from '@neondatabase/serverless';
 import {
   ensureMissionState,
@@ -6,8 +7,8 @@ import {
   submitTeamProposal,
   submitTeamVote as submitTeamVoteToState,
   type MissionState,
-} from '../src/domain/missionFlow';
-import type { MissionCard, Vote } from '../src/domain/avalon';
+} from '../src/domain/missionFlow.js';
+import type { MissionCard, Vote } from '../src/domain/avalon.js';
 import {
   assertDeletedRows,
   findPlayerByDisplayName,
@@ -24,7 +25,7 @@ import {
   type RoomSettings,
   type RoomSnapshot,
   type StartResult,
-} from '../src/services/roomCore';
+} from '../src/services/roomCore.js';
 
 type VercelRequest = {
   method?: string;

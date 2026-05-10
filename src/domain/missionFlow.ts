@@ -1,4 +1,4 @@
-import { assassinWins, getTeamSize, resolveMission, roleAllegiance, votePasses, type MissionCard, type Player, type Vote } from './avalon';
+import { assassinWins, getTeamSize, resolveMission, roleAllegiance, votePasses, type MissionCard, type Player, type Vote } from './avalon.js';
 
 export type MissionPhase = 'proposal' | 'vote' | 'mission' | 'assassin' | 'finished';
 export type MissionWinner = 'good' | 'evil';
