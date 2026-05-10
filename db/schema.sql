@@ -27,6 +27,7 @@ create table if not exists players (
   unique (room_id, seat_index)
 );
 
+create index if not exists rooms_cleanup_idx on rooms(status, updated_at);
 create index if not exists players_room_id_idx on players(room_id);
 create index if not exists players_room_device_token_idx on players(room_id, device_token_hash);
 

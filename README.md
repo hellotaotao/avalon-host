@@ -114,3 +114,15 @@ db/schema.sql
 ```
 
 The current API intentionally preserves the prototype security posture: device tokens are still lightweight seat-rejoin identifiers, and room actions are server-mediated but not a full auth rewrite.
+
+## Neon Cleanup
+
+Rooms are temporary and are cleaned by the scheduled Vercel API route at `/api/cleanup` to keep the Neon Free storage footprint small. The cleanup deletes rooms, relying on the `players.room_id` `ON DELETE CASCADE` foreign key to remove player rows too. It does not store access logs.
+
+Cleanup thresholds:
+
+- Finished rooms: deleted after 7 days without updates.
+- Abandoned setup/lobby rooms: deleted after 48 hours without updates.
+- Other in-progress rooms (`locked`, `reveal`, `proposal`, `vote`, `mission`, `assassin`): deleted only after 7 days without updates to avoid disrupting active games.
+
+`vercel.json` schedules the cleanup daily at 03:00 UTC. For production, set `CRON_SECRET` in Vercel; Vercel Cron will send `Authorization: Bearer $CRON_SECRET` and the endpoint will require it. If `CRON_SECRET` is not set, the endpoint accepts Vercel's `x-vercel-cron: 1` header for prototype deployments.
