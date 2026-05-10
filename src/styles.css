@@ -830,12 +830,13 @@ label {
 
 .room-code {
   display: grid;
-  gap: 0.25rem;
+  gap: 0.35rem;
+  align-content: start;
   border: 2px solid #e7bd63;
   border-radius: 8px;
   background: linear-gradient(145deg, #311843, #4b1d21 62%, #7a451b);
   color: #fff7de;
-  padding: 1rem;
+  padding: 0.85rem;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3), inset 0 0 0 2px rgba(255, 230, 157, 0.12);
 }
 
@@ -850,21 +851,23 @@ label {
 .room-code strong {
   color: #ffe39b;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 3.2rem;
-  line-height: 1;
+  font-size: clamp(2.5rem, 7vw, 3.2rem);
+  line-height: 0.95;
   letter-spacing: 0.08em;
 }
 
 .room-code p {
-  margin: 0.35rem 0 0;
+  margin: 0;
   color: #f0dca9;
   line-height: 1.35;
 }
 
 .share-panel {
   display: grid;
-  gap: 0.6rem;
-  margin-top: 0.65rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.55rem;
+  margin-top: 0.35rem;
 }
 
 .share-panel input {
@@ -878,6 +881,16 @@ label {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.5rem;
+}
+
+.share-panel input,
+.share-actions {
+  grid-column: 1;
+}
+
+.share-panel .qr-code {
+  grid-column: 2;
+  grid-row: 1 / span 2;
 }
 
 .share-actions button,
@@ -900,7 +913,7 @@ label {
 }
 
 .room-leave {
-  margin-top: 0.5rem;
+  margin-top: 0.15rem;
   width: fit-content;
 }
 
@@ -1582,6 +1595,17 @@ label {
     grid-template-columns: 1fr auto;
   }
 
+  .share-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .share-panel input,
+  .share-actions,
+  .share-panel .qr-code {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
   .share-actions,
   .count-row,
   .team-picker,
@@ -1600,7 +1624,8 @@ label {
   }
 
   .room-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+    align-items: start;
   }
 
   .demo-options,
@@ -1616,7 +1641,6 @@ label {
     grid-template-columns: repeat(3, 1fr);
   }
 
-  .room-code,
   .room-grid .panel:last-child {
     grid-column: 1 / -1;
   }
