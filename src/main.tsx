@@ -1800,18 +1800,18 @@ function RoomView({
             <div className="share-actions">
               <button type="button" onClick={() => copyText(joinLink)}>Copy Link</button>
               <button type="button" onClick={() => copyText(snapshot.room.code)}>Copy Code</button>
-              {'share' in navigator && (
-                <button type="button" onClick={() => void navigator.share({ title: 'Join Avalon Host', text: `Avalon room ${snapshot.room.code}`, url: joinLink })}>
-                  Share
-                </button>
-              )}
             </div>
           </div>
         </div>
       )}
 
       <section className="panel">
-        <h2>{started ? 'Private Reveal' : 'Current Room'}</h2>
+        <div className="panel-header">
+          <h2>{started ? 'Private Reveal' : 'Current Room'}</h2>
+          {currentPlayer && !started && (
+            <button type="button" className="small-danger room-leave" onClick={onLeave}>Leave Room</button>
+          )}
+        </div>
         {currentPlayer && !started && (
           <>
             <form className="inline-form" onSubmit={onRename}>
@@ -1834,9 +1834,6 @@ function RoomView({
                   : startValidation}
               </span>
             </div>
-            {currentPlayer && (
-              <button type="button" className="small-danger room-leave" onClick={onLeave}>Leave Room</button>
-            )}
           </>
         )}
 

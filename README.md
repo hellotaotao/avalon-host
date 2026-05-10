@@ -82,7 +82,7 @@ Live private reveal and the demo's multi-phone cards now render through the shar
 
 ## Share Join
 
-Room screens keep the 5-digit room code prominent for table readout before the game starts and after it finishes. They also show a readable join link, Copy Link and Copy Code controls, an optional Web Share action when the browser supports it, and a scannable QR code for the join URL. The numeric code remains the fallback.
+Room screens keep the 5-digit room code prominent for table readout before the game starts and after it finishes. They also show a readable join link, Copy Link and Copy Code controls, and a scannable QR code for the join URL. The numeric code remains the fallback.
 
 ## Mission MVP Status
 
