@@ -53,11 +53,23 @@ import {
   type RoomSnapshot,
 } from './services/roomService';
 import { getSessionStorageKeys, isDevSessionActive } from './sessionKeys';
+import { I18nProvider, formatAllegiance, formatHint, formatRole, useI18n } from './i18n';
 import './styles.css';
 
 type Screen = EntryScreen | 'room';
 
+function LanguageSwitcher() {
+  const { language, setLanguage, t } = useI18n();
+  return (
+    <div className="language-switcher" aria-label={t('Language')}>
+      <button type="button" className={language === 'en' ? 'selected' : ''} onClick={() => setLanguage('en')}>{t('English')}</button>
+      <button type="button" className={language === 'zh' ? 'selected' : ''} onClick={() => setLanguage('zh')}>{t('中文')}</button>
+    </div>
+  );
+}
+
 function App() {
+  const { t } = useI18n();
   const [screen, setScreen] = useState<Screen>(() => parseEntryStep(window.location.href));
   const [snapshot, setSnapshot] = useState<RoomSnapshot>();
   const [currentPlayerId, setCurrentPlayerId] = useState(localStorage.getItem(getSessionStorageKeys().currentPlayerId) ?? '');
@@ -98,13 +110,13 @@ function App() {
         setCurrentPlayerId('');
         setSnapshot(undefined);
         setScreen('join');
-        setMessage('You were removed from the room.');
+        setMessage(t('You were removed from the room.'));
       })
       .catch((error) => {
         if (cancelled) return;
         clearSessionBinding();
         setCurrentPlayerId('');
-        setMessage(error instanceof Error ? error.message : 'Could not restore room.');
+        setMessage(error instanceof Error ? error.message : t('Could not restore room.'));
       });
     return () => {
       cancelled = true;
@@ -132,7 +144,7 @@ function App() {
         setCurrentPlayerId('');
         setSnapshot(undefined);
         setScreen('join');
-        setMessage('You were removed from the room.');
+        setMessage(t('You were removed from the room.'));
         return;
       }
       setSnapshot(nextSnapshot);
@@ -141,7 +153,7 @@ function App() {
 
   async function handleCreateRoom(event: React.FormEvent) {
     event.preventDefault();
-    if (!hostName.trim()) return setMessage('Enter your nickname first.');
+    if (!hostName.trim()) return setMessage(t('Enter your nickname first.'));
     setBusy(true);
     setMessage('');
     try {
@@ -152,7 +164,7 @@ function App() {
       clearEntryStepFromUrl();
       setScreen('room');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not create room.');
+      setMessage(error instanceof Error ? error.message : t('Could not create room.'));
     } finally {
       setBusy(false);
     }
@@ -162,7 +174,7 @@ function App() {
     event.preventDefault();
     const normalizedCode = normalizeRoomCode(joinCode);
     setJoinCode(normalizedCode);
-    if (normalizedCode.length !== 5 || !joinName.trim()) return setMessage('Enter the 5-digit room code and nickname.');
+    if (normalizedCode.length !== 5 || !joinName.trim()) return setMessage(t('Enter the 5-digit room code and nickname.'));
     setBusy(true);
     setMessage('');
     try {
@@ -173,7 +185,7 @@ function App() {
       clearEntryStepFromUrl();
       setScreen('room');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not join room.');
+      setMessage(error instanceof Error ? error.message : t('Could not join room.'));
     } finally {
       setBusy(false);
     }
@@ -211,7 +223,7 @@ function App() {
     if (!snapshot || !currentPlayer || startValidation) return;
     const result = await startGame(snapshot.room.id);
     if (result.snapshot) setSnapshot(result.snapshot);
-    setMessage(result.ok ? '' : result.reason ?? 'Could not start game.');
+    setMessage(result.ok ? '' : result.reason ?? t('Could not start game.'));
   }
 
   async function handleMissionStateChange(nextMissionState: MissionState) {
@@ -231,7 +243,7 @@ function App() {
     try {
       setSnapshot(await updateMissionState(snapshot.room.id, nextMissionState));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not update mission flow.');
+      setMessage(error instanceof Error ? error.message : t('Could not update mission flow.'));
     }
   }
 
@@ -245,14 +257,14 @@ function App() {
         const nextMissionState = submitTeamProposal(currentMissionState, playerIds, currentPlayer.id, selectedTeamIds);
         await handleMissionStateChange(nextMissionState);
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : 'Could not propose team.');
+        setMessage(error instanceof Error ? error.message : t('Could not propose team.'));
       }
       return;
     }
     try {
       setSnapshot(await proposeMissionTeam(snapshot.room.id, currentPlayer.id, selectedTeamIds));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not propose team.');
+      setMessage(error instanceof Error ? error.message : t('Could not propose team.'));
     }
   }
 
@@ -266,14 +278,14 @@ function App() {
         const nextMissionState = submitTeamVoteToState(currentMissionState, playerIds, currentPlayer.id, vote);
         await handleMissionStateChange(nextMissionState);
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : 'Could not submit vote.');
+        setMessage(error instanceof Error ? error.message : t('Could not submit vote.'));
       }
       return;
     }
     try {
       setSnapshot(await submitTeamVote(snapshot.room.id, currentPlayer.id, vote));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not submit vote.');
+      setMessage(error instanceof Error ? error.message : t('Could not submit vote.'));
     }
   }
 
@@ -287,14 +299,14 @@ function App() {
         const nextMissionState = submitMissionCardToState(currentMissionState, playerIds, snapshot.players.map(toRoomAvalonPlayer), currentPlayer.id, card);
         await handleMissionStateChange(nextMissionState);
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : 'Could not submit mission card.');
+        setMessage(error instanceof Error ? error.message : t('Could not submit mission card.'));
       }
       return;
     }
     try {
       setSnapshot(await submitMissionCard(snapshot.room.id, currentPlayer.id, card));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not submit mission card.');
+      setMessage(error instanceof Error ? error.message : t('Could not submit mission card.'));
     }
   }
 
@@ -315,14 +327,14 @@ function App() {
           },
         });
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : 'Could not submit assassination.');
+        setMessage(error instanceof Error ? error.message : t('Could not submit assassination.'));
       }
       return;
     }
     try {
       setSnapshot(await submitAssassination(snapshot.room.id, currentPlayer.id, targetPlayerId));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not submit assassination.');
+      setMessage(error instanceof Error ? error.message : t('Could not submit assassination.'));
     }
   }
 
@@ -333,7 +345,7 @@ function App() {
     try {
       setSnapshot(await removePlayer(snapshot.room.id, currentPlayer.id, targetPlayerId));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not remove player.');
+      setMessage(error instanceof Error ? error.message : t('Could not remove player.'));
     }
   }
 
@@ -345,7 +357,7 @@ function App() {
       setCurrentPlayerId('');
       setSnapshot(undefined);
       navigateEntry('home', { replace: true });
-      setMessage('You left the demo room.');
+      setMessage(t('You left the demo room.'));
       setBusy(false);
       return;
     }
@@ -357,9 +369,9 @@ function App() {
       setCurrentPlayerId('');
       setSnapshot(undefined);
       navigateEntry('home', { replace: true });
-      setMessage('You left the room.');
+      setMessage(t('You left the room.'));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not leave room.');
+      setMessage(error instanceof Error ? error.message : t('Could not leave room.'));
     } finally {
       setBusy(false);
     }
@@ -368,10 +380,10 @@ function App() {
   return (
     <main className={`shell ${screen === 'demo' || screen === 'demoJoin' ? 'demo-shell' : ''}`}>
       <header className="hero">
-        <p className="eyebrow">Avalon Host</p>
-        <h1>{screen === 'room' ? (snapshot?.room.status === 'reveal' ? 'The Merlin Reveal' : 'Round Table Lobby') : 'Gather the Knights of Avalon'}</h1>
-        <p className="lede">Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.</p>
-        <p className="mode">{isHostedConfigured && !isDevSessionActive() ? 'Neon API mode' : 'Local browser demo mode'}</p>
+        <div className="hero-top"><p className="eyebrow">{t('Avalon Host')}</p><LanguageSwitcher /></div>
+        <h1>{screen === 'room' ? (snapshot?.room.status === 'reveal' ? t('The Merlin Reveal') : t('Round Table Lobby')) : t('Gather the Knights of Avalon')}</h1>
+        <p className="lede">{t('Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.')}</p>
+        <p className="mode">{isHostedConfigured && !isDevSessionActive() ? t('Neon API mode') : t('Local browser demo mode')}</p>
       </header>
 
       {message && <p className="notice">{message}</p>}
@@ -379,64 +391,64 @@ function App() {
       {screen === 'home' && (
         <section className="entry">
           <div className="entry-intro">
-            <h2>Let Merlin handle the hidden-role ritual</h2>
-            <p>Avalon Host gives the table one magic number, watches the round table fill, and reveals only the secrets each player should know.</p>
+            <h2>{t('Let Merlin handle the hidden-role ritual')}</h2>
+            <p>{t('Avalon Host gives the table one magic number, watches the round table fill, and reveals only the secrets each player should know.')}</p>
           </div>
           <section className="path-section" aria-labelledby="choose-path-title">
             <div>
-              <p className="eyebrow">Choose your path</p>
-              <h2 id="choose-path-title">Host / Join / Demo</h2>
+              <p className="eyebrow">{t('Choose your path')}</p>
+              <h2 id="choose-path-title">{t('Host / Join / Demo')}</h2>
             </div>
-            <div className="path-grid" aria-label="Primary actions">
+            <div className="path-grid" aria-label={t('Primary actions')}>
               <button type="button" className="path-card primary-path" onClick={() => navigateEntry('create')}>
-                <span>Host the round</span>
-                <small>Create a live 5-digit code for the table.</small>
+                <span>{t('Host the round')}</span>
+                <small>{t('Create a live 5-digit code for the table.')}</small>
               </button>
               <button type="button" className="path-card" onClick={() => navigateEntry('join')}>
-                <span>Join by rune</span>
-                <small>Enter a host's 5-digit code and ready up.</small>
+                <span>{t('Join by rune')}</span>
+                <small>{t("Enter a host's 5-digit code and ready up.")}</small>
               </button>
               <button type="button" className="path-card demo-button" onClick={() => navigateEntry('demo')}>
-                <span>Try demo</span>
-                <small>Simulate 5-10 phone screens on this laptop.</small>
+                <span>{t('Try demo')}</span>
+                <small>{t('Simulate 5-10 phone screens on this laptop.')}</small>
               </button>
             </div>
           </section>
-          <div className="workflow-grid" aria-label="Live workflow">
+          <div className="workflow-grid" aria-label={t('Live workflow')}>
             <article>
-              <strong>1. Host opens the hall</strong>
-              <span>Share the 5-digit room code with every knight at the table.</span>
+              <strong>{t('1. Host opens the hall')}</strong>
+              <span>{t('Share the 5-digit room code with every knight at the table.')}</span>
             </article>
             <article>
-              <strong>2. Knights take seats</strong>
-              <span>The lobby tracks the fellowship and who is ready for the quest.</span>
+              <strong>{t('2. Knights take seats')}</strong>
+              <span>{t('The lobby tracks the fellowship and who is ready for the quest.')}</span>
             </article>
             <article>
-              <strong>3. Secrets are revealed</strong>
-              <span>Each phone shows only that player's role and night vision.</span>
+              <strong>{t('3. Secrets are revealed')}</strong>
+              <span>{t("Each phone shows only that player's role and night vision.")}</span>
             </article>
           </div>
           <div className="entry-guide">
-            <h2>What each choice means</h2>
-            <p><strong>Host</strong> opens a real table room. <strong>Join</strong> is for players with a 5-digit code. <strong>Demo</strong> stays on this device and never connects to Neon.</p>
+            <h2>{t('What each choice means')}</h2>
+            <p><strong>{t('Host')}</strong> {t('opens a real table room.')} <strong>{t('Join')}</strong> {t('is for players with a 5-digit code.')} <strong>{t('Demo')}</strong> {t('stays on this device and never connects to Neon.')}</p>
           </div>
         </section>
       )}
 
       {screen === 'demo' && (
         <section className="demo-panel">
-          <button type="button" className="back-button" onClick={() => navigateEntry('home')}>Back</button>
+          <button type="button" className="back-button" onClick={() => navigateEntry('home')}>{t('Back')}</button>
           <DemoSimulator />
         </section>
       )}
 
       {screen === 'create' && (
         <section className="panel">
-          <button type="button" className="back-button" onClick={() => navigateEntry('home')}>Back</button>
-          <h2>Create Room</h2>
+          <button type="button" className="back-button" onClick={() => navigateEntry('home')}>{t('Back')}</button>
+          <h2>{t('Create Room')}</h2>
           <form className="stack" onSubmit={handleCreateRoom}>
             <label>
-              Your nickname
+              {t('Your nickname')}
               <input value={hostName} onChange={(event) => setHostName(event.target.value)} maxLength={24} autoFocus />
             </label>
             <label className="check">
@@ -445,20 +457,20 @@ function App() {
                 checked={includePercivalMorgana}
                 onChange={(event) => setIncludePercivalMorgana(event.target.checked)}
               />
-              Include Percival and Morgana when 7+ players join
+              {t('Include Percival and Morgana when 7+ players join')}
             </label>
-            <button type="submit" className="primary" disabled={busy}>{busy ? 'Creating...' : 'Create Room'}</button>
+            <button type="submit" className="primary" disabled={busy}>{busy ? t('Creating...') : t('Create Room')}</button>
           </form>
         </section>
       )}
 
       {screen === 'join' && (
         <section className="panel">
-          <button type="button" className="back-button" onClick={() => navigateEntry('home')}>Back</button>
-          <h2>Join Room</h2>
+          <button type="button" className="back-button" onClick={() => navigateEntry('home')}>{t('Back')}</button>
+          <h2>{t('Join Room')}</h2>
           <form className="stack" onSubmit={handleJoinRoom}>
             <label>
-              5-digit room code
+              {t('5-digit room code')}
               <input
                 value={joinCode}
                 onChange={(event) => setJoinCode(normalizeRoomCode(event.target.value))}
@@ -471,17 +483,17 @@ function App() {
               />
             </label>
             <label>
-              Your nickname
+              {t('Your nickname')}
               <input value={joinName} onChange={(event) => setJoinName(event.target.value)} maxLength={24} />
             </label>
-            <button type="submit" className="primary" disabled={busy}>{busy ? 'Joining...' : 'Join Room'}</button>
+            <button type="submit" className="primary" disabled={busy}>{busy ? t('Joining...') : t('Join Room')}</button>
           </form>
         </section>
       )}
 
       {screen === 'demoJoin' && (
         <section className="demo-panel">
-          <button type="button" className="back-button" onClick={() => navigateEntry('home')}>Back</button>
+          <button type="button" className="back-button" onClick={() => navigateEntry('home')}>{t('Back')}</button>
           <DemoSimulator />
         </section>
       )}
@@ -562,6 +574,7 @@ const optionalRoleControls: Array<{ key: keyof RolePresetOptions; role: Role; la
 const DEMO_RESULT_AUTO_ADVANCE_MS = 2200;
 
 function DemoSimulator() {
+  const { t, language } = useI18n();
   const [demo, setDemo] = useState(() => createDemoState(7, { includeMorgana: true }));
   const rule = getPlayerCountRule(demo.playerCount);
   const preset = buildRolePreset(demo.playerCount, demo.roleOptions);
@@ -661,17 +674,17 @@ function DemoSimulator() {
     <div className="demo-simulator">
       <div className="demo-heading">
         <div>
-          <p className="eyebrow">Local tabletop simulator</p>
-          <h2>Multi-phone Demo</h2>
+          <p className="eyebrow">{t('Local tabletop simulator')}</p>
+          <h2>{t('Multi-phone Demo')}</h2>
         </div>
-        <button type="button" onClick={() => resetWith(demo.playerCount, demo.roleOptions)}>Reset table</button>
+        <button type="button" onClick={() => resetWith(demo.playerCount, demo.roleOptions)}>{t('Reset table')}</button>
       </div>
 
       {demo.phase === 'setup' ? (
         <section className="demo-setup">
           <div>
-            <h3>Players</h3>
-            <div className="segmented" aria-label="Player count">
+            <h3>{t('Players')}</h3>
+            <div className="segmented" aria-label={t('Player count')}>
               {playerCountRange.map((count) => (
                 <button
                   key={count}
@@ -683,13 +696,13 @@ function DemoSimulator() {
                 </button>
               ))}
             </div>
-            <p>{rule.goodCount} Good / {rule.evilCount} Evil</p>
+            <p>{rule.goodCount} {t('Good')} / {rule.evilCount} {t('Evil')}</p>
           </div>
           <div>
-            <h3>Role setup</h3>
+            <h3>{t('Role setup')}</h3>
             <div className="role-preset">
-              <span>Fixed: {preset.requiredRoles.join(', ')}</span>
-              <span>Fill: {summarizeRoles(preset.fillerRoles)}</span>
+              <span>{t('Fixed')}: {preset.requiredRoles.map((role) => formatRole(role, language)).join(', ')}</span>
+              <span>{t('Fill')}: {summarizeRoles(preset.fillerRoles, language)}</span>
             </div>
             <div className="optional-roles">
               {optionalRoleControls.map((control) => {
@@ -698,27 +711,27 @@ function DemoSimulator() {
                 return (
                   <label key={control.key} className="check role-toggle">
                     <input type="checkbox" checked={checked} disabled={disabled} onChange={() => toggleOptionalRole(control.key)} />
-                    <span><strong>{control.label}</strong><small>{control.note}</small></span>
+                    <span><strong>{formatRole(control.label, language)}</strong><small>{t(control.note)}</small></span>
                   </label>
                 );
               })}
             </div>
           </div>
           <div className="demo-start-row">
-            <button type="button" className="primary" onClick={startTable}>Start tabletop</button>
+            <button type="button" className="primary" onClick={startTable}>{t('Start tabletop')}</button>
           </div>
         </section>
       ) : (
-        <section className="demo-setup-summary" aria-label="Demo table setup">
-          <span>{demo.playerCount} players</span>
-          <span>{rule.goodCount} Good / {rule.evilCount} Evil</span>
-          <span>Special roles: {includedSpecialRoles.length ? includedSpecialRoles.join(', ') : 'None'}</span>
-          <span>Base: {preset.requiredRoles.join(', ')}</span>
-          <span>Fill: {summarizeRoles(preset.fillerRoles)}</span>
+        <section className="demo-setup-summary" aria-label={t('Demo table setup')}>
+          <span>{demo.playerCount} {t('players')}</span>
+          <span>{rule.goodCount} {t('Good')} / {rule.evilCount} {t('Evil')}</span>
+          <span>{t('Special roles')}: {includedSpecialRoles.length ? includedSpecialRoles.map((role) => formatRole(role, language)).join(', ') : t('None')}</span>
+          <span>{t('Base')}: {preset.requiredRoles.map((role) => formatRole(role, language)).join(', ')}</span>
+          <span>{t('Fill')}: {summarizeRoles(preset.fillerRoles, language)}</span>
         </section>
       )}
 
-      <section className="demo-board" aria-label="Demo table state">
+      <section className="demo-board" aria-label={t('Demo table state')}>
         <div className="quest-track">
           {[0, 1, 2, 3, 4].map((roundIndex) => {
             const result = demo.missionResults.find((item) => item.roundIndex === roundIndex);
@@ -731,16 +744,16 @@ function DemoSimulator() {
           })}
         </div>
         <div className="status">
-          <span>Leader: {demo.players[demo.leaderIndex]?.displayName}</span>
-          <span>Quest: {demo.roundIndex + 1} needs {teamSize}</span>
-          <span>Score: Good {goodScore} / Evil {evilScore}</span>
+          <span>{t('Leader')}: {demo.players[demo.leaderIndex]?.displayName}</span>
+          <span>{t('Quest')}: {demo.roundIndex + 1} {t('needs')} {teamSize}</span>
+          <span>{t('Score')}: {t('Good')} {goodScore} / {t('Evil')} {evilScore}</span>
         </div>
         {demo.lastVote && <p className="hint">Last vote: {demo.lastVote.approveCount} approve, {demo.lastVote.rejectCount} reject. Team {demo.lastVote.passed ? 'approved' : 'rejected'}.</p>}
         {demo.lastMission && <p className="notice">Quest {demo.lastMission.roundIndex + 1} {demo.lastMission.outcome === 'success' ? 'succeeded' : 'failed'} with {demo.lastMission.failCount} fail card(s).</p>}
         {winner && <p className="notice">{winner === 'good' ? 'Good' : 'Evil'} has reached three quests. Reset the table to try another setup.</p>}
         {demo.phase === 'setup' && (
           <div className="mission-step">
-            <p>Choose player count and roles, then start the tabletop.</p>
+            <p>{t('Choose player count and roles, then start the tabletop.')}</p>
           </div>
         )}
         {demo.phase === 'proposal' && (
@@ -760,12 +773,12 @@ function DemoSimulator() {
         )}
         {demo.phase === 'result' && !winner && (
           <div className="mission-step">
-            <p>Quest result is public on every phone. Next quest starts automatically.</p>
+            <p>{t('Quest result is public on every phone. Next quest starts automatically.')}</p>
           </div>
         )}
       </section>
 
-      <section className="demo-phone-grid" aria-label="Virtual phones">
+      <section className="demo-phone-grid" aria-label={t('Virtual phones')}>
         {demo.players.map((player) => (
           <DemoPhone
             key={player.id}
@@ -821,6 +834,7 @@ function DemoPhone({
   winner?: Allegiance;
   lastMission?: DemoMissionResult;
 }) {
+  const { t, language } = useI18n();
   const isLeader = player.id === leaderId;
   const onTeam = selectedTeamIds.includes(player.id);
   const privateInfo = getVisibilityInfo(
@@ -948,9 +962,10 @@ function PlayerPhone({
   nightInfoReveal?: PlayerPhoneRevealControl;
   action?: PlayerPhoneAction;
 }) {
+  const { t } = useI18n();
   const isLeader = player.id === leaderId;
   const onTeam = selectedTeamIds.includes(player.id);
-  const publicRole = isLeader ? 'Current Leader' : mode === 'live' ? 'Your phone' : 'Table player';
+  const publicRole = isLeader ? t('Current Leader') : mode === 'live' ? t('Your phone') : t('Table player');
   const outcomeClass = [
     winner && player.role ? (roleAllegiance(player.role) === winner ? 'phone-winner' : 'phone-loser') : '',
     result ? `mission-${result.outcome}-phone` : '',
@@ -986,8 +1001,8 @@ function PlayerPhone({
     <article className={`player-phone ${mode === 'demo' ? 'demo-phone' : 'live-player-phone'} ${isLeader ? 'leader-phone' : ''} ${outcomeClass}`}>
       <div className="phone-top">
         <strong>{player.displayName}</strong>
-        <small>Seat {player.seatIndex + 1} · {publicRole}</small>
-        {onTeam && <span className="phone-team-pill">Mission team</span>}
+        <small>{t('Seat')} {player.seatIndex + 1} · {publicRole}</small>
+        {onTeam && <span className="phone-team-pill">{t('Mission team')}</span>}
       </div>
       {player.role && (
         <RoleRevealCard
@@ -1165,12 +1180,13 @@ function getLivePhoneAction({
 }
 
 function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
+  const { t } = useI18n();
   if (action.kind === 'proposal') {
     const selectedCount = action.selectedTeamIds.length;
     const canAddToTeam = selectedCount < action.teamSize;
     return (
       <div className={`phone-action ${action.canEdit ? '' : 'phone-readonly'}`}>
-        <span>{action.canEdit ? `Propose team · ${selectedCount}/${action.teamSize}` : 'Proposal'}</span>
+        <span>{action.canEdit ? `${t('Propose team')} · ${selectedCount}/${action.teamSize}` : t('Proposal')}</span>
         {action.canEdit ? (
           <>
             {action.players.map((candidate) => (
@@ -1184,12 +1200,12 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
                 {candidate.displayName}
               </label>
             ))}
-            <button type="button" className="primary" disabled={selectedCount !== action.teamSize} onClick={action.onProposeTeam}>Propose Team</button>
+            <button type="button" className="primary" disabled={selectedCount !== action.teamSize} onClick={action.onProposeTeam}>{t('Propose Team')}</button>
           </>
         ) : (
           <>
-            <p>{action.isLeader ? 'You are choosing the quest team.' : `${action.leaderName} is choosing ${action.teamSize} players.`}</p>
-            <p>Selected: {selectedCount}/{action.teamSize}</p>
+            <p>{action.isLeader ? t('You are choosing the quest team.') : `${action.leaderName} ${t('is choosing')} ${action.teamSize} ${t('players')}.`}</p>
+            <p>{t('Selected')}: {selectedCount}/{action.teamSize}</p>
           </>
         )}
       </div>
@@ -1199,20 +1215,20 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
   if (action.kind === 'vote') {
     return (
       <div className={`phone-action ${action.onVote ? '' : 'phone-readonly'}`}>
-        <span>Team vote</span>
-        {action.selectedTeamNames.length > 0 && <p>Team: {action.selectedTeamNames.join(', ')}</p>}
+        <span>{t('Team vote')}</span>
+        {action.selectedTeamNames.length > 0 && <p>{t('Team')}: {action.selectedTeamNames.join(', ')}</p>}
         {action.onVote ? (
           <>
             <div className="choice-row">
-              <button type="button" className={action.currentVote === 'approve' ? 'selected' : ''} onClick={() => action.onVote?.('approve')}>Approve</button>
-              <button type="button" className={action.currentVote === 'reject' ? 'selected' : ''} onClick={() => action.onVote?.('reject')}>Reject</button>
+              <button type="button" className={action.currentVote === 'approve' ? 'selected' : ''} onClick={() => action.onVote?.('approve')}>{t('Approve')}</button>
+              <button type="button" className={action.currentVote === 'reject' ? 'selected' : ''} onClick={() => action.onVote?.('reject')}>{t('Reject')}</button>
             </div>
             {typeof action.submittedVoteCount === 'number' && action.playerCount && (
-              <p>Votes in: {action.submittedVoteCount}/{action.playerCount}</p>
+              <p>{t('Votes in')}: {action.submittedVoteCount}/{action.playerCount}</p>
             )}
           </>
         ) : (
-          <p>Waiting for all players to vote.</p>
+          <p>{t('Waiting for all players to vote.')}</p>
         )}
       </div>
     );
@@ -1221,30 +1237,30 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
   if (action.kind === 'mission') {
     return (
       <div className={`phone-action ${action.onTeam && action.onPlayMissionCard ? '' : 'phone-readonly'}`}>
-        <span>{action.onTeam ? 'Mission card' : 'Mission'}</span>
+        <span>{action.onTeam ? t('Mission card') : t('Mission')}</span>
         {action.onTeam && action.onPlayMissionCard ? (
           <>
             <div className="choice-row">
-              <button type="button" className={action.currentMissionCard === 'success' ? 'selected' : ''} onClick={() => action.onPlayMissionCard?.('success')}>Success</button>
+              <button type="button" className={action.currentMissionCard === 'success' ? 'selected' : ''} onClick={() => action.onPlayMissionCard?.('success')}>{t('Success')}</button>
               <button
                 type="button"
                 className={action.currentMissionCard === 'fail' ? 'selected danger-choice' : ''}
                 disabled={!action.canFailMission}
                 onClick={() => action.onPlayMissionCard?.('fail')}
               >
-                Fail
+                {t('Fail')}
               </button>
             </div>
             {typeof action.submittedCardCount === 'number' && (
-              <p>Cards in: {action.submittedCardCount}/{action.selectedTeamCount}</p>
+              <p>{t('Cards in')}: {action.submittedCardCount}/{action.selectedTeamCount}</p>
             )}
           </>
         ) : (
           <p>
             {action.onTeam
               ? action.missionCardSubmitted
-                ? `Card submitted. Cards in: ${action.submittedCardCount ?? 0}/${action.selectedTeamCount}.`
-                : 'Waiting for your mission card.'
+                ? `${t('Card submitted.')} ${t('Cards in')}: ${action.submittedCardCount ?? 0}/${action.selectedTeamCount}.`
+                : t('Waiting for your mission card.')
               : `${action.selectedTeamCount} players are on the mission. Wait for their cards.`}
           </p>
         )}
@@ -1255,8 +1271,8 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
   if (action.kind === 'assassin') {
     return (
       <div className="phone-action phone-readonly">
-        <span>Assassin phase</span>
-        <p>{action.isAssassin ? 'Choose Merlin from the Assassin panel.' : 'Good completed three quests. The Assassin is choosing Merlin.'}</p>
+        <span>{t('Assassin phase')}</span>
+        <p>{action.isAssassin ? t('Choose Merlin from the Assassin panel.') : t('Good completed three quests. The Assassin is choosing Merlin.')}</p>
       </div>
     );
   }
@@ -1264,23 +1280,24 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
   const isFinished = action.kind === 'finished';
   return (
     <div className={`phone-action ${action.winner ? 'phone-result' : 'phone-readonly'}`}>
-      <span>{action.winner || isFinished ? 'Game result' : 'Quest result'}</span>
+      <span>{action.winner || isFinished ? t('Game result') : t('Quest result')}</span>
       {action.result && <MissionResultReveal result={action.result} />}
       {action.winner ? (
-        <p>{action.playerWon ? 'Victory' : 'Defeat'} · {action.winner === 'good' ? 'Good wins' : 'Evil wins'}</p>
+        <p>{action.playerWon ? t('Victory') : t('Defeat')} · {action.winner === 'good' ? t('Good wins') : t('Evil wins')}</p>
       ) : (
-        <p>{isFinished ? 'Game finished.' : 'Next quest starts automatically.'}</p>
+        <p>{isFinished ? t('Game finished.') : t('Next quest starts automatically.')}</p>
       )}
     </div>
   );
 }
 
 function MissionResultReveal({ result }: { result: PlayerPhoneResult }) {
+  const { t } = useI18n();
   const succeeded = result.outcome === 'success';
   return (
     <div className={`mission-result-reveal ${succeeded ? 'success' : 'fail'}`} aria-live="polite">
-      <strong>{succeeded ? 'Quest Success' : 'Quest Failed'}</strong>
-      <small>{result.failCount} fail card{result.failCount === 1 ? '' : 's'} · {result.requiredFails} needed to fail</small>
+      <strong>{succeeded ? t('Quest Success') : t('Quest Failed')}</strong>
+      <small>{result.failCount} {t('fail card')}{result.failCount === 1 ? '' : 's'} · {result.requiredFails} {t('needed to fail')}</small>
     </div>
   );
 }
@@ -1298,6 +1315,7 @@ function RoleRevealCard({
   onReveal: () => void;
   onHide: () => void;
 }) {
+  const { t, language } = useI18n();
   const allegiance = roleAllegiance(role);
 
   return (
@@ -1314,8 +1332,8 @@ function RoleRevealCard({
       coverHint="Slide to peek"
       hideLabel="Hide role"
     >
-      <strong>{role}</strong>
-      <span>{allegiance === 'good' ? 'Good' : 'Evil'}</span>
+      <strong>{formatRole(role, language)}</strong>
+      <span>{formatAllegiance(allegiance, language)}</span>
     </PeekRevealCard>
   );
 }
@@ -1333,6 +1351,7 @@ function NightInfoRevealCard({
   onReveal: () => void;
   onHide: () => void;
 }) {
+  const { t, language } = useI18n();
   return (
     <PeekRevealCard
       className="phone-info phone-night-info"
@@ -1345,11 +1364,11 @@ function NightInfoRevealCard({
       coverHint="Slide to peek"
       hideLabel="Hide night info"
     >
-      <span>Night info</span>
+      <span>{t('Night info')}</span>
       {privateInfo.sees.length ? (
-        <ul>{privateInfo.sees.map((item) => <li key={item.playerId}>{item.name}: {item.hint}</li>)}</ul>
+        <ul>{privateInfo.sees.map((item) => <li key={item.playerId}>{item.name}: {formatHint(item.hint, language)}</li>)}</ul>
       ) : (
-        <p>No extra information.</p>
+        <p>{t('No extra information.')}</p>
       )}
     </PeekRevealCard>
   );
@@ -1556,13 +1575,13 @@ function canEnableRoleOption(playerCount: number, roleOptions: RolePresetOptions
   }
 }
 
-function summarizeRoles(roles: Role[]): string {
+function summarizeRoles(roles: Role[], language: ReturnType<typeof useI18n>['language'] = 'en'): string {
   const counts = roles.reduce<Record<string, number>>((summary, role) => {
     summary[role] = (summary[role] ?? 0) + 1;
     return summary;
   }, {});
   return Object.entries(counts)
-    .map(([role, count]) => `${count} ${role}`)
+    .map(([role, count]) => `${count} ${formatRole(role, language)}`)
     .join(', ');
 }
 
@@ -1603,29 +1622,31 @@ function getMissionPhaseCopy({
   submittedVoteCount,
   submittedCardCount,
   playerCount,
+  t,
 }: {
   missionState: MissionState;
   currentTeamSize: number;
   submittedVoteCount: number;
   submittedCardCount: number;
   playerCount: number;
+  t: (text: string) => string;
 }): string {
   if (missionState.phase === 'proposal') {
-    return `The captain is choosing exactly ${currentTeamSize} players before the table votes.`;
+    return `${t('The captain is choosing exactly')} ${currentTeamSize} ${t('players before the table votes.')}`;
   }
   if (missionState.phase === 'vote') {
-    return `${submittedVoteCount}/${playerCount} phones have voted on the proposed crew.`;
+    return `${submittedVoteCount}/${playerCount} ${t('phones have voted on the proposed crew.')}`;
   }
   if (missionState.phase === 'mission') {
-    return `${submittedCardCount}/${missionState.selectedTeamIds.length} mission cards are in. The quest resolves when the crew is done.`;
+    return `${submittedCardCount}/${missionState.selectedTeamIds.length} ${t('mission cards are in. The quest resolves when the crew is done.')}`;
   }
   if (missionState.phase === 'assassin') {
-    return 'Good reached three successful quests. The Assassin now chooses a Merlin target.';
+    return t('Good reached three successful quests. The Assassin now chooses a Merlin target.');
   }
   if (missionState.assassination) {
-    return missionState.winner === 'evil' ? 'The Assassin found Merlin and stole the endgame.' : 'Merlin survived the final guess.';
+    return missionState.winner === 'evil' ? t('The Assassin found Merlin and stole the endgame.') : t('Merlin survived the final guess.');
   }
-  return missionState.winner === 'evil' ? 'Evil wins after three failed quests.' : 'Good wins after three successful quests.';
+  return missionState.winner === 'evil' ? t('Evil wins after three failed quests.') : t('Good wins after three successful quests.');
 }
 
 function toDemoAvalonPlayer(player: DemoPlayer): Player {
@@ -1637,11 +1658,12 @@ function toRoomAvalonPlayer(player: RoomPlayer): Player {
 }
 
 function AssassinPhaseBanner() {
+  const { t } = useI18n();
   return (
     <section className="assassin-phase-banner" aria-live="assertive">
-      <p className="eyebrow">Mandatory endgame</p>
-      <h2>Assassin is choosing a target</h2>
-      <p>Good has completed three quests. Normal mission play is paused until the Assassin resolves the Merlin guess.</p>
+      <p className="eyebrow">{t('Mandatory endgame')}</p>
+      <h2>{t('Assassin is choosing a target')}</h2>
+      <p>{t('Good has completed three quests. Normal mission play is paused until the Assassin resolves the Merlin guess.')}</p>
     </section>
   );
 }
@@ -1657,11 +1679,12 @@ function AssassinPhaseActionPanel({
   onSelectTarget: (targetPlayerId: string) => void;
   onAssassination: (targetPlayerId: string) => void;
 }) {
+  const { t } = useI18n();
   return (
     <section className="panel assassin-action-panel" aria-labelledby="assassin-action-title">
-      <p className="eyebrow">Assassin phase action</p>
-      <h2 id="assassin-action-title">Choose Merlin</h2>
-      <p>Pick one target. Hitting Merlin gives Evil the win; missing Merlin gives Good the win.</p>
+      <p className="eyebrow">{t('Assassin phase action')}</p>
+      <h2 id="assassin-action-title">{t('Choose Merlin')}</h2>
+      <p>{t('Pick one target. Hitting Merlin gives Evil the win; missing Merlin gives Good the win.')}</p>
       <div className="assassination-targets">
         {targets.map((player) => (
           <label key={player.id} className="check">
@@ -1681,24 +1704,25 @@ function AssassinPhaseActionPanel({
         disabled={!selectedTargetId}
         onClick={() => onAssassination(selectedTargetId)}
       >
-        Confirm Assassination
+        {t('Confirm Assassination')}
       </button>
     </section>
   );
 }
 
 function AssassinationResultBanner({ missionState, players }: { missionState: MissionState; players: RoomPlayer[] }) {
+  const { t } = useI18n();
   const target = players.find((player) => player.id === missionState.assassination?.targetPlayerId);
   const assassin = players.find((player) => player.id === missionState.assassination?.assassinPlayerId);
   const hitMerlin = Boolean(missionState.assassination?.hitMerlin);
   return (
     <section className={`assassin-result-banner ${missionState.winner === 'evil' ? 'evil-win' : 'good-win'}`} aria-live="polite">
-      <p className="eyebrow">Assassination resolved</p>
-      <h2>{missionState.winner === 'evil' ? 'Evil Wins' : 'Good Wins'}</h2>
+      <p className="eyebrow">{t('Assassination resolved')}</p>
+      <h2>{missionState.winner === 'evil' ? t('Evil Wins') : t('Good Wins')}</h2>
       <p>
-        {assassin?.displayName ?? 'The Assassin'} chose {target?.displayName ?? 'an unknown target'}.
+        {assassin?.displayName ?? t('The Assassin')} {t('chose')} {target?.displayName ?? t('an unknown target')}.
         {' '}
-        {hitMerlin ? 'The target was Merlin.' : 'The target was not Merlin.'}
+        {hitMerlin ? t('The target was Merlin.') : t('The target was not Merlin.')}
       </p>
     </section>
   );
@@ -1737,6 +1761,7 @@ function RoomView({
   onAssassination: (targetPlayerId: string) => void;
   isDemoMode: boolean;
 }) {
+  const { t } = useI18n();
   const started = snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup';
   const playerIds = snapshot.players.map((player) => player.id);
   const missionState = started && snapshot.players.length >= 5 ? ensureMissionState(snapshot.room.settings.missionState, playerIds) : undefined;
@@ -1783,23 +1808,23 @@ function RoomView({
         <div className="room-code">
           <div className="room-code-top">
             <div className="room-code-copy">
-              <span>{isDemoMode ? 'Demo Room Code' : 'Room Code'}</span>
+              <span>{isDemoMode ? t('Demo Room Code') : t('Room Code')}</span>
               <strong>{snapshot.room.code}</strong>
               <p>
                 {isFinished
-                  ? 'Game finished. The room code is visible again for the next table.'
+                  ? t('Game finished. The room code is visible again for the next table.')
                   : isDemoMode
-                    ? 'Sandbox demo with bot players. This is not a real shareable room.'
-                    : 'Share this code with players at the table.'}
+                    ? t('Sandbox demo with bot players. This is not a real shareable room.')
+                    : t('Share this code with players at the table.')}
               </p>
             </div>
             <QrCodePanel value={joinLink} />
           </div>
           <div className="share-panel">
-            <input value={joinLink} readOnly aria-label="Join link" onFocus={(event) => event.currentTarget.select()} />
+            <input value={joinLink} readOnly aria-label={t('Join link')} onFocus={(event) => event.currentTarget.select()} />
             <div className="share-actions">
-              <button type="button" onClick={() => copyText(joinLink)}>Copy Link</button>
-              <button type="button" onClick={() => copyText(snapshot.room.code)}>Copy Code</button>
+              <button type="button" onClick={() => copyText(joinLink)}>{t('Copy Link')}</button>
+              <button type="button" onClick={() => copyText(snapshot.room.code)}>{t('Copy Code')}</button>
             </div>
           </div>
         </div>
@@ -1807,19 +1832,19 @@ function RoomView({
 
       <section className="panel">
         <div className="panel-header">
-          <h2>{started ? 'Private Reveal' : 'Current Room'}</h2>
+          <h2>{started ? t('Private Reveal') : t('Current Room')}</h2>
           {currentPlayer && !started && (
-            <button type="button" className="small-danger room-leave" onClick={onLeave}>Leave Room</button>
+            <button type="button" className="small-danger room-leave" onClick={onLeave}>{t('Leave Room')}</button>
           )}
         </div>
         {currentPlayer && !started && (
           <>
             <form className="inline-form" onSubmit={onRename}>
-              <input name="displayName" defaultValue={currentPlayer.displayName} maxLength={24} aria-label="Nickname" />
-              <button type="submit">Save</button>
+              <input name="displayName" defaultValue={currentPlayer.displayName} maxLength={24} aria-label={t('Nickname')} />
+              <button type="submit">{t('Save')}</button>
             </form>
             <button type="button" className={currentPlayer.isReady ? 'active-soft' : 'primary'} onClick={onReady}>
-              {currentPlayer.isReady ? 'Ready' : 'Set Ready'}
+              {currentPlayer.isReady ? t('Ready') : t('Set Ready')}
             </button>
           </>
         )}
@@ -1827,10 +1852,10 @@ function RoomView({
         {!started && (
           <>
             <div className="next-step">
-              <strong>{canStart ? 'Ready players can start.' : 'Waiting to start'}</strong>
+              <strong>{canStart ? t('Ready players can start.') : t('Waiting to start')}</strong>
               <span>
                 {canStart
-                  ? 'Starting now will leave unready players out of this game.'
+                  ? t('Starting now will leave unready players out of this game.')
                   : startValidation}
               </span>
             </div>
@@ -1863,16 +1888,16 @@ function RoomView({
 
       {!started && (
         <section className="panel">
-          <h2>Players</h2>
-          <p className="hint">{readyCount}/{snapshot.players.length} ready. Minimum 5 ready players.</p>
+          <h2>{t('Players')}</h2>
+          <p className="hint">{readyCount}/{snapshot.players.length} {t('ready. Minimum 5 ready players.')}</p>
           <ol className="players">
             {snapshot.players.map((player) => (
               <li key={player.id} className={player.id === currentPlayer?.id ? 'me' : ''}>
                 <span>{player.displayName}</span>
-                <small>{player.isHost ? 'Host' : `Seat ${player.seatIndex + 1}`}</small>
-                <strong>{player.isReady ? 'Ready' : 'Waiting'}</strong>
+                <small>{player.isHost ? t('Host') : `${t('Seat')} ${player.seatIndex + 1}`}</small>
+                <strong>{player.isReady ? t('Ready') : t('Waiting')}</strong>
                 {currentPlayer?.isHost && !player.isHost && !isDemoMode && (
-                  <button type="button" className="small-danger" onClick={() => onRemovePlayer(player.id)}>Remove</button>
+                  <button type="button" className="small-danger" onClick={() => onRemovePlayer(player.id)}>{t('Remove')}</button>
                 )}
               </li>
             ))}
@@ -1887,7 +1912,7 @@ function RoomView({
                 onStart();
               }}
             >
-              {canStart ? 'Start Game' : startValidation}
+              {canStart ? t('Start Game') : startValidation}
             </button>
           )}
         </section>
@@ -1919,6 +1944,7 @@ function MissionPanel({
   currentTeamSize: number;
   onMissionStateChange: (missionState: MissionState) => void;
 }) {
+  const { t, language } = useI18n();
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [approveCount, setApproveCount] = useState('');
   const [rejectCount, setRejectCount] = useState('');
@@ -1941,19 +1967,20 @@ function MissionPanel({
   if (!missionState) return null;
 
   const rule = getPlayerCountRule(players.length);
-  const leaderName = players.find((player) => player.id === missionState.leaderPlayerId)?.displayName ?? 'Unknown captain';
+  const leaderName = players.find((player) => player.id === missionState.leaderPlayerId)?.displayName ?? t('Unknown captain');
   const selectedTeamNames = missionState.selectedTeamIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id);
   const visibleTeamIds = missionState.phase === 'proposal' && selectedTeamIds.length > 0 ? selectedTeamIds : missionState.selectedTeamIds;
   const visibleTeamNames = visibleTeamIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id);
   const roleSummary = summarizePublicRoleLineup(players);
   const allegianceCounts = summarizeAllegianceCounts(players);
-  const phaseLabel = getMissionPhaseLabel(missionState);
+  const phaseLabel = t(getMissionPhaseLabel(missionState));
   const phaseCopy = getMissionPhaseCopy({
     missionState,
     currentTeamSize,
     submittedVoteCount,
     submittedCardCount,
     playerCount: players.length,
+    t,
   });
 
   function togglePlayer(playerId: string) {
@@ -1966,7 +1993,7 @@ function MissionPanel({
       setFlowError('');
       onMissionStateChange(selectMissionTeam(missionState, playerIds, selectedTeamIds));
     } catch (error) {
-      setFlowError(error instanceof Error ? error.message : 'Could not propose team.');
+      setFlowError(error instanceof Error ? error.message : t('Could not propose team.'));
     }
   }
 
@@ -1976,7 +2003,7 @@ function MissionPanel({
       setFlowError('');
       onMissionStateChange(recordTeamVote(missionState, playerIds, Number(approveCount), Number(rejectCount)));
     } catch (error) {
-      setFlowError(error instanceof Error ? error.message : 'Could not record vote.');
+      setFlowError(error instanceof Error ? error.message : t('Could not record vote.'));
     }
   }
 
@@ -1986,7 +2013,7 @@ function MissionPanel({
       setFlowError('');
       onMissionStateChange(advanceMissionResult(missionState, playerIds, Number(successCount), Number(failCount)));
     } catch (error) {
-      setFlowError(error instanceof Error ? error.message : 'Could not record mission.');
+      setFlowError(error instanceof Error ? error.message : t('Could not record mission.'));
     }
   }
 
@@ -1994,50 +2021,50 @@ function MissionPanel({
     <section className="panel mission-panel">
       <div className="mission-panel-heading">
         <div>
-          <p className="eyebrow">Shared board</p>
-          <h2>Table Quest</h2>
+          <p className="eyebrow">{t('Shared board')}</p>
+          <h2>{t('Table Quest')}</h2>
         </div>
         <span className={`phase-badge phase-${missionState.phase}`}>{phaseLabel}</span>
       </div>
 
-      <section className="mission-board-section table-makeup" aria-label="Game setup and table makeup">
+      <section className="mission-board-section table-makeup" aria-label={t('Game setup and table makeup')}>
         <div className="mission-section-heading">
-          <h3>Table Makeup</h3>
-          <span>{players.length} players</span>
+          <h3>{t('Table Makeup')}</h3>
+          <span>{players.length} {t('players')}</span>
         </div>
         <div className="makeup-grid">
           <div className="makeup-tile">
-            <span>Total</span>
+            <span>{t('Total')}</span>
             <strong>{players.length}</strong>
-            <small>at the table</small>
+            <small>{t('at the table')}</small>
           </div>
           <div className="makeup-tile good-tile">
-            <span>Good</span>
+            <span>{t('Good')}</span>
             <strong>{allegianceCounts.good ?? rule.goodCount}</strong>
-            <small>loyal side</small>
+            <small>{t('loyal side')}</small>
           </div>
           <div className="makeup-tile evil-tile">
-            <span>Evil</span>
+            <span>{t('Evil')}</span>
             <strong>{allegianceCounts.evil ?? rule.evilCount}</strong>
-            <small>hidden side</small>
+            <small>{t('hidden side')}</small>
           </div>
         </div>
-        <div className="role-lineup" aria-label="Public role lineup">
-          <span>Roles in play</span>
+        <div className="role-lineup" aria-label={t('Public role lineup')}>
+          <span>{t('Roles in play')}</span>
           <div>
             {roleSummary.map((item) => (
               <span key={item.role} className={`role-chip ${roleAllegiance(item.role)}`}>
-                {item.count > 1 ? `${item.count} ${item.role}` : item.role}
+                {item.count > 1 ? `${item.count} ${formatRole(item.role, language)}` : formatRole(item.role, language)}
               </span>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="mission-board-section" aria-label="Quest track">
+      <section className="mission-board-section" aria-label={t('Quest track')}>
         <div className="mission-section-heading">
-          <h3>Quest Track</h3>
-          <span>First side to three wins</span>
+          <h3>{t('Quest Track')}</h3>
+          <span>{t('First side to three wins')}</span>
         </div>
         <div className="quest-track mission-quest-track">
           {[0, 1, 2, 3, 4].map((roundIndex) => {
@@ -2049,8 +2076,8 @@ function MissionPanel({
                 <strong>{getTeamSize(players.length, roundIndex)}</strong>
                 <small>
                   {result
-                    ? result.outcome === 'success' ? 'Good won' : 'Evil won'
-                    : roundIndex === missionState.roundIndex && missionState.phase !== 'finished' ? 'Current' : 'Pending'}
+                    ? result.outcome === 'success' ? t('Good won') : t('Evil won')
+                    : roundIndex === missionState.roundIndex && missionState.phase !== 'finished' ? t('Current') : t('Pending')}
                 </small>
               </div>
             );
@@ -2058,14 +2085,14 @@ function MissionPanel({
         </div>
       </section>
 
-      <section className="mission-board-section expedition-board" aria-label="Current expedition">
+      <section className="mission-board-section expedition-board" aria-label={t('Current expedition')}>
         <div className="mission-section-heading">
-          <h3>Current Expedition</h3>
-          <span>Quest {missionState.roundIndex + 1} of 5</span>
+          <h3>{t('Current Expedition')}</h3>
+          <span>{t('Quest')} {missionState.roundIndex + 1} {t('of 5')}</span>
         </div>
         <div className="expedition-summary">
           <div className="captain-card">
-            <span>Captain</span>
+            <span>{t('Captain')}</span>
             <strong>{leaderName}</strong>
           </div>
           <div className="expedition-state-card">
@@ -2075,7 +2102,7 @@ function MissionPanel({
         </div>
         <div className="team-roster">
           <div className="team-roster-heading">
-            <span>{missionState.phase === 'proposal' ? 'Proposed crew' : 'Locked crew'}</span>
+            <span>{missionState.phase === 'proposal' ? t('Proposed crew') : t('Locked crew')}</span>
             <strong>{visibleTeamNames.length}/{currentTeamSize}</strong>
           </div>
           {visibleTeamNames.length > 0 ? (
@@ -2083,19 +2110,19 @@ function MissionPanel({
               {visibleTeamNames.map((name) => <span key={name}>{name}</span>)}
             </div>
           ) : (
-            <p className="empty-team">No crew is on the board yet.</p>
+            <p className="empty-team">{t('No crew is on the board yet.')}</p>
           )}
         </div>
         {missionState.phase === 'vote' && (
-          <div className="progress-rune" aria-label="Vote progress">
+          <div className="progress-rune" aria-label={t('Vote progress')}>
             <span style={{ width: `${Math.round((submittedVoteCount / players.length) * 100)}%` }} />
-            <strong>{submittedVoteCount}/{players.length} phones voted</strong>
+            <strong>{submittedVoteCount}/{players.length} {t('phones voted')}</strong>
           </div>
         )}
         {missionState.phase === 'mission' && (
-          <div className="progress-rune" aria-label="Mission card progress">
+          <div className="progress-rune" aria-label={t('Mission card progress')}>
             <span style={{ width: `${Math.round((submittedCardCount / Math.max(1, missionState.selectedTeamIds.length)) * 100)}%` }} />
-            <strong>{submittedCardCount}/{missionState.selectedTeamIds.length} cards submitted</strong>
+            <strong>{submittedCardCount}/{missionState.selectedTeamIds.length} {t('cards submitted')}</strong>
           </div>
         )}
         {missionState.teamVote && missionState.phase !== 'vote' && missionState.phase !== 'mission' && (
@@ -2115,12 +2142,12 @@ function MissionPanel({
       {canEdit ? (
         <section className="mission-admin">
           <div className="mission-section-heading">
-            <h3>Host Backup</h3>
-            <span>Admin override</span>
+            <h3>{t('Host Backup')}</h3>
+            <span>{t('Admin override')}</span>
           </div>
           {missionState.phase === 'proposal' && (
             <div className="mission-step">
-              <p>Use only if the captain phone cannot submit. Quest {missionState.roundIndex + 1} needs exactly {currentTeamSize} crew members.</p>
+              <p>{t('Use only if the captain phone cannot submit.')} {t('Quest')} {missionState.roundIndex + 1} {t('needs exactly')} {currentTeamSize} {t('crew members.')} </p>
               <div className="team-picker">
                 {players.map((player) => (
                   <label key={player.id} className="check">
@@ -2134,44 +2161,45 @@ function MissionPanel({
                   </label>
                 ))}
               </div>
-              <button type="button" className="primary" onClick={submitTeam}>Submit Backup Proposal</button>
+              <button type="button" className="primary" onClick={submitTeam}>{t('Submit Backup Proposal')}</button>
             </div>
           )}
 
           {missionState.phase === 'vote' && (
             <div className="mission-step">
-              <p>Use only if phone votes need manual recovery. Crew: {selectedTeamNames.join(', ')}.</p>
+              <p>{t('Use only if phone votes need manual recovery.')} {t('Crew')}: {selectedTeamNames.join(', ')}.</p>
               <div className="count-row">
-                <input value={approveCount} onChange={(event) => setApproveCount(event.target.value)} inputMode="numeric" placeholder="Approve" aria-label="Approve count" />
-                <input value={rejectCount} onChange={(event) => setRejectCount(event.target.value)} inputMode="numeric" placeholder="Reject" aria-label="Reject count" />
-                <button type="button" className="primary" onClick={submitVote}>Record Vote</button>
+                <input value={approveCount} onChange={(event) => setApproveCount(event.target.value)} inputMode="numeric" placeholder={t('Approve')} aria-label={t('Approve count')} />
+                <input value={rejectCount} onChange={(event) => setRejectCount(event.target.value)} inputMode="numeric" placeholder={t('Reject')} aria-label={t('Reject count')} />
+                <button type="button" className="primary" onClick={submitVote}>{t('Record Vote')}</button>
               </div>
             </div>
           )}
 
           {missionState.phase === 'mission' && (
             <div className="mission-step">
-              <p>Use only if mission cards need manual recovery after the crew has acted.</p>
+              <p>{t('Use only if mission cards need manual recovery after the crew has acted.')}</p>
               <div className="count-row">
-                <input value={successCount} onChange={(event) => setSuccessCount(event.target.value)} inputMode="numeric" placeholder="Success" aria-label="Success cards" />
-                <input value={failCount} onChange={(event) => setFailCount(event.target.value)} inputMode="numeric" placeholder="Fail" aria-label="Fail cards" />
-                <button type="button" className="primary" onClick={submitMission}>Record Mission</button>
+                <input value={successCount} onChange={(event) => setSuccessCount(event.target.value)} inputMode="numeric" placeholder={t('Success')} aria-label={t('Success cards')} />
+                <input value={failCount} onChange={(event) => setFailCount(event.target.value)} inputMode="numeric" placeholder={t('Fail')} aria-label={t('Fail cards')} />
+                <button type="button" className="primary" onClick={submitMission}>{t('Record Mission')}</button>
               </div>
             </div>
           )}
         </section>
       ) : (
-        missionState.phase !== 'finished' && <p className="hint">Use your private phone area for any action assigned to you.</p>
+        missionState.phase !== 'finished' && <p className="hint">{t('Use your private phone area for any action assigned to you.')}</p>
       )}
     </section>
   );
 }
 
 function QrCodePanel({ value }: { value: string }) {
+  const { t } = useI18n();
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=176x176&margin=10&data=${encodeURIComponent(value)}`;
   return (
-    <a className="qr-code" href={value} aria-label="Scan QR code to join this Avalon room">
-      <img src={qrUrl} alt="QR code for the Avalon room join link" width="176" height="176" loading="lazy" />
+    <a className="qr-code" href={value} aria-label={t('Scan QR code to join this Avalon room')}>
+      <img src={qrUrl} alt={t('QR code for the Avalon room join link')} width="176" height="176" loading="lazy" />
     </a>
   );
 }
@@ -2218,8 +2246,8 @@ const root = createRoot(document.getElementById('root')!);
 
 if (import.meta.env.DEV && window.location.pathname === '/dev/multiplayer') {
   void import('./dev/DevMultiplayerSimulator').then(({ DevMultiplayerSimulator }) => {
-    root.render(<DevMultiplayerSimulator />);
+    root.render(<I18nProvider><DevMultiplayerSimulator /></I18nProvider>);
   });
 } else {
-  root.render(<App />);
+  root.render(<I18nProvider><App /></I18nProvider>);
 }

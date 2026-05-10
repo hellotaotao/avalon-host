@@ -1670,3 +1670,49 @@ label {
     grid-column: 1 / -1;
   }
 }
+
+.hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.language-switcher {
+  display: inline-flex;
+  gap: 0.2rem;
+  padding: 0.2rem;
+  border: 1px solid rgba(240, 199, 107, 0.45);
+  border-radius: 999px;
+  background: rgba(29, 19, 14, 0.45);
+  white-space: nowrap;
+}
+
+.language-switcher button {
+  min-height: 0;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.35rem 0.55rem;
+  background: transparent;
+  color: #fff7de;
+  box-shadow: none;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.language-switcher button:hover:not(:disabled),
+.language-switcher button.selected {
+  background: #f0c76b;
+  color: #321a0c;
+}
+
+@media (max-width: 520px) {
+  .hero-top {
+    align-items: flex-start;
+  }
+
+  .language-switcher button {
+    padding: 0.32rem 0.46rem;
+    font-size: 0.72rem;
+  }
+}
