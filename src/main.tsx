@@ -1581,8 +1581,13 @@ function summarizeRoles(roles: Role[], language: ReturnType<typeof useI18n>['lan
     return summary;
   }, {});
   return Object.entries(counts)
-    .map(([role, count]) => `${count} ${formatRole(role, language)}`)
+    .map(([role, count]) => formatRoleCount(role as Role, count, language))
     .join(', ');
+}
+
+function formatRoleCount(role: Role, count: number, language: ReturnType<typeof useI18n>['language']): string {
+  const roleName = formatRole(role, language);
+  return count > 1 ? `${roleName} x${count}` : roleName;
 }
 
 const publicRoleOrder: Role[] = ['Merlin', 'Percival', 'Loyal Servant', 'Assassin', 'Morgana', 'Mordred', 'Oberon', 'Minion'];
@@ -2026,7 +2031,7 @@ function MissionPanel({
           <div>
             {roleSummary.map((item) => (
               <span key={item.role} className={`role-chip ${roleAllegiance(item.role)}`}>
-                {item.count > 1 ? `${item.count} ${formatRole(item.role, language)}` : formatRole(item.role, language)}
+                {formatRoleCount(item.role, item.count, language)}
               </span>
             ))}
           </div>
