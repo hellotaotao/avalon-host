@@ -1781,15 +1781,20 @@ function RoomView({
       )}
       {showJoinPanel && (
         <div className="room-code">
-          <span>{isDemoMode ? 'Demo Room Code' : 'Room Code'}</span>
-          <strong>{snapshot.room.code}</strong>
-          <p>
-            {isFinished
-              ? 'Game finished. The room code is visible again for the next table.'
-              : isDemoMode
-                ? 'Sandbox demo with bot players. This is not a real shareable room.'
-                : 'Share this code with players at the table.'}
-          </p>
+          <div className="room-code-top">
+            <div className="room-code-copy">
+              <span>{isDemoMode ? 'Demo Room Code' : 'Room Code'}</span>
+              <strong>{snapshot.room.code}</strong>
+              <p>
+                {isFinished
+                  ? 'Game finished. The room code is visible again for the next table.'
+                  : isDemoMode
+                    ? 'Sandbox demo with bot players. This is not a real shareable room.'
+                    : 'Share this code with players at the table.'}
+              </p>
+            </div>
+            <QrCodePanel value={joinLink} />
+          </div>
           <div className="share-panel">
             <input value={joinLink} readOnly aria-label="Join link" onFocus={(event) => event.currentTarget.select()} />
             <div className="share-actions">
@@ -1801,7 +1806,6 @@ function RoomView({
                 </button>
               )}
             </div>
-            <QrCodePanel value={joinLink} />
           </div>
           {currentPlayer && !started && (
             <button type="button" className="small-danger room-leave" onClick={onLeave}>Leave Room</button>
