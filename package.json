@@ -7,11 +7,12 @@
     "dev": "vite",
     "dev:multi": "vite --host 127.0.0.1 --open /dev/multiplayer",
     "build": "tsc -b && vite build",
+    "db:schema": "node scripts/apply-neon-schema.mjs",
     "test": "vitest run",
     "test:five-player": "vitest run src/services/fivePlayerSmoke.test.ts"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.104.1",
+    "@neondatabase/serverless": "^1.1.0",
     "@vitejs/plugin-react": "^4.7.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

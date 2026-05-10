@@ -1,6 +1,4 @@
-import { assignRoles, getVisibilityInfo, type AssignmentOptions, type Player as AvalonPlayer, type Role } from '../domain/avalon';
 import {
-  createInitialMissionState,
   ensureMissionState,
   resolveAssassination,
   submitMissionCard as submitMissionCardToState,
@@ -10,151 +8,70 @@ import {
 } from '../domain/missionFlow';
 import type { MissionCard, Vote } from '../domain/avalon';
 import { isDevSessionActive } from '../sessionKeys';
-import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
+import {
+  findPlayerByDeviceToken,
+  findPlayerByDisplayName,
+  generateRoomCode,
+  leavePlayerFromSnapshot,
+  LOCAL_ROOMS_STORAGE_KEY,
+  normalizeRoomCode,
+  removePlayerFromSnapshot,
+  startDemoSnapshot,
+  type CreateRoomInput,
+  type JoinRoomInput,
+  type Room,
+  type RoomSnapshot,
+  type StartResult,
+} from './roomCore';
 
-export type RoomStatus = 'setup' | 'lobby' | 'locked' | 'reveal' | 'proposal' | 'vote' | 'mission' | 'assassin' | 'finished';
-
-export interface RoomSettings extends AssignmentOptions {
-  createdInDemoMode?: boolean;
-  missionState?: MissionState;
-}
-
-export interface Room {
-  id: string;
-  code: string;
-  status: RoomStatus;
-  gameType: 'avalon_lite';
-  settings: RoomSettings;
-}
-
-export interface RoomPlayer {
-  id: string;
-  roomId: string;
-  displayName: string;
-  seatIndex: number;
-  isHost: boolean;
-  isReady: boolean;
-  role?: Role;
-  deviceToken?: string;
-}
-
-export interface RoomSnapshot {
-  room: Room;
-  players: RoomPlayer[];
-}
-
-export interface CreateRoomInput {
-  displayName: string;
-  includePercivalMorgana: boolean;
-  deviceToken: string;
-}
-
-export interface JoinRoomInput {
-  code: string;
-  displayName: string;
-  deviceToken: string;
-}
-
-export interface StartResult {
-  ok: boolean;
-  reason?: string;
-  snapshot?: RoomSnapshot;
-}
+export {
+  assertDeletedRows,
+  canStartGame,
+  createHostDemoRoom,
+  createJoinDemoRoom,
+  DEMO_JOIN_ROOM_CODE,
+  findPlayerByDeviceToken,
+  findPlayerByDisplayName,
+  generateRoomCode,
+  getPrivateRoleInfo,
+  getStartablePlayers,
+  getStartValidation,
+  leavePlayerFromSnapshot,
+  LOCAL_ROOMS_STORAGE_KEY,
+  normalizeRoomCode,
+  removePlayerFromSnapshot,
+  startDemoSnapshot,
+  type CreateRoomInput,
+  type JoinRoomInput,
+  type Room,
+  type RoomPlayer,
+  type RoomSettings,
+  type RoomSnapshot,
+  type RoomStatus,
+  type StartResult,
+} from './roomCore';
 
 type Listener = (snapshot: RoomSnapshot | undefined) => void;
 
-export const LOCAL_ROOMS_STORAGE_KEY = 'avalon-host.rooms.v1';
-export const DEMO_JOIN_ROOM_CODE = '58213';
-
-const DEMO_BOT_NAMES = ['Gwen', 'Lance', 'Mira', 'Percy', 'Selene', 'Tristan'];
-
-export function generateRoomCode(existingCodes: Iterable<string> = []): string {
-  const existing = new Set(Array.from(existingCodes, normalizeRoomCode));
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const code = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
-    if (!existing.has(code)) return code;
-  }
-  throw new Error('Unable to generate an unused room code');
+interface RoomRepository {
+  createRoom(input: CreateRoomInput): Promise<{ snapshot: RoomSnapshot; currentPlayerId: string }>;
+  joinRoom(input: JoinRoomInput): Promise<{ snapshot: RoomSnapshot; currentPlayerId: string }>;
+  updateNickname(roomId: string, playerId: string, displayName: string): Promise<RoomSnapshot>;
+  setReady(roomId: string, playerId: string, isReady: boolean): Promise<RoomSnapshot>;
+  startGame(roomId: string): Promise<StartResult>;
+  updateMissionState(roomId: string, missionState: MissionState): Promise<RoomSnapshot>;
+  proposeMissionTeam(roomId: string, leaderPlayerId: string, selectedTeamIds: string[]): Promise<RoomSnapshot>;
+  submitTeamVote(roomId: string, playerId: string, vote: Vote): Promise<RoomSnapshot>;
+  submitMissionCard(roomId: string, playerId: string, card: MissionCard): Promise<RoomSnapshot>;
+  submitAssassination(roomId: string, assassinPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
+  removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
+  leaveRoom(roomId: string, playerId: string): Promise<RoomSnapshot>;
+  getRoomById(roomId: string): Promise<RoomSnapshot | undefined>;
+  getRoomByCode(code: string): Promise<RoomSnapshot | undefined>;
+  subscribeToRoom(roomId: string, listener: Listener): () => void;
 }
 
-export function normalizeRoomCode(code: string): string {
-  return code.replace(/\D/g, '').slice(0, 5);
-}
-
-export function getStartValidation(players: RoomPlayer[]): string | undefined {
-  const startableCount = getStartablePlayers(players).length;
-  if (startableCount < 5) {
-    const neededCount = 5 - startableCount;
-    return `Need ${neededCount} more ready player${neededCount === 1 ? '' : 's'} to start.`;
-  }
-  if (startableCount > 10) return 'Avalon Lite supports at most 10 players.';
-  return undefined;
-}
-
-export function canStartGame(players: RoomPlayer[]): boolean {
-  return !getStartValidation(players);
-}
-
-export function getStartablePlayers(players: RoomPlayer[]): RoomPlayer[] {
-  const host = players.find((player) => player.isHost);
-  const activePlayers = players.filter((player) => player.isReady || player.id === host?.id);
-  return activePlayers.map((player, index) => ({
-    ...player,
-    seatIndex: index,
-    isHost: host ? player.id === host.id : index === 0,
-    isReady: true,
-  }));
-}
-
-export function createHostDemoRoom(displayName: string): { snapshot: RoomSnapshot; currentPlayerId: string } {
-  const roomId = 'demo-host-room';
-  const currentPlayerId = 'demo-host-player';
-  const players = [
-    makeDemoPlayer(roomId, currentPlayerId, displayName.trim() || 'Demo Host', 0, true),
-    ...DEMO_BOT_NAMES.slice(0, 4).map((name, index) => makeDemoPlayer(roomId, `demo-bot-${index + 1}`, `${name} Bot`, index + 1, false)),
-  ];
-  return { snapshot: makeDemoSnapshot(roomId, '41372', players), currentPlayerId };
-}
-
-export function createJoinDemoRoom(displayName: string): { snapshot: RoomSnapshot; currentPlayerId: string } {
-  const roomId = 'demo-join-room';
-  const currentPlayerId = 'demo-joining-player';
-  const players = [
-    makeDemoPlayer(roomId, 'demo-existing-host', 'Demo Host', 0, true),
-    ...DEMO_BOT_NAMES.slice(0, 3).map((name, index) => makeDemoPlayer(roomId, `demo-existing-bot-${index + 1}`, `${name} Bot`, index + 1, false)),
-    makeDemoPlayer(roomId, currentPlayerId, displayName.trim() || 'Demo Guest', 4, false),
-  ];
-  return { snapshot: makeDemoSnapshot(roomId, DEMO_JOIN_ROOM_CODE, players), currentPlayerId };
-}
-
-export function startDemoSnapshot(snapshot: RoomSnapshot): StartResult {
-  const reason = getStartValidation(snapshot.players);
-  if (reason) return { ok: false, reason, snapshot };
-  const players = getStartablePlayers(snapshot.players);
-  const assigned = assignRoles(
-    players.map(toAvalonPlayer),
-    snapshot.room.settings,
-    `${snapshot.room.code}-${players.map((player) => player.id).join('|')}`,
-  );
-  return {
-    ok: true,
-    snapshot: {
-      ...snapshot,
-      room: {
-        ...snapshot.room,
-        status: 'reveal',
-        settings: {
-          ...snapshot.room.settings,
-          missionState: createInitialMissionState(players.map((player) => player.id)),
-        },
-      },
-      players: players.map((player) => ({
-        ...player,
-        role: assigned.find((assignedPlayer) => assignedPlayer.id === player.id)?.role,
-      })),
-    },
-  };
-}
+export const isHostedConfigured = Boolean(!isDevSessionActive() && (import.meta.env.PROD || import.meta.env.VITE_USE_NEON_API === 'true'));
 
 export async function createRoom(input: CreateRoomInput): Promise<{ snapshot: RoomSnapshot; currentPlayerId: string }> {
   return repository().createRoom(input);
@@ -216,11 +133,11 @@ export function subscribeToRoom(roomId: string, listener: Listener): () => void 
   return repository().subscribeToRoom(roomId, listener);
 }
 
-function repository() {
-  return isSupabaseConfigured && !isDevSessionActive() ? supabaseRepository : localRepository;
+function repository(): RoomRepository {
+  return isHostedConfigured ? apiRepository : localRepository;
 }
 
-const localRepository = {
+const localRepository: RoomRepository = {
   async createRoom(input: CreateRoomInput) {
     const data = readRooms();
     const code = generateRoomCode(data.rooms.map((item) => item.room.code));
@@ -233,7 +150,7 @@ const localRepository = {
         includePercivalMorgana: input.includePercivalMorgana,
       },
     };
-    const player: RoomPlayer = {
+    const player = {
       id: crypto.randomUUID(),
       roomId: room.id,
       displayName: input.displayName.trim(),
@@ -263,7 +180,7 @@ const localRepository = {
       return { snapshot, currentPlayerId: existingPlayer.id };
     }
     if (snapshot.players.length >= 10) throw new Error('This room already has 10 players.');
-    const player: RoomPlayer = {
+    const player = {
       id: crypto.randomUUID(),
       roomId: snapshot.room.id,
       displayName,
@@ -280,8 +197,7 @@ const localRepository = {
   async updateNickname(roomId: string, playerId: string, displayName: string) {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
-    const player = requirePlayer(snapshot, playerId);
-    player.displayName = displayName.trim();
+    requireLocalPlayer(snapshot, playerId).displayName = displayName.trim();
     writeRooms(data);
     return snapshot;
   },
@@ -289,30 +205,21 @@ const localRepository = {
   async setReady(roomId: string, playerId: string, isReady: boolean) {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
-    requirePlayer(snapshot, playerId).isReady = isReady;
+    requireLocalPlayer(snapshot, playerId).isReady = isReady;
     writeRooms(data);
     return snapshot;
   },
 
-  async startGame(roomId: string): Promise<StartResult> {
+  async startGame(roomId: string) {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
-    const reason = getStartValidation(snapshot.players);
-    if (reason) return { ok: false, reason, snapshot };
-    const players = getStartablePlayers(snapshot.players);
-    const assigned = assignRoles(
-      players.map(toAvalonPlayer),
-      snapshot.room.settings,
-      `${snapshot.room.code}-${players.map((player) => player.id).join('|')}`,
-    );
-    snapshot.room.status = 'reveal';
-    snapshot.room.settings.missionState = createInitialMissionState(players.map((player) => player.id));
-    snapshot.players = players.map((player) => ({
-      ...player,
-      role: assigned.find((assignedPlayer) => assignedPlayer.id === player.id)?.role,
-    }));
-    writeRooms(data);
-    return { ok: true, snapshot };
+    const result = startDemoSnapshot(snapshot);
+    if (result.snapshot) {
+      const index = data.rooms.findIndex((item) => item.room.id === roomId);
+      data.rooms[index] = result.snapshot;
+      writeRooms(data);
+    }
+    return result;
   },
 
   async updateMissionState(roomId: string, missionState: MissionState) {
@@ -353,7 +260,13 @@ const localRepository = {
     const snapshot = requireById(data, roomId);
     const playerIds = snapshot.players.map((player) => player.id);
     const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
-    const nextMissionState = submitMissionCardToState(missionState, playerIds, snapshot.players.map(toAvalonPlayer), playerId, card);
+    const nextMissionState = submitMissionCardToState(
+      missionState,
+      playerIds,
+      snapshot.players.map((player) => ({ id: player.id, name: player.displayName, role: player.role })),
+      playerId,
+      card,
+    );
     snapshot.room.settings = { ...snapshot.room.settings, missionState: nextMissionState };
     snapshot.room.status = nextMissionState.phase;
     writeRooms(data);
@@ -365,7 +278,12 @@ const localRepository = {
     const snapshot = requireById(data, roomId);
     const playerIds = snapshot.players.map((player) => player.id);
     const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
-    const nextMissionState = resolveAssassination(missionState, snapshot.players.map(toAvalonPlayer), assassinPlayerId, targetPlayerId);
+    const nextMissionState = resolveAssassination(
+      missionState,
+      snapshot.players.map((player) => ({ id: player.id, name: player.displayName, role: player.role })),
+      assassinPlayerId,
+      targetPlayerId,
+    );
     snapshot.room.settings = { ...snapshot.room.settings, missionState: nextMissionState };
     snapshot.room.status = nextMissionState.phase;
     writeRooms(data);
@@ -408,293 +326,59 @@ const localRepository = {
   },
 };
 
-const supabaseRepository = {
-  async createRoom(input: CreateRoomInput) {
-    const supabase = await getSupabaseRequired();
-    const { data: existingRooms, error: existingRoomsError } = await supabase.from('rooms').select('code');
-    if (existingRoomsError) throw existingRoomsError;
-    const code = generateRoomCode((existingRooms ?? []).map((room) => room.code as string));
-    const { data: roomRow, error: roomError } = await supabase
-      .from('rooms')
-      .insert({
-        code,
-        status: 'lobby',
-        game_type: 'avalon_lite',
-        settings: { includePercivalMorgana: input.includePercivalMorgana },
-      })
-      .select()
-      .single();
-    if (roomError) throw roomError;
-    const { data: playerRow, error: playerError } = await supabase
-      .from('players')
-      .insert({
-        room_id: roomRow.id,
-        display_name: input.displayName.trim(),
-        seat_index: 0,
-        is_host: true,
-        is_ready: false,
-        device_token_hash: input.deviceToken,
-      })
-      .select()
-      .single();
-    if (playerError) throw playerError;
-    return { snapshot: await fetchSnapshot(roomRow.id), currentPlayerId: playerRow.id as string };
+const apiRepository: RoomRepository = {
+  createRoom: (input) => apiRequest('createRoom', { input }),
+  joinRoom: (input) => apiRequest('joinRoom', { input }),
+  updateNickname: (roomId, playerId, displayName) => apiRequest('updateNickname', { roomId, playerId, displayName }),
+  setReady: (roomId, playerId, isReady) => apiRequest('setReady', { roomId, playerId, isReady }),
+  startGame: (roomId) => apiRequest('startGame', { roomId }),
+  updateMissionState: (roomId, missionState) => apiRequest('updateMissionState', { roomId, missionState }),
+  proposeMissionTeam: (roomId, leaderPlayerId, selectedTeamIds) => apiRequest('proposeMissionTeam', { roomId, leaderPlayerId, selectedTeamIds }),
+  submitTeamVote: (roomId, playerId, vote) => apiRequest('submitTeamVote', { roomId, playerId, vote }),
+  submitMissionCard: (roomId, playerId, card) => apiRequest('submitMissionCard', { roomId, playerId, card }),
+  submitAssassination: (roomId, assassinPlayerId, targetPlayerId) => apiRequest('submitAssassination', { roomId, assassinPlayerId, targetPlayerId }),
+  removePlayer: (roomId, hostPlayerId, targetPlayerId) => apiRequest('removePlayer', { roomId, hostPlayerId, targetPlayerId }),
+  leaveRoom: (roomId, playerId) => apiRequest('leaveRoom', { roomId, playerId }),
+  async getRoomById(roomId) {
+    return (await apiRequest<RoomSnapshot | null>('getRoomById', { roomId })) ?? undefined;
   },
-
-  async joinRoom(input: JoinRoomInput) {
-    const found = await this.getRoomByCode(input.code);
-    if (!found) throw new Error('Room not found.');
-    if (found.room.status !== 'lobby') throw new Error('This room is already locked.');
-    const supabase = await getSupabaseRequired();
-    const { data: existingRows, error: existingError } = await supabase
-      .from('players')
-      .select('id, display_name')
-      .eq('room_id', found.room.id)
-      .eq('device_token_hash', input.deviceToken)
-      .limit(1);
-    if (existingError) throw existingError;
-    const existingPlayer = existingRows?.[0];
-    const displayName = input.displayName.trim();
-    if (existingPlayer) {
-      if (existingPlayer.display_name !== displayName) {
-        const { error } = await supabase.from('players').update({ display_name: displayName }).eq('id', existingPlayer.id);
-        if (error) throw error;
-      }
-      return { snapshot: await fetchSnapshot(found.room.id), currentPlayerId: existingPlayer.id as string };
-    }
-    const sameNamePlayer = findPlayerByDisplayName(found.players, displayName);
-    if (sameNamePlayer) {
-      const { error } = await supabase
-        .from('players')
-        .update({ display_name: displayName, device_token_hash: input.deviceToken })
-        .eq('id', sameNamePlayer.id);
-      if (error) throw error;
-      return { snapshot: await fetchSnapshot(found.room.id), currentPlayerId: sameNamePlayer.id };
-    }
-    if (found.players.length >= 10) throw new Error('This room already has 10 players.');
-    const { data, error } = await supabase
-      .from('players')
-      .insert({
-        room_id: found.room.id,
-        display_name: displayName,
-        seat_index: found.players.length,
-        is_host: false,
-        is_ready: false,
-        device_token_hash: input.deviceToken,
-      })
-      .select()
-      .single();
-    if (error) throw error;
-    return { snapshot: await fetchSnapshot(found.room.id), currentPlayerId: data.id as string };
+  async getRoomByCode(code) {
+    return (await apiRequest<RoomSnapshot | null>('getRoomByCode', { code })) ?? undefined;
   },
-
-  async updateNickname(roomId: string, playerId: string, displayName: string) {
-    const supabase = await getSupabaseRequired();
-    const { error } = await supabase.from('players').update({ display_name: displayName.trim() }).eq('id', playerId);
-    if (error) throw error;
-    return fetchSnapshot(roomId);
-  },
-
-  async setReady(roomId: string, playerId: string, isReady: boolean) {
-    const supabase = await getSupabaseRequired();
-    const { error } = await supabase.from('players').update({ is_ready: isReady }).eq('id', playerId);
-    if (error) throw error;
-    return fetchSnapshot(roomId);
-  },
-
-  async startGame(roomId: string): Promise<StartResult> {
-    const snapshot = await fetchSnapshot(roomId);
-    const reason = getStartValidation(snapshot.players);
-    if (reason) return { ok: false, reason, snapshot };
-    const players = getStartablePlayers(snapshot.players);
-    const activePlayerIds = new Set(players.map((player) => player.id));
-    const removedPlayerIds = snapshot.players.filter((player) => !activePlayerIds.has(player.id)).map((player) => player.id);
-    const assigned = assignRoles(
-      players.map(toAvalonPlayer),
-      snapshot.room.settings,
-      `${snapshot.room.code}-${players.map((player) => player.id).join('|')}`,
-    );
-    const supabase = await getSupabaseRequired();
-    if (removedPlayerIds.length > 0) {
-      const { error: deleteError } = await supabase.from('players').delete().eq('room_id', roomId).in('id', removedPlayerIds);
-      if (deleteError) throw deleteError;
-    }
-    const settings = { ...snapshot.room.settings, missionState: createInitialMissionState(players.map((player) => player.id)) };
-    const { error: roomError } = await supabase.from('rooms').update({ status: 'reveal', settings }).eq('id', roomId);
-    if (roomError) throw roomError;
-    await Promise.all(
-      players.map((player) =>
-        supabase
-          .from('players')
-          .update({
-            seat_index: player.seatIndex,
-            is_host: player.isHost,
-            is_ready: player.isReady,
-            role: assigned.find((assignedPlayer) => assignedPlayer.id === player.id)?.role,
-          })
-          .eq('id', player.id)
-          .then(({ error }: { error: Error | null }) => {
-            if (error) throw error;
-          }),
-      ),
-    );
-    return { ok: true, snapshot: await fetchSnapshot(roomId) };
-  },
-
-  async updateMissionState(roomId: string, missionState: MissionState) {
-    const snapshot = await fetchSnapshot(roomId);
-    const supabase = await getSupabaseRequired();
-    const settings = { ...snapshot.room.settings, missionState };
-    const { error } = await supabase.from('rooms').update({ settings, status: missionState.phase }).eq('id', roomId);
-    if (error) throw error;
-    return fetchSnapshot(roomId);
-  },
-
-  async proposeMissionTeam(roomId: string, leaderPlayerId: string, selectedTeamIds: string[]) {
-    const snapshot = await fetchSnapshot(roomId);
-    const playerIds = snapshot.players.map((player) => player.id);
-    const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
-    const nextMissionState = submitTeamProposal(missionState, playerIds, leaderPlayerId, selectedTeamIds);
-    return updateRoomMissionState(roomId, snapshot, nextMissionState);
-  },
-
-  async submitTeamVote(roomId: string, playerId: string, vote: Vote) {
-    const snapshot = await fetchSnapshot(roomId);
-    const playerIds = snapshot.players.map((player) => player.id);
-    const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
-    const nextMissionState = submitTeamVoteToState(missionState, playerIds, playerId, vote);
-    return updateRoomMissionState(roomId, snapshot, nextMissionState);
-  },
-
-  async submitMissionCard(roomId: string, playerId: string, card: MissionCard) {
-    const snapshot = await fetchSnapshot(roomId);
-    const playerIds = snapshot.players.map((player) => player.id);
-    const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
-    const nextMissionState = submitMissionCardToState(missionState, playerIds, snapshot.players.map(toAvalonPlayer), playerId, card);
-    return updateRoomMissionState(roomId, snapshot, nextMissionState);
-  },
-
-  async submitAssassination(roomId: string, assassinPlayerId: string, targetPlayerId: string) {
-    const snapshot = await fetchSnapshot(roomId);
-    const playerIds = snapshot.players.map((player) => player.id);
-    const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
-    const nextMissionState = resolveAssassination(missionState, snapshot.players.map(toAvalonPlayer), assassinPlayerId, targetPlayerId);
-    const supabase = await getSupabaseRequired();
-    const settings = { ...snapshot.room.settings, missionState: nextMissionState };
-    const { error } = await supabase.from('rooms').update({ settings, status: nextMissionState.phase }).eq('id', roomId);
-    if (error) throw error;
-    return fetchSnapshot(roomId);
-  },
-
-  async removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string) {
-    const snapshot = await fetchSnapshot(roomId);
-    removePlayerFromSnapshot(snapshot, hostPlayerId, targetPlayerId);
-    const supabase = await getSupabaseRequired();
-    const { data: deletedRows, error: deleteError } = await supabase
-      .from('players')
-      .delete()
-      .eq('id', targetPlayerId)
-      .eq('room_id', roomId)
-      .select('id');
-    if (deleteError) throw deleteError;
-    assertDeletedRows(deletedRows, 'Could not remove player.');
-    await Promise.all(
-      snapshot.players.map((player) =>
-        supabase
-          .from('players')
-          .update({ seat_index: player.seatIndex })
-          .eq('id', player.id)
-          .then(({ error }: { error: Error | null }) => {
-            if (error) throw error;
-          }),
-      ),
-    );
-    return fetchSnapshot(roomId);
-  },
-
-  async leaveRoom(roomId: string, playerId: string) {
-    const snapshot = await fetchSnapshot(roomId);
-    leavePlayerFromSnapshot(snapshot, playerId);
-    const supabase = await getSupabaseRequired();
-    const { data: deletedRows, error: deleteError } = await supabase
-      .from('players')
-      .delete()
-      .eq('id', playerId)
-      .eq('room_id', roomId)
-      .select('id');
-    if (deleteError) throw deleteError;
-    assertDeletedRows(deletedRows, 'Could not leave room.');
-    await Promise.all(
-      snapshot.players.map((player) =>
-        supabase
-          .from('players')
-          .update({ seat_index: player.seatIndex, is_host: player.isHost })
-          .eq('id', player.id)
-          .then(({ error }: { error: Error | null }) => {
-            if (error) throw error;
-          }),
-      ),
-    );
-    return fetchSnapshot(roomId);
-  },
-
-  async getRoomById(roomId: string) {
-    return fetchSnapshot(roomId).catch(() => undefined);
-  },
-
-  async getRoomByCode(code: string) {
-    const supabase = await getSupabaseRequired();
-    const { data, error } = await supabase.from('rooms').select('id').eq('code', normalizeRoomCode(code)).maybeSingle();
-    if (error) throw error;
-    return data ? fetchSnapshot(data.id as string) : undefined;
-  },
-
   subscribeToRoom(roomId: string, listener: Listener) {
-    void fetchSnapshot(roomId).then(listener);
-    let channel: any;
-    void getSupabaseRequired().then((supabase) => {
-      channel = supabase
-        .channel(`room-${roomId}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, () => {
-          void fetchSnapshot(roomId).then(listener);
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${roomId}` }, () => {
-          void fetchSnapshot(roomId).then(listener);
-        })
-        .subscribe();
-    });
+    let stopped = false;
+    let inFlight = false;
+    const poll = async () => {
+      if (stopped || inFlight) return;
+      inFlight = true;
+      try {
+        listener(await apiRepository.getRoomById(roomId));
+      } catch {
+        // Keep polling through transient API/network failures.
+      } finally {
+        inFlight = false;
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 1000);
     return () => {
-      if (channel) void getSupabaseRequired().then((supabase) => supabase.removeChannel(channel));
+      stopped = true;
+      window.clearInterval(timer);
     };
   },
 };
 
-async function updateRoomMissionState(roomId: string, snapshot: RoomSnapshot, missionState: MissionState): Promise<RoomSnapshot> {
-  const supabase = await getSupabaseRequired();
-  const settings = { ...snapshot.room.settings, missionState };
-  const { error } = await supabase.from('rooms').update({ settings, status: missionState.phase }).eq('id', roomId);
-  if (error) throw error;
-  return fetchSnapshot(roomId);
-}
-
-async function fetchSnapshot(roomId: string): Promise<RoomSnapshot> {
-  const supabase = await getSupabaseRequired();
-  const [{ data: roomRow, error: roomError }, { data: playerRows, error: playerError }] = await Promise.all([
-    supabase.from('rooms').select('*').eq('id', roomId).single(),
-    supabase.from('players').select('*').eq('room_id', roomId).order('seat_index'),
-  ]);
-  if (roomError) throw roomError;
-  if (playerError) throw playerError;
-  return {
-    room: mapRoom(roomRow),
-    players: (playerRows ?? []).map(mapPlayer),
-  };
-}
-
-async function getSupabaseRequired() {
-  const client = await getSupabaseClient();
-  if (!client) throw new Error('Supabase is not configured.');
-  return client;
+async function apiRequest<T>(action: string, payload: Record<string, unknown>): Promise<T> {
+  const response = await fetch('/api/rooms', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(typeof body?.error === 'string' ? body.error : 'Request failed.');
+  }
+  return body as T;
 }
 
 function readRooms(): { rooms: RoomSnapshot[] } {
@@ -720,119 +404,8 @@ function requireById(data: { rooms: RoomSnapshot[] }, roomId: string) {
   return snapshot;
 }
 
-function requirePlayer(snapshot: RoomSnapshot, playerId: string) {
+function requireLocalPlayer(snapshot: RoomSnapshot, playerId: string) {
   const player = snapshot.players.find((item) => item.id === playerId);
   if (!player) throw new Error('Player not found.');
   return player;
-}
-
-export function assertDeletedRows(rows: unknown[] | null | undefined, message: string) {
-  if (!rows?.length) throw new Error(message);
-}
-
-export function removePlayerFromSnapshot(snapshot: RoomSnapshot, hostPlayerId: string, targetPlayerId: string): RoomSnapshot {
-  if (snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup') {
-    throw new Error('Players can only be removed before the game starts.');
-  }
-  const host = requirePlayer(snapshot, hostPlayerId);
-  if (!host.isHost) throw new Error('Only the host can remove players.');
-  if (hostPlayerId === targetPlayerId) throw new Error('Host cannot remove themselves.');
-  requirePlayer(snapshot, targetPlayerId);
-  snapshot.players = snapshot.players
-    .filter((player) => player.id !== targetPlayerId)
-    .map((player, index) => ({ ...player, seatIndex: index }));
-  return snapshot;
-}
-
-export function leavePlayerFromSnapshot(snapshot: RoomSnapshot, playerId: string): RoomSnapshot {
-  if (snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup') {
-    throw new Error('Players can only leave before the game starts.');
-  }
-  requirePlayer(snapshot, playerId);
-  snapshot.players = snapshot.players
-    .filter((player) => player.id !== playerId)
-    .map((player, index) => ({ ...player, seatIndex: index, isHost: index === 0 }));
-  return snapshot;
-}
-
-export function findPlayerByDeviceToken(players: RoomPlayer[], deviceToken: string): RoomPlayer | undefined {
-  return players.find((player) => player.deviceToken === deviceToken);
-}
-
-export function findPlayerByDisplayName(players: RoomPlayer[], displayName: string): RoomPlayer | undefined {
-  const normalized = normalizeDisplayName(displayName);
-  if (!normalized) return undefined;
-  return players.find((player) => normalizeDisplayName(player.displayName) === normalized);
-}
-
-function normalizeDisplayName(displayName: string) {
-  return displayName.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
-}
-
-function makeDemoSnapshot(roomId: string, code: string, players: RoomPlayer[]): RoomSnapshot {
-  return {
-    room: {
-      id: roomId,
-      code,
-      status: 'lobby',
-      gameType: 'avalon_lite',
-      settings: {
-        createdInDemoMode: true,
-        includePercivalMorgana: false,
-      },
-    },
-    players,
-  };
-}
-
-function makeDemoPlayer(roomId: string, id: string, displayName: string, seatIndex: number, isHost: boolean): RoomPlayer {
-  return {
-    id,
-    roomId,
-    displayName,
-    seatIndex,
-    isHost,
-    isReady: true,
-    deviceToken: id,
-  };
-}
-
-function toAvalonPlayer(player: RoomPlayer): AvalonPlayer {
-  return { id: player.id, name: player.displayName, role: player.role };
-}
-
-function mapRoom(row: Record<string, unknown>): Room {
-  return {
-    id: row.id as string,
-    code: row.code as string,
-    status: row.status as RoomStatus,
-    gameType: row.game_type as 'avalon_lite',
-    settings: (row.settings as RoomSettings | null) ?? {},
-  };
-}
-
-function mapPlayer(row: Record<string, unknown>): RoomPlayer {
-  return {
-    id: row.id as string,
-    roomId: row.room_id as string,
-    displayName: row.display_name as string,
-    seatIndex: row.seat_index as number,
-    isHost: row.is_host as boolean,
-    isReady: row.is_ready as boolean,
-    role: row.role as Role | undefined,
-    deviceToken: row.device_token_hash as string | undefined,
-  };
-}
-
-export function getPrivateRoleInfo(currentPlayer: RoomPlayer, players: RoomPlayer[]) {
-  if (!currentPlayer.role) return undefined;
-  const avalonPlayers = players.map((player) => ({
-    id: player.id,
-    name: player.displayName,
-    role: player.role,
-  }));
-  return getVisibilityInfo(
-    { id: currentPlayer.id, name: currentPlayer.displayName, role: currentPlayer.role },
-    avalonPlayers,
-  );
 }

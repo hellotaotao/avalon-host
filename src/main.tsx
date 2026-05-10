@@ -29,7 +29,6 @@ import {
   type MissionState,
 } from './domain/missionFlow';
 import { buildJoinUrl, buildStepUrl, parseEntryStep, parseJoinCodeFromUrl, type EntryScreen } from './navigationState';
-import { isSupabaseConfigured } from './services/supabaseClient';
 import {
   canStartGame,
   createRoom,
@@ -49,6 +48,7 @@ import {
   subscribeToRoom,
   updateNickname,
   updateMissionState,
+  isHostedConfigured,
   type RoomPlayer,
   type RoomSnapshot,
 } from './services/roomService';
@@ -371,7 +371,7 @@ function App() {
         <p className="eyebrow">Avalon Host</p>
         <h1>{screen === 'room' ? (snapshot?.room.status === 'reveal' ? 'The Merlin Reveal' : 'Round Table Lobby') : 'Gather the Knights of Avalon'}</h1>
         <p className="lede">Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.</p>
-        <p className="mode">{isSupabaseConfigured && !isDevSessionActive() ? 'Supabase realtime mode' : 'Local browser demo mode'}</p>
+        <p className="mode">{isHostedConfigured && !isDevSessionActive() ? 'Neon API mode' : 'Local browser demo mode'}</p>
       </header>
 
       {message && <p className="notice">{message}</p>}
@@ -418,7 +418,7 @@ function App() {
           </div>
           <div className="entry-guide">
             <h2>What each choice means</h2>
-            <p><strong>Host</strong> opens a real table room. <strong>Join</strong> is for players with a 5-digit code. <strong>Demo</strong> stays on this device and never connects to Supabase.</p>
+            <p><strong>Host</strong> opens a real table room. <strong>Join</strong> is for players with a 5-digit code. <strong>Demo</strong> stays on this device and never connects to Neon.</p>
           </div>
         </section>
       )}

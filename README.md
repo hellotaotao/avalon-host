@@ -11,11 +11,11 @@ npm test
 npm run build
 ```
 
-When Supabase env vars are absent, the app runs in local browser demo mode using `localStorage`.
+In production, the app uses Vercel serverless functions backed by Neon Postgres. In local Vite dev, it runs in browser demo mode using `localStorage` unless `VITE_USE_NEON_API=true` is set while a local Vercel API server is running.
 
 ## Demo Simulator
 
-The homepage **Try demo** path now opens a local-only tabletop simulator instead of creating a fake room. It does not write to Supabase and does not use the live host/join backend.
+The homepage **Try demo** path now opens a local-only tabletop simulator instead of creating a fake room. It does not write to Neon and does not use the live host/join backend.
 
 Demo supports:
 
@@ -45,7 +45,7 @@ If the browser does not open automatically, visit:
 http://127.0.0.1:5173/dev/multiplayer
 ```
 
-The simulator embeds five same-origin player panes. They share the local room store but each pane has its own namespaced session identity (`devSession=tao-p1` through `tao-p5`), so Tao can click as five different players without Supabase.
+The simulator embeds five same-origin player panes. They share the local room store but each pane has its own namespaced session identity (`devSession=tao-p1` through `tao-p5`), so Tao can click as five different players without Neon.
 
 Useful controls:
 
@@ -63,7 +63,7 @@ Run only the five-player smoke:
 npm run test:five-player
 ```
 
-The smoke test uses the local room service with mocked browser storage. It creates one host, joins four more players, marks all five ready, starts the game, and verifies every player reaches the private role reveal state. No Supabase, secrets, browser install, or network access is required.
+The smoke test uses the local room service with mocked browser storage. It creates one host, joins four more players, marks all five ready, starts the game, and verifies every player reaches the private role reveal state. No Neon database, secrets, browser install, or network access is required.
 
 ## Table Flow
 
@@ -86,25 +86,31 @@ Room screens keep the 5-digit room code prominent for table readout before the g
 
 ## Mission MVP Status
 
-Mission flow state is stored in `rooms.settings.missionState` so the existing room subscription updates work without changing the realtime publication. Live phone actions submit through `roomService`; demo mode updates the local snapshot only and does not write to Supabase.
+Mission flow state is stored in `rooms.settings.missionState`. Live room updates are fetched through a Vercel API polling loop; demo mode updates the local snapshot only and does not write to Neon.
 
 Normal live play is phone-driven. The Table Quest panel remains a status surface with host backup controls, but it is no longer the only way to progress proposals, votes, or mission results. Individual team votes are tracked in mission state, and mission cards are stored as submitted-player markers plus an anonymous card pile until every selected player has submitted; only then is the public success/fail aggregate revealed. After three successful quests, the assigned Assassin can submit the Merlin guess from the dedicated Assassin phase panel. Three failed quests finish with Evil winning; an Assassin hit on Merlin also gives Evil the win; an Assassin miss gives Good the win.
 
-## Supabase Status
+## Neon Status
 
-The app is Supabase-ready, but remote project creation is currently blocked by the account free-project limit. No secrets are committed.
+The hosted app uses Neon through Vercel serverless API routes. No database URL or password is exposed to the frontend and no secrets are committed.
 
-Create a local `.env` from `.env.example` when a Supabase project is available:
+Set `DATABASE_URL` in Vercel for production. For local API testing, run through Vercel with `DATABASE_URL` available and opt the Vite frontend into the API:
 
 ```bash
-VITE_SUPABASE_URL=...
-VITE_SUPABASE_ANON_KEY=...
+DATABASE_URL=postgres://...
+VITE_USE_NEON_API=true
 ```
 
-Schema draft:
+Apply the schema with:
+
+```bash
+npm run db:schema
+```
+
+Schema source:
 
 ```text
-supabase/migrations/20260427010500_initial_avalon_host_schema.sql
+db/schema.sql
 ```
 
-The current RLS policies are intentionally permissive local-prototype drafts. Production needs RPC-based room create/join/start actions, hashed device-token verification, and private role/mission-card access controls before real use.
+The current API intentionally preserves the prototype security posture: device tokens are still lightweight seat-rejoin identifiers, and room actions are server-mediated but not a full auth rewrite.

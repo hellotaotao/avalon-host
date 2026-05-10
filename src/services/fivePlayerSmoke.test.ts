@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialMissionState, type MissionState } from '../domain/missionFlow';
 
-vi.mock('./supabaseClient', () => ({
-  getSupabaseClient: () => Promise.resolve(undefined),
-  isSupabaseConfigured: false,
-}));
-
 import {
   createRoom,
   getPrivateRoleInfo,
