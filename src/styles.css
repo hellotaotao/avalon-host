@@ -1263,8 +1263,14 @@ label {
 .mission-panel-heading,
 .mission-section-heading,
 .team-roster-heading {
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+}
+
+.mission-panel-heading > div,
+.mission-section-heading h3,
+.team-roster-heading span {
+  min-width: 0;
 }
 
 .mission-panel-heading h2 {
@@ -1274,6 +1280,9 @@ label {
 .phase-badge,
 .mission-section-heading span,
 .team-roster-heading strong {
+  justify-self: end;
+  width: auto;
+  max-width: min(48vw, 22rem);
   border: 1px solid rgba(240, 199, 107, 0.68);
   border-radius: 999px;
   background: rgba(255, 240, 189, 0.14);
@@ -1650,8 +1659,6 @@ label {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .mission-panel-heading,
-  .mission-section-heading,
   .expedition-summary {
     grid-template-columns: 1fr;
   }
