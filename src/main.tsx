@@ -1807,9 +1807,6 @@ function RoomView({
               )}
             </div>
           </div>
-          {currentPlayer && !started && (
-            <button type="button" className="small-danger room-leave" onClick={onLeave}>Leave Room</button>
-          )}
         </div>
       )}
 
@@ -1828,14 +1825,19 @@ function RoomView({
         )}
 
         {!started && (
-          <div className="next-step">
-            <strong>{canStart ? 'Ready players can start.' : 'Waiting to start'}</strong>
-            <span>
-              {canStart
-                ? 'Starting now will leave unready players out of this game.'
-                : startValidation}
-            </span>
-          </div>
+          <>
+            <div className="next-step">
+              <strong>{canStart ? 'Ready players can start.' : 'Waiting to start'}</strong>
+              <span>
+                {canStart
+                  ? 'Starting now will leave unready players out of this game.'
+                  : startValidation}
+              </span>
+            </div>
+            {currentPlayer && (
+              <button type="button" className="small-danger room-leave" onClick={onLeave}>Leave Room</button>
+            )}
+          </>
         )}
 
         {started && currentPlayer && privateInfo && (
