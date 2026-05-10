@@ -937,8 +937,18 @@ label {
 
 .inline-form {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 0.5rem;
+}
+
+.inline-form input {
+  min-width: 0;
+}
+
+.inline-form button {
+  width: auto;
+  white-space: nowrap;
 }
 
 @media (max-width: 699px) {
@@ -1665,7 +1675,7 @@ label {
 
 @media (max-width: 420px) {
   .inline-form {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .mission-panel-heading,
