@@ -1599,15 +1599,6 @@ function summarizePublicRoleLineup(players: RoomPlayer[]): Array<{ role: Role; c
     .map((role) => ({ role, count: counts.get(role) ?? 0 }));
 }
 
-function summarizeAllegianceCounts(players: RoomPlayer[]): { good?: number; evil?: number } {
-  const roles = players.map((player) => player.role).filter((role): role is Role => Boolean(role));
-  if (roles.length !== players.length) return {};
-  return {
-    good: roles.filter((role) => roleAllegiance(role) === 'good').length,
-    evil: roles.filter((role) => roleAllegiance(role) === 'evil').length,
-  };
-}
-
 function getMissionPhaseLabel(missionState: MissionState): string {
   if (missionState.phase === 'proposal') return 'Choosing crew';
   if (missionState.phase === 'vote') return 'Council vote';
@@ -1966,13 +1957,11 @@ function MissionPanel({
 
   if (!missionState) return null;
 
-  const rule = getPlayerCountRule(players.length);
   const leaderName = players.find((player) => player.id === missionState.leaderPlayerId)?.displayName ?? t('Unknown captain');
   const selectedTeamNames = missionState.selectedTeamIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id);
   const visibleTeamIds = missionState.phase === 'proposal' && selectedTeamIds.length > 0 ? selectedTeamIds : missionState.selectedTeamIds;
   const visibleTeamNames = visibleTeamIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id);
   const roleSummary = summarizePublicRoleLineup(players);
-  const allegianceCounts = summarizeAllegianceCounts(players);
   const phaseLabel = t(getMissionPhaseLabel(missionState));
   const phaseCopy = getMissionPhaseCopy({
     missionState,
@@ -2031,23 +2020,6 @@ function MissionPanel({
         <div className="mission-section-heading">
           <h3>{t('Table Makeup')}</h3>
           <span>{players.length} {t('players')}</span>
-        </div>
-        <div className="makeup-grid">
-          <div className="makeup-tile">
-            <span>{t('Total')}</span>
-            <strong>{players.length}</strong>
-            <small>{t('at the table')}</small>
-          </div>
-          <div className="makeup-tile good-tile">
-            <span>{t('Good')}</span>
-            <strong>{allegianceCounts.good ?? rule.goodCount}</strong>
-            <small>{t('loyal side')}</small>
-          </div>
-          <div className="makeup-tile evil-tile">
-            <span>{t('Evil')}</span>
-            <strong>{allegianceCounts.evil ?? rule.evilCount}</strong>
-            <small>{t('hidden side')}</small>
-          </div>
         </div>
         <div className="role-lineup" aria-label={t('Public role lineup')}>
           <span>{t('Roles in play')}</span>

@@ -1313,18 +1313,12 @@ label {
 }
 
 .table-makeup {
+  gap: 0.65rem;
   background:
     linear-gradient(135deg, rgba(255, 240, 189, 0.17), rgba(48, 71, 45, 0.18)),
     rgba(24, 20, 16, 0.28);
 }
 
-.makeup-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.55rem;
-}
-
-.makeup-tile,
 .captain-card,
 .expedition-state-card,
 .team-roster {
@@ -1337,7 +1331,6 @@ label {
   padding: 0.7rem;
 }
 
-.makeup-tile span,
 .captain-card span,
 .expedition-state-card span,
 .role-lineup > span,
@@ -1346,27 +1339,6 @@ label {
   font-size: 0.76rem;
   font-weight: 900;
   text-transform: uppercase;
-}
-
-.makeup-tile strong {
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.85rem;
-  line-height: 1;
-}
-
-.makeup-tile small {
-  color: #6a4b30;
-  font-weight: 800;
-}
-
-.good-tile {
-  border-color: #8baa5f;
-  background: #d9e7ca;
-}
-
-.evil-tile {
-  border-color: #c06956;
-  background: #f8c8a9;
 }
 
 .role-lineup {
@@ -1680,8 +1652,7 @@ label {
 
   .mission-panel-heading,
   .mission-section-heading,
-  .expedition-summary,
-  .makeup-grid {
+  .expedition-summary {
     grid-template-columns: 1fr;
   }
 
