@@ -17,6 +17,7 @@ export interface Room {
   status: RoomStatus;
   gameType: 'avalon_lite';
   settings: RoomSettings;
+  updatedAt?: string;
 }
 
 export interface RoomPlayer {
@@ -55,6 +56,7 @@ export interface StartResult {
 
 export const LOCAL_ROOMS_STORAGE_KEY = 'avalon-host.rooms.v1';
 export const DEMO_JOIN_ROOM_CODE = '58213';
+export const ACTIVE_ROOM_EXIT_GRACE_MS = 5 * 60 * 1000;
 
 const DEMO_BOT_NAMES = ['Gwen', 'Lance', 'Mira', 'Percy', 'Selene', 'Tristan'];
 
@@ -171,15 +173,46 @@ export function removePlayerFromSnapshot(snapshot: RoomSnapshot, hostPlayerId: s
   return snapshot;
 }
 
-export function leavePlayerFromSnapshot(snapshot: RoomSnapshot, playerId: string): RoomSnapshot {
-  if (snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup' && snapshot.room.status !== 'finished') {
+export function leavePlayerFromSnapshot(snapshot: RoomSnapshot, playerId: string, options: { allowStaleActiveRoom?: boolean } = {}): RoomSnapshot {
+  const active = isRoomInProgress(snapshot);
+  if (active && !options.allowStaleActiveRoom) {
+    throw new Error('Players can only leave an active game after the room has been inactive for 5 minutes.');
+  }
+  if (!active && snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup' && snapshot.room.status !== 'finished') {
     throw new Error('Players can only leave before the game starts or after it finishes.');
   }
   requirePlayer(snapshot, playerId);
   snapshot.players = snapshot.players
     .filter((player) => player.id !== playerId)
     .map((player, index) => ({ ...player, seatIndex: index, isHost: index === 0 }));
+  if (active) resetAbandonedRoomAfterLeave(snapshot);
   return snapshot;
+}
+
+export function isRoomInProgress(snapshot: RoomSnapshot): boolean {
+  return snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup' && snapshot.room.status !== 'finished';
+}
+
+export function isRoomStaleForExit(snapshot: RoomSnapshot, nowMs = Date.now()): boolean {
+  if (!isRoomInProgress(snapshot)) return true;
+  const updatedAtMs = snapshot.room.updatedAt ? Date.parse(snapshot.room.updatedAt) : 0;
+  if (!Number.isFinite(updatedAtMs) || updatedAtMs <= 0) return false;
+  return nowMs - updatedAtMs >= ACTIVE_ROOM_EXIT_GRACE_MS;
+}
+
+function resetAbandonedRoomAfterLeave(snapshot: RoomSnapshot) {
+  const { missionState: _missionState, ...settings } = snapshot.room.settings;
+  snapshot.room = {
+    ...snapshot.room,
+    status: 'lobby',
+    settings,
+  };
+  snapshot.players = snapshot.players.map((player, index) => ({
+    ...player,
+    seatIndex: index,
+    isReady: false,
+    role: undefined,
+  }));
 }
 
 
@@ -237,6 +270,7 @@ export function mapRoom(row: Record<string, unknown>): Room {
     status: row.status as RoomStatus,
     gameType: row.game_type as 'avalon_lite',
     settings: (row.settings as RoomSettings | null) ?? {},
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : (row.updated_at as string | undefined),
   };
 }
 

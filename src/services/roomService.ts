@@ -12,6 +12,7 @@ import {
   findPlayerByDeviceToken,
   findPlayerByDisplayName,
   generateRoomCode,
+  isRoomStaleForExit,
   leavePlayerFromSnapshot,
   LOCAL_ROOMS_STORAGE_KEY,
   normalizeRoomCode,
@@ -36,6 +37,7 @@ export {
   findPlayerByDeviceToken,
   findPlayerByDisplayName,
   generateRoomCode,
+  isRoomStaleForExit,
   getPrivateRoleInfo,
   getStartablePlayers,
   getStartValidation,
@@ -170,6 +172,7 @@ const localRepository: RoomRepository = {
       settings: {
         includePercivalMorgana: input.includePercivalMorgana,
       },
+      updatedAt: new Date().toISOString(),
     };
     const player = {
       id: crypto.randomUUID(),
@@ -182,7 +185,7 @@ const localRepository: RoomRepository = {
     };
     const snapshot = { room, players: [player] };
     data.rooms.push(snapshot);
-    writeRooms(data);
+    writeRooms(data, snapshot.room.id);
     return { snapshot, currentPlayerId: player.id };
   },
 
@@ -190,14 +193,19 @@ const localRepository: RoomRepository = {
     const data = readRooms();
     const snapshot = findByCode(data, input.code);
     if (!snapshot) throw new Error('Room not found.');
-    if (snapshot.room.status !== 'lobby') throw new Error('This room is already locked.');
     const displayName = input.displayName.trim();
-    const existingPlayer =
-      findPlayerByDeviceToken(snapshot.players, input.deviceToken) ?? findPlayerByDisplayName(snapshot.players, displayName);
+    const sameDevicePlayer = findPlayerByDeviceToken(snapshot.players, input.deviceToken);
+    if (sameDevicePlayer) {
+      if (displayName && sameDevicePlayer.displayName !== displayName) sameDevicePlayer.displayName = displayName;
+      writeRooms(data, snapshot.room.id);
+      return { snapshot, currentPlayerId: sameDevicePlayer.id };
+    }
+    if (snapshot.room.status !== 'lobby') throw new Error('This game has already started. Only original players can re-enter from the same device.');
+    const existingPlayer = findPlayerByDisplayName(snapshot.players, displayName);
     if (existingPlayer) {
       if (existingPlayer.displayName !== displayName) existingPlayer.displayName = displayName;
       existingPlayer.deviceToken = input.deviceToken;
-      writeRooms(data);
+      writeRooms(data, snapshot.room.id);
       return { snapshot, currentPlayerId: existingPlayer.id };
     }
     if (snapshot.players.length >= 10) throw new Error('This room already has 10 players.');
@@ -211,7 +219,7 @@ const localRepository: RoomRepository = {
       deviceToken: input.deviceToken,
     };
     snapshot.players.push(player);
-    writeRooms(data);
+    writeRooms(data, snapshot.room.id);
     return { snapshot, currentPlayerId: player.id };
   },
 
@@ -219,7 +227,7 @@ const localRepository: RoomRepository = {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
     requireLocalPlayer(snapshot, playerId).displayName = displayName.trim();
-    writeRooms(data);
+    writeRooms(data, snapshot.room.id);
     return snapshot;
   },
 
@@ -227,7 +235,7 @@ const localRepository: RoomRepository = {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
     requireLocalPlayer(snapshot, playerId).isReady = isReady;
-    writeRooms(data);
+    writeRooms(data, snapshot.room.id);
     return snapshot;
   },
 
@@ -240,7 +248,7 @@ const localRepository: RoomRepository = {
     if (result.snapshot) {
       const index = data.rooms.findIndex((item) => item.room.id === roomId);
       data.rooms[index] = result.snapshot;
-      writeRooms(data);
+      writeRooms(data, snapshot.room.id);
     }
     return result;
   },
@@ -252,7 +260,7 @@ const localRepository: RoomRepository = {
     if (!host.isHost) throw new Error('Only the host can use backup controls.');
     snapshot.room.settings = { ...snapshot.room.settings, missionState };
     snapshot.room.status = missionState.phase;
-    writeRooms(data);
+    writeRooms(data, snapshot.room.id);
     return snapshot;
   },
 
@@ -264,7 +272,7 @@ const localRepository: RoomRepository = {
     const nextMissionState = submitTeamProposal(missionState, playerIds, leaderPlayerId, selectedTeamIds);
     snapshot.room.settings = { ...snapshot.room.settings, missionState: nextMissionState };
     snapshot.room.status = nextMissionState.phase;
-    writeRooms(data);
+    writeRooms(data, snapshot.room.id);
     return snapshot;
   },
 
@@ -276,7 +284,7 @@ const localRepository: RoomRepository = {
     const nextMissionState = submitTeamVoteToState(missionState, playerIds, playerId, vote);
     snapshot.room.settings = { ...snapshot.room.settings, missionState: nextMissionState };
     snapshot.room.status = nextMissionState.phase;
-    writeRooms(data);
+    writeRooms(data, snapshot.room.id);
     return snapshot;
   },
 
@@ -294,7 +302,7 @@ const localRepository: RoomRepository = {
     );
     snapshot.room.settings = { ...snapshot.room.settings, missionState: nextMissionState };
     snapshot.room.status = nextMissionState.phase;
-    writeRooms(data);
+    writeRooms(data, snapshot.room.id);
     return snapshot;
   },
 
@@ -311,7 +319,7 @@ const localRepository: RoomRepository = {
     );
     snapshot.room.settings = { ...snapshot.room.settings, missionState: nextMissionState };
     snapshot.room.status = nextMissionState.phase;
-    writeRooms(data);
+    writeRooms(data, snapshot.room.id);
     return snapshot;
   },
 
@@ -319,7 +327,7 @@ const localRepository: RoomRepository = {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
     removePlayerFromSnapshot(snapshot, hostPlayerId, targetPlayerId);
-    writeRooms(data);
+    writeRooms(data, snapshot.room.id);
     return snapshot;
   },
 
@@ -327,7 +335,7 @@ const localRepository: RoomRepository = {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
     transferHostInSnapshot(snapshot, hostPlayerId, targetPlayerId);
-    writeRooms(data);
+    writeRooms(data, snapshot.room.id);
     return snapshot;
   },
 
@@ -335,7 +343,7 @@ const localRepository: RoomRepository = {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
     resetRoomToLobbySnapshot(snapshot, hostPlayerId);
-    writeRooms(data);
+    writeRooms(data, snapshot.room.id);
     return snapshot;
   },
 
@@ -345,18 +353,18 @@ const localRepository: RoomRepository = {
     const host = requireLocalPlayer(snapshot, hostPlayerId);
     if (!host.isHost) throw new Error('Only the host can dissolve the room.');
     data.rooms = data.rooms.filter((room) => room.room.id !== roomId);
-    writeRooms(data);
+    writeRooms(data, snapshot.room.id);
     return null;
   },
 
   async leaveRoom(roomId: string, playerId: string) {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
-    leavePlayerFromSnapshot(snapshot, playerId);
+    leavePlayerFromSnapshot(snapshot, playerId, { allowStaleActiveRoom: isRoomStaleForExit(snapshot) });
     if (snapshot.players.length === 0) {
       data.rooms = data.rooms.filter((room) => room.room.id !== roomId);
     }
-    writeRooms(data);
+    writeRooms(data, snapshot.room.id);
     return snapshot;
   },
 
@@ -446,7 +454,11 @@ function readRooms(): { rooms: RoomSnapshot[] } {
   }
 }
 
-function writeRooms(data: { rooms: RoomSnapshot[] }) {
+function writeRooms(data: { rooms: RoomSnapshot[] }, touchedRoomId?: string) {
+  if (touchedRoomId) {
+    const touchedSnapshot = data.rooms.find((snapshot) => snapshot.room.id === touchedRoomId);
+    if (touchedSnapshot) touchedSnapshot.room.updatedAt = new Date().toISOString();
+  }
   localStorage.setItem(LOCAL_ROOMS_STORAGE_KEY, JSON.stringify(data));
   window.dispatchEvent(new StorageEvent('storage', { key: LOCAL_ROOMS_STORAGE_KEY }));
 }

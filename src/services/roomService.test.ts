@@ -11,6 +11,7 @@ import {
   generateRoomCode,
   getStartablePlayers,
   getStartValidation,
+  isRoomStaleForExit,
   leavePlayerFromSnapshot,
   transferHostInSnapshot,
   resetRoomToLobbySnapshot,
@@ -157,10 +158,28 @@ describe('room service rules', () => {
     expect(snapshot.players[0]).toMatchObject({ id: 'p2', isHost: true, seatIndex: 0 });
   });
 
-  it('does not allow players to leave while a game is in progress', () => {
+  it('does not allow players to leave while a game is still active', () => {
     const snapshot = makeSnapshot(5);
     snapshot.room.status = 'reveal';
-    expect(() => leavePlayerFromSnapshot(snapshot, 'p3')).toThrow('Players can only leave before the game starts or after it finishes.');
+    snapshot.room.updatedAt = new Date('2026-01-01T00:04:00Z').toISOString();
+    expect(isRoomStaleForExit(snapshot, Date.parse('2026-01-01T00:08:59Z'))).toBe(false);
+    expect(() => leavePlayerFromSnapshot(snapshot, 'p3')).toThrow('Players can only leave an active game after the room has been inactive for 5 minutes.');
+  });
+
+  it('allows players to leave an inactive active game and returns the table to lobby', () => {
+    const snapshot = makeSnapshot(5);
+    snapshot.room.status = 'mission';
+    snapshot.room.updatedAt = new Date('2026-01-01T00:00:00Z').toISOString();
+    snapshot.room.settings.missionState = { phase: 'mission', roundIndex: 1, proposalIndex: 0, leaderPlayerId: 'p1', selectedTeamIds: ['p1', 'p2'], missionResults: [] };
+    snapshot.players[1].role = 'Assassin';
+
+    expect(isRoomStaleForExit(snapshot, Date.parse('2026-01-01T00:05:00Z'))).toBe(true);
+    leavePlayerFromSnapshot(snapshot, 'p3', { allowStaleActiveRoom: true });
+
+    expect(snapshot.room.status).toBe('lobby');
+    expect(snapshot.room.settings.missionState).toBeUndefined();
+    expect(snapshot.players.map((player) => player.id)).toEqual(['p1', 'p2', 'p4', 'p5']);
+    expect(snapshot.players.every((player) => !player.isReady && !player.role)).toBe(true);
   });
 
   it('allows players to leave after a game finishes', () => {

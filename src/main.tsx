@@ -52,6 +52,7 @@ import {
   updateNickname,
   updateMissionState,
   isHostedConfigured,
+  isRoomStaleForExit,
   type RoomPlayer,
   type RoomSnapshot,
 } from './services/roomService';
@@ -473,15 +474,11 @@ function App() {
 
   async function handleLeaveRestorableRoom() {
     if (!restorableSnapshot || !restorablePlayerId || busy) return;
+    if (!window.confirm(getOldRoomLeaveConfirmation(restorableSnapshot))) return;
     setBusy(true);
     setMessage('');
     try {
-      if (restorableSnapshot.room.status === 'lobby' || restorableSnapshot.room.status === 'setup' || restorableSnapshot.room.status === 'finished') {
-        await leaveRoom(restorableSnapshot.room.id, restorablePlayerId);
-      }
-    } catch {
-      // If the stale room is already gone or in progress, clearing local binding is enough to unblock the user.
-    } finally {
+      await leaveRoom(restorableSnapshot.room.id, restorablePlayerId);
       clearSessionBinding();
       setRestorableSnapshot(undefined);
       setRestorablePlayerId('');
@@ -489,6 +486,9 @@ function App() {
       setSnapshot(undefined);
       setScreen('home');
       setMessage(t('Old room cleared.'));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t('Could not leave room.'));
+    } finally {
       setBusy(false);
     }
   }
@@ -504,13 +504,36 @@ function App() {
     setMessage('');
   }
 
-  function handleCreateNewFromRestore() {
-    clearSessionBinding();
-    setRestorableSnapshot(undefined);
-    setRestorablePlayerId('');
-    setCurrentPlayerId('');
-    setSnapshot(undefined);
-    navigateEntry('create');
+  async function handleCreateNewFromRestore() {
+    if (!restorableSnapshot || !restorablePlayerId || busy) return;
+    if (!window.confirm(getOldRoomCreateNewConfirmation(restorableSnapshot))) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      await leaveRoom(restorableSnapshot.room.id, restorablePlayerId);
+      clearSessionBinding();
+      setRestorableSnapshot(undefined);
+      setRestorablePlayerId('');
+      setCurrentPlayerId('');
+      setSnapshot(undefined);
+      navigateEntry('create');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t('Could not leave room.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function getOldRoomLeaveConfirmation(room: RoomSnapshot) {
+    return isRoomStaleForExit(room)
+      ? t('Leave this old room? You will be removed from its player list. If it was an abandoned active game, the table will be returned to the lobby.')
+      : t('This game still looks active. Re-enter the room or ask the host to abandon it before leaving.');
+  }
+
+  function getOldRoomCreateNewConfirmation(room: RoomSnapshot) {
+    return isRoomStaleForExit(room)
+      ? t('Leave the old room and create a new one? You will be removed from the old player list first.')
+      : t('This game still looks active. Re-enter the room or ask the host to abandon it before creating a new room.');
   }
 
   return (
@@ -532,7 +555,7 @@ function App() {
           <div className="share-actions">
             <button type="button" className="primary" onClick={handleRestoreRoom} disabled={busy}>{t('Re-enter Room')}</button>
             <button type="button" onClick={handleLeaveRestorableRoom} disabled={busy}>{t('Leave Old Room')}</button>
-            <button type="button" onClick={handleCreateNewFromRestore} disabled={busy}>{t('Create New Room')}</button>
+            <button type="button" onClick={handleCreateNewFromRestore} disabled={busy}>{t('Leave Old Room & Create New Room')}</button>
           </div>
         </section>
       )}

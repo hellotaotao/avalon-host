@@ -13,6 +13,7 @@ import {
   assertDeletedRows,
   findPlayerByDisplayName,
   generateRoomCode,
+  isRoomStaleForExit,
   leavePlayerFromSnapshot,
   mapPlayer,
   mapRoom,
@@ -134,7 +135,6 @@ async function createRoom(input: CreateRoomInput) {
 async function joinRoom(input: JoinRoomInput) {
   const found = await getRoomByCode(input.code);
   if (!found) throw new HttpError(404, 'Room not found.');
-  if (found.room.status !== 'lobby') throw new HttpError(409, 'This room is already locked.');
 
   const sql = getSql();
   const displayName = input.displayName.trim();
@@ -150,9 +150,12 @@ async function joinRoom(input: JoinRoomInput) {
   if (existingPlayer) {
     if (existingPlayer.display_name !== displayName) {
       await sql`update players set display_name = ${displayName} where id = ${existingPlayer.id} and room_id = ${found.room.id}`;
+      await touchRoom(found.room.id);
     }
     return { snapshot: await fetchSnapshot(found.room.id), currentPlayerId: existingPlayer.id as string };
   }
+
+  if (found.room.status !== 'lobby') throw new HttpError(409, 'This game has already started. Only original players can re-enter from the same device.');
 
   const sameNamePlayer = findPlayerByDisplayName(found.players, displayName);
   if (sameNamePlayer) {
@@ -161,6 +164,7 @@ async function joinRoom(input: JoinRoomInput) {
       set display_name = ${displayName}, device_token_hash = ${input.deviceToken}
       where id = ${sameNamePlayer.id} and room_id = ${found.room.id}
     `;
+    await touchRoom(found.room.id);
     return { snapshot: await fetchSnapshot(found.room.id), currentPlayerId: sameNamePlayer.id };
   }
 
@@ -171,6 +175,7 @@ async function joinRoom(input: JoinRoomInput) {
     values (${found.room.id}, ${displayName}, ${found.players.length}, false, false, ${input.deviceToken})
     returning id::text as id
   `;
+  await touchRoom(found.room.id);
   return { snapshot: await fetchSnapshot(found.room.id), currentPlayerId: playerRow.id as string };
 }
 
@@ -182,6 +187,7 @@ async function updateNickname(roomId: string, playerId: string, displayName: str
     returning id::text as id
   `;
   assertDeletedRows(rows, 'Player not found.');
+  await touchRoom(roomId);
   return fetchSnapshot(roomId);
 }
 
@@ -193,6 +199,7 @@ async function setReady(roomId: string, playerId: string, isReady: boolean) {
     returning id::text as id
   `;
   assertDeletedRows(rows, 'Player not found.');
+  await touchRoom(roomId);
   return fetchSnapshot(roomId);
 }
 
@@ -319,7 +326,7 @@ async function dissolveRoom(roomId: string, hostPlayerId: string) {
 
 async function leaveRoom(roomId: string, playerId: string) {
   const snapshot = await fetchSnapshot(roomId);
-  leavePlayerFromSnapshot(snapshot, playerId);
+  leavePlayerFromSnapshot(snapshot, playerId, { allowStaleActiveRoom: isRoomStaleForExit(snapshot) });
   const sql = getSql();
   const deletedRows = await sql`
     delete from players
@@ -327,6 +334,10 @@ async function leaveRoom(roomId: string, playerId: string) {
     returning id::text as id
   `;
   assertDeletedRows(deletedRows, 'Could not leave room.');
+  if (snapshot.room.status === 'lobby') {
+    await sql`update rooms set status = 'lobby', settings = ${JSON.stringify(snapshot.room.settings)}::jsonb where id = ${roomId}`;
+    await Promise.all(snapshot.players.map((player) => sql`update players set is_ready = false, role = null where id = ${player.id} and room_id = ${roomId}`));
+  }
   if (snapshot.players.length === 0) {
     await sql`delete from rooms where id = ${roomId}`;
     return null;
@@ -367,7 +378,7 @@ async function fetchSnapshot(roomId: string): Promise<RoomSnapshot> {
   const sql = getSql();
   const [roomRows, playerRows] = await Promise.all([
     sql`
-      select id::text as id, code, status, game_type, settings
+      select id::text as id, code, status, game_type, settings, updated_at
       from rooms
       where id = ${roomId}
       limit 1
@@ -391,6 +402,10 @@ async function fetchSnapshot(roomId: string): Promise<RoomSnapshot> {
     room: mapRoom(roomRows[0]),
     players: playerRows.map(mapPlayer),
   };
+}
+
+async function touchRoom(roomId: string) {
+  await getSql()`update rooms set updated_at = now() where id = ${roomId}`;
 }
 
 function getSql() {
