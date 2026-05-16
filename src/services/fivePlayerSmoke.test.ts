@@ -52,7 +52,7 @@ describe('five-player local room smoke', () => {
 
     expect(snapshot.players.every((player) => player.isReady)).toBe(true);
 
-    const started = await startGame(snapshot.room.id);
+    const started = await startGame(snapshot.room.id, host.currentPlayerId);
     expect(started.ok).toBe(true);
     expect(started.snapshot?.room.status).toBe('reveal');
     expect(started.snapshot?.players).toHaveLength(5);
@@ -81,7 +81,7 @@ describe('five-player local room smoke', () => {
         { roundIndex: 2, outcome: 'success', successCount: 2, failCount: 0, requiredFails: 1 },
       ],
     };
-    await updateMissionState(snapshot.room.id, missionState);
+    await updateMissionState(snapshot.room.id, snapshot.players.find((player) => player.isHost)!.id, missionState);
 
     const resolved = await submitAssassination(snapshot.room.id, assassin!.id, merlin!.id);
     expect(resolved.room.status).toBe('finished');
@@ -161,7 +161,7 @@ async function startReadyFivePlayerRoom(): Promise<RoomSnapshot> {
     snapshot = await setReady(snapshot.room.id, playerId, true);
   }
 
-  const started = await startGame(snapshot.room.id);
+  const started = await startGame(snapshot.room.id, host.currentPlayerId);
   if (!started.snapshot) throw new Error('Game did not start.');
   return started.snapshot;
 }

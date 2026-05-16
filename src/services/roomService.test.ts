@@ -12,9 +12,12 @@ import {
   getStartablePlayers,
   getStartValidation,
   leavePlayerFromSnapshot,
+  transferHostInSnapshot,
+  resetRoomToLobbySnapshot,
   normalizeRoomCode,
   removePlayerFromSnapshot,
   startDemoSnapshot,
+  validateHostCanStart,
   type RoomSnapshot,
   type RoomPlayer,
 } from './roomService';
@@ -110,6 +113,35 @@ describe('room service rules', () => {
     expect(() => assertDeletedRows([], 'Could not remove player.')).toThrow('Could not remove player.');
   });
 
+
+  it('lets the host transfer host rights to another player', () => {
+    const snapshot = makeSnapshot(5);
+    transferHostInSnapshot(snapshot, 'p1', 'p3');
+    expect(snapshot.players.filter((player) => player.isHost)).toHaveLength(1);
+    expect(snapshot.players.find((player) => player.id === 'p3')?.isHost).toBe(true);
+  });
+
+  it('does not allow non-host players to transfer host rights', () => {
+    const snapshot = makeSnapshot(5);
+    expect(() => transferHostInSnapshot(snapshot, 'p2', 'p3')).toThrow('Only the host can transfer host rights.');
+  });
+
+  it('lets the host abandon a game and return everyone to the lobby', () => {
+    const snapshot = makeSnapshot(5);
+    snapshot.room.status = 'mission';
+    snapshot.room.settings.missionState = { phase: 'mission', roundIndex: 1, proposalIndex: 0, leaderPlayerId: 'p1', selectedTeamIds: ['p1', 'p2'], missionResults: [] };
+    snapshot.players[0].role = 'Merlin';
+    resetRoomToLobbySnapshot(snapshot, 'p1');
+    expect(snapshot.room.status).toBe('lobby');
+    expect(snapshot.room.settings.missionState).toBeUndefined();
+    expect(snapshot.players.every((player) => !player.isReady && !player.role)).toBe(true);
+  });
+
+  it('does not allow non-host players to abandon a game', () => {
+    const snapshot = makeSnapshot(5);
+    expect(() => resetRoomToLobbySnapshot(snapshot, 'p2')).toThrow('Only the host can reset the game.');
+  });
+
   it('lets a non-host leave before the game starts and compacts seats', () => {
     const snapshot = makeSnapshot(5);
     leavePlayerFromSnapshot(snapshot, 'p3');
@@ -125,10 +157,17 @@ describe('room service rules', () => {
     expect(snapshot.players[0]).toMatchObject({ id: 'p2', isHost: true, seatIndex: 0 });
   });
 
-  it('does not allow players to leave after the game starts', () => {
+  it('does not allow players to leave while a game is in progress', () => {
     const snapshot = makeSnapshot(5);
     snapshot.room.status = 'reveal';
-    expect(() => leavePlayerFromSnapshot(snapshot, 'p3')).toThrow('Players can only leave before the game starts.');
+    expect(() => leavePlayerFromSnapshot(snapshot, 'p3')).toThrow('Players can only leave before the game starts or after it finishes.');
+  });
+
+  it('allows players to leave after a game finishes', () => {
+    const snapshot = makeSnapshot(5);
+    snapshot.room.status = 'finished';
+    leavePlayerFromSnapshot(snapshot, 'p3');
+    expect(snapshot.players.map((player) => player.id)).toEqual(['p1', 'p2', 'p4', 'p5']);
   });
 
   it('finds an existing same-device player for rejoin', () => {
@@ -177,6 +216,23 @@ describe('room service rules', () => {
     expect(started.ok).toBe(true);
     expect(started.snapshot?.room.status).toBe('reveal');
     expect(started.snapshot?.players.every((player) => player.role)).toBe(true);
+  });
+
+  it('rejects start attempts from non-host players', () => {
+    const snapshot = makeSnapshot(5);
+
+    expect(validateHostCanStart(snapshot, 'p2')).toBe('Only the host can start the game.');
+    expect(startDemoSnapshot(snapshot, 'p2')).toMatchObject({
+      ok: false,
+      reason: 'Only the host can start the game.',
+    });
+  });
+
+  it('allows the host to start a ready room', () => {
+    const snapshot = makeSnapshot(5);
+
+    expect(validateHostCanStart(snapshot, 'p1')).toBeUndefined();
+    expect(startDemoSnapshot(snapshot, 'p1').ok).toBe(true);
   });
 
   it('starts a demo room with unready players excluded from roles and mission state', () => {

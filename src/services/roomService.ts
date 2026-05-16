@@ -17,6 +17,9 @@ import {
   normalizeRoomCode,
   removePlayerFromSnapshot,
   startDemoSnapshot,
+  transferHostInSnapshot,
+  resetRoomToLobbySnapshot,
+  validateHostCanStart,
   type CreateRoomInput,
   type JoinRoomInput,
   type Room,
@@ -41,6 +44,9 @@ export {
   normalizeRoomCode,
   removePlayerFromSnapshot,
   startDemoSnapshot,
+  transferHostInSnapshot,
+  resetRoomToLobbySnapshot,
+  validateHostCanStart,
   type CreateRoomInput,
   type JoinRoomInput,
   type Room,
@@ -58,13 +64,16 @@ interface RoomRepository {
   joinRoom(input: JoinRoomInput): Promise<{ snapshot: RoomSnapshot; currentPlayerId: string }>;
   updateNickname(roomId: string, playerId: string, displayName: string): Promise<RoomSnapshot>;
   setReady(roomId: string, playerId: string, isReady: boolean): Promise<RoomSnapshot>;
-  startGame(roomId: string): Promise<StartResult>;
-  updateMissionState(roomId: string, missionState: MissionState): Promise<RoomSnapshot>;
+  startGame(roomId: string, hostPlayerId: string): Promise<StartResult>;
+  updateMissionState(roomId: string, hostPlayerId: string, missionState: MissionState): Promise<RoomSnapshot>;
   proposeMissionTeam(roomId: string, leaderPlayerId: string, selectedTeamIds: string[]): Promise<RoomSnapshot>;
   submitTeamVote(roomId: string, playerId: string, vote: Vote): Promise<RoomSnapshot>;
   submitMissionCard(roomId: string, playerId: string, card: MissionCard): Promise<RoomSnapshot>;
   submitAssassination(roomId: string, assassinPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
   removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
+  transferHost(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
+  resetRoomToLobby(roomId: string, hostPlayerId: string): Promise<RoomSnapshot>;
+  dissolveRoom(roomId: string, hostPlayerId: string): Promise<null>;
   leaveRoom(roomId: string, playerId: string): Promise<RoomSnapshot>;
   getRoomById(roomId: string): Promise<RoomSnapshot | undefined>;
   getRoomByCode(code: string): Promise<RoomSnapshot | undefined>;
@@ -89,12 +98,12 @@ export async function setReady(roomId: string, playerId: string, isReady: boolea
   return repository().setReady(roomId, playerId, isReady);
 }
 
-export async function startGame(roomId: string): Promise<StartResult> {
-  return repository().startGame(roomId);
+export async function startGame(roomId: string, hostPlayerId: string): Promise<StartResult> {
+  return repository().startGame(roomId, hostPlayerId);
 }
 
-export async function updateMissionState(roomId: string, missionState: MissionState): Promise<RoomSnapshot> {
-  return repository().updateMissionState(roomId, missionState);
+export async function updateMissionState(roomId: string, hostPlayerId: string, missionState: MissionState): Promise<RoomSnapshot> {
+  return repository().updateMissionState(roomId, hostPlayerId, missionState);
 }
 
 export async function proposeMissionTeam(roomId: string, leaderPlayerId: string, selectedTeamIds: string[]): Promise<RoomSnapshot> {
@@ -115,6 +124,18 @@ export async function submitAssassination(roomId: string, assassinPlayerId: stri
 
 export async function removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot> {
   return repository().removePlayer(roomId, hostPlayerId, targetPlayerId);
+}
+
+export async function transferHost(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot> {
+  return repository().transferHost(roomId, hostPlayerId, targetPlayerId);
+}
+
+export async function resetRoomToLobby(roomId: string, hostPlayerId: string): Promise<RoomSnapshot> {
+  return repository().resetRoomToLobby(roomId, hostPlayerId);
+}
+
+export async function dissolveRoom(roomId: string, hostPlayerId: string): Promise<null> {
+  return repository().dissolveRoom(roomId, hostPlayerId);
 }
 
 export async function leaveRoom(roomId: string, playerId: string): Promise<RoomSnapshot> {
@@ -210,10 +231,12 @@ const localRepository: RoomRepository = {
     return snapshot;
   },
 
-  async startGame(roomId: string) {
+  async startGame(roomId: string, hostPlayerId: string) {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
-    const result = startDemoSnapshot(snapshot);
+    const reason = validateHostCanStart(snapshot, hostPlayerId);
+    if (reason) return { ok: false, reason, snapshot };
+    const result = startDemoSnapshot(snapshot, hostPlayerId);
     if (result.snapshot) {
       const index = data.rooms.findIndex((item) => item.room.id === roomId);
       data.rooms[index] = result.snapshot;
@@ -222,9 +245,11 @@ const localRepository: RoomRepository = {
     return result;
   },
 
-  async updateMissionState(roomId: string, missionState: MissionState) {
+  async updateMissionState(roomId: string, hostPlayerId: string, missionState: MissionState) {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
+    const host = requireLocalPlayer(snapshot, hostPlayerId);
+    if (!host.isHost) throw new Error('Only the host can use backup controls.');
     snapshot.room.settings = { ...snapshot.room.settings, missionState };
     snapshot.room.status = missionState.phase;
     writeRooms(data);
@@ -298,10 +323,39 @@ const localRepository: RoomRepository = {
     return snapshot;
   },
 
+  async transferHost(roomId: string, hostPlayerId: string, targetPlayerId: string) {
+    const data = readRooms();
+    const snapshot = requireById(data, roomId);
+    transferHostInSnapshot(snapshot, hostPlayerId, targetPlayerId);
+    writeRooms(data);
+    return snapshot;
+  },
+
+  async resetRoomToLobby(roomId: string, hostPlayerId: string) {
+    const data = readRooms();
+    const snapshot = requireById(data, roomId);
+    resetRoomToLobbySnapshot(snapshot, hostPlayerId);
+    writeRooms(data);
+    return snapshot;
+  },
+
+  async dissolveRoom(roomId: string, hostPlayerId: string) {
+    const data = readRooms();
+    const snapshot = requireById(data, roomId);
+    const host = requireLocalPlayer(snapshot, hostPlayerId);
+    if (!host.isHost) throw new Error('Only the host can dissolve the room.');
+    data.rooms = data.rooms.filter((room) => room.room.id !== roomId);
+    writeRooms(data);
+    return null;
+  },
+
   async leaveRoom(roomId: string, playerId: string) {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
     leavePlayerFromSnapshot(snapshot, playerId);
+    if (snapshot.players.length === 0) {
+      data.rooms = data.rooms.filter((room) => room.room.id !== roomId);
+    }
     writeRooms(data);
     return snapshot;
   },
@@ -331,13 +385,16 @@ const apiRepository: RoomRepository = {
   joinRoom: (input) => apiRequest('joinRoom', { input }),
   updateNickname: (roomId, playerId, displayName) => apiRequest('updateNickname', { roomId, playerId, displayName }),
   setReady: (roomId, playerId, isReady) => apiRequest('setReady', { roomId, playerId, isReady }),
-  startGame: (roomId) => apiRequest('startGame', { roomId }),
-  updateMissionState: (roomId, missionState) => apiRequest('updateMissionState', { roomId, missionState }),
+  startGame: (roomId, hostPlayerId) => apiRequest('startGame', { roomId, hostPlayerId }),
+  updateMissionState: (roomId, hostPlayerId, missionState) => apiRequest('updateMissionState', { roomId, hostPlayerId, missionState }),
   proposeMissionTeam: (roomId, leaderPlayerId, selectedTeamIds) => apiRequest('proposeMissionTeam', { roomId, leaderPlayerId, selectedTeamIds }),
   submitTeamVote: (roomId, playerId, vote) => apiRequest('submitTeamVote', { roomId, playerId, vote }),
   submitMissionCard: (roomId, playerId, card) => apiRequest('submitMissionCard', { roomId, playerId, card }),
   submitAssassination: (roomId, assassinPlayerId, targetPlayerId) => apiRequest('submitAssassination', { roomId, assassinPlayerId, targetPlayerId }),
   removePlayer: (roomId, hostPlayerId, targetPlayerId) => apiRequest('removePlayer', { roomId, hostPlayerId, targetPlayerId }),
+  transferHost: (roomId, hostPlayerId, targetPlayerId) => apiRequest('transferHost', { roomId, hostPlayerId, targetPlayerId }),
+  resetRoomToLobby: (roomId, hostPlayerId) => apiRequest('resetRoomToLobby', { roomId, hostPlayerId }),
+  dissolveRoom: (roomId, hostPlayerId) => apiRequest('dissolveRoom', { roomId, hostPlayerId }),
   leaveRoom: (roomId, playerId) => apiRequest('leaveRoom', { roomId, playerId }),
   async getRoomById(roomId) {
     return (await apiRequest<RoomSnapshot | null>('getRoomById', { roomId })) ?? undefined;
@@ -360,7 +417,7 @@ const apiRepository: RoomRepository = {
       }
     };
     void poll();
-    const timer = window.setInterval(() => void poll(), 1000);
+    const timer = window.setInterval(() => void poll(), 2000);
     return () => {
       stopped = true;
       window.clearInterval(timer);

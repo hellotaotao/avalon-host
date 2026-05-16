@@ -85,6 +85,13 @@ export function canStartGame(players: RoomPlayer[]): boolean {
   return !getStartValidation(players);
 }
 
+export function validateHostCanStart(snapshot: RoomSnapshot, hostPlayerId: string): string | undefined {
+  const player = snapshot.players.find((item) => item.id === hostPlayerId);
+  if (!player) return 'Player not found.';
+  if (!player.isHost) return 'Only the host can start the game.';
+  return getStartValidation(snapshot.players);
+}
+
 export function getStartablePlayers(players: RoomPlayer[]): RoomPlayer[] {
   const host = players.find((player) => player.isHost);
   const activePlayers = players.filter((player) => player.isReady || player.id === host?.id);
@@ -117,8 +124,8 @@ export function createJoinDemoRoom(displayName: string): { snapshot: RoomSnapsho
   return { snapshot: makeDemoSnapshot(roomId, DEMO_JOIN_ROOM_CODE, players), currentPlayerId };
 }
 
-export function startDemoSnapshot(snapshot: RoomSnapshot): StartResult {
-  const reason = getStartValidation(snapshot.players);
+export function startDemoSnapshot(snapshot: RoomSnapshot, hostPlayerId?: string): StartResult {
+  const reason = hostPlayerId ? validateHostCanStart(snapshot, hostPlayerId) : getStartValidation(snapshot.players);
   if (reason) return { ok: false, reason, snapshot };
   const players = getStartablePlayers(snapshot.players);
   const assigned = assignRoles(
@@ -165,13 +172,41 @@ export function removePlayerFromSnapshot(snapshot: RoomSnapshot, hostPlayerId: s
 }
 
 export function leavePlayerFromSnapshot(snapshot: RoomSnapshot, playerId: string): RoomSnapshot {
-  if (snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup') {
-    throw new Error('Players can only leave before the game starts.');
+  if (snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup' && snapshot.room.status !== 'finished') {
+    throw new Error('Players can only leave before the game starts or after it finishes.');
   }
   requirePlayer(snapshot, playerId);
   snapshot.players = snapshot.players
     .filter((player) => player.id !== playerId)
     .map((player, index) => ({ ...player, seatIndex: index, isHost: index === 0 }));
+  return snapshot;
+}
+
+
+export function transferHostInSnapshot(snapshot: RoomSnapshot, hostPlayerId: string, targetPlayerId: string): RoomSnapshot {
+  const host = requirePlayer(snapshot, hostPlayerId);
+  if (!host.isHost) throw new Error('Only the host can transfer host rights.');
+  const target = requirePlayer(snapshot, targetPlayerId);
+  if (host.id === target.id) return snapshot;
+  snapshot.players = snapshot.players.map((player) => ({ ...player, isHost: player.id === target.id }));
+  return snapshot;
+}
+
+export function resetRoomToLobbySnapshot(snapshot: RoomSnapshot, hostPlayerId: string): RoomSnapshot {
+  const host = requirePlayer(snapshot, hostPlayerId);
+  if (!host.isHost) throw new Error('Only the host can reset the game.');
+  const { missionState: _missionState, ...settings } = snapshot.room.settings;
+  snapshot.room = {
+    ...snapshot.room,
+    status: 'lobby',
+    settings,
+  };
+  snapshot.players = snapshot.players.map((player, index) => ({
+    ...player,
+    seatIndex: index,
+    isReady: false,
+    role: undefined,
+  }));
   return snapshot;
 }
 

@@ -19,7 +19,10 @@ import {
   normalizeRoomCode,
   removePlayerFromSnapshot,
   startDemoSnapshot,
+  transferHostInSnapshot,
+  resetRoomToLobbySnapshot,
   toAvalonPlayer,
+  validateHostCanStart,
   type CreateRoomInput,
   type JoinRoomInput,
   type RoomSettings,
@@ -76,9 +79,9 @@ async function dispatch(body: RequestBody) {
     case 'setReady':
       return setReady(readString(body.roomId, 'roomId'), readString(body.playerId, 'playerId'), readBoolean(body.isReady, 'isReady'));
     case 'startGame':
-      return startGame(readString(body.roomId, 'roomId'));
+      return startGame(readString(body.roomId, 'roomId'), readString(body.hostPlayerId, 'hostPlayerId'));
     case 'updateMissionState':
-      return updateMissionState(readString(body.roomId, 'roomId'), readObject<MissionState>(body.missionState, 'missionState'));
+      return updateMissionState(readString(body.roomId, 'roomId'), readString(body.hostPlayerId, 'hostPlayerId'), readObject<MissionState>(body.missionState, 'missionState'));
     case 'proposeMissionTeam':
       return proposeMissionTeam(readString(body.roomId, 'roomId'), readString(body.leaderPlayerId, 'leaderPlayerId'), readStringArray(body.selectedTeamIds, 'selectedTeamIds'));
     case 'submitTeamVote':
@@ -89,6 +92,12 @@ async function dispatch(body: RequestBody) {
       return submitAssassination(readString(body.roomId, 'roomId'), readString(body.assassinPlayerId, 'assassinPlayerId'), readString(body.targetPlayerId, 'targetPlayerId'));
     case 'removePlayer':
       return removePlayer(readString(body.roomId, 'roomId'), readString(body.hostPlayerId, 'hostPlayerId'), readString(body.targetPlayerId, 'targetPlayerId'));
+    case 'transferHost':
+      return transferHost(readString(body.roomId, 'roomId'), readString(body.hostPlayerId, 'hostPlayerId'), readString(body.targetPlayerId, 'targetPlayerId'));
+    case 'resetRoomToLobby':
+      return resetRoomToLobby(readString(body.roomId, 'roomId'), readString(body.hostPlayerId, 'hostPlayerId'));
+    case 'dissolveRoom':
+      return dissolveRoom(readString(body.roomId, 'roomId'), readString(body.hostPlayerId, 'hostPlayerId'));
     case 'leaveRoom':
       return leaveRoom(readString(body.roomId, 'roomId'), readString(body.playerId, 'playerId'));
     case 'getRoomById':
@@ -187,9 +196,11 @@ async function setReady(roomId: string, playerId: string, isReady: boolean) {
   return fetchSnapshot(roomId);
 }
 
-async function startGame(roomId: string): Promise<StartResult> {
+async function startGame(roomId: string, hostPlayerId: string): Promise<StartResult> {
   const snapshot = await fetchSnapshot(roomId);
-  const result = startDemoSnapshot(snapshot);
+  const reason = validateHostCanStart(snapshot, hostPlayerId);
+  if (reason) return { ok: false, reason, snapshot };
+  const result = startDemoSnapshot(snapshot, hostPlayerId);
   if (!result.ok || !result.snapshot) return result;
 
   const sql = getSql();
@@ -214,8 +225,10 @@ async function startGame(roomId: string): Promise<StartResult> {
   return { ok: true, snapshot: await fetchSnapshot(roomId) };
 }
 
-async function updateMissionState(roomId: string, missionState: MissionState) {
+async function updateMissionState(roomId: string, hostPlayerId: string, missionState: MissionState) {
   const snapshot = await fetchSnapshot(roomId);
+  const host = snapshot.players.find((player) => player.id === hostPlayerId);
+  if (!host?.isHost) throw new HttpError(403, 'Only the host can use backup controls.');
   return persistMissionState(roomId, snapshot, missionState);
 }
 
@@ -267,6 +280,43 @@ async function removePlayer(roomId: string, hostPlayerId: string, targetPlayerId
   return fetchSnapshot(roomId);
 }
 
+async function transferHost(roomId: string, hostPlayerId: string, targetPlayerId: string) {
+  const snapshot = await fetchSnapshot(roomId);
+  transferHostInSnapshot(snapshot, hostPlayerId, targetPlayerId);
+  const sql = getSql();
+  for (const player of snapshot.players) {
+    await sql`update players set is_host = ${player.isHost} where id = ${player.id} and room_id = ${roomId}`;
+  }
+  return fetchSnapshot(roomId);
+}
+
+async function resetRoomToLobby(roomId: string, hostPlayerId: string) {
+  const snapshot = await fetchSnapshot(roomId);
+  resetRoomToLobbySnapshot(snapshot, hostPlayerId);
+  const sql = getSql();
+  await sql`
+    update rooms
+    set status = 'lobby', settings = ${JSON.stringify(snapshot.room.settings)}::jsonb
+    where id = ${roomId}
+  `;
+  for (const player of snapshot.players) {
+    await sql`
+      update players
+      set seat_index = ${player.seatIndex}, is_ready = false, role = null
+      where id = ${player.id} and room_id = ${roomId}
+    `;
+  }
+  return fetchSnapshot(roomId);
+}
+
+async function dissolveRoom(roomId: string, hostPlayerId: string) {
+  const snapshot = await fetchSnapshot(roomId);
+  const host = snapshot.players.find((player) => player.id === hostPlayerId);
+  if (!host?.isHost) throw new HttpError(403, 'Only the host can dissolve the room.');
+  await getSql()`delete from rooms where id = ${roomId}`;
+  return null;
+}
+
 async function leaveRoom(roomId: string, playerId: string) {
   const snapshot = await fetchSnapshot(roomId);
   leavePlayerFromSnapshot(snapshot, playerId);
@@ -277,6 +327,10 @@ async function leaveRoom(roomId: string, playerId: string) {
     returning id::text as id
   `;
   assertDeletedRows(deletedRows, 'Could not leave room.');
+  if (snapshot.players.length === 0) {
+    await sql`delete from rooms where id = ${roomId}`;
+    return null;
+  }
   for (const player of snapshot.players) {
     await sql`
       update players

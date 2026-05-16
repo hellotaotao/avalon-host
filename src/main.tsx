@@ -37,6 +37,9 @@ import {
   getStartValidation,
   joinRoom,
   leaveRoom,
+  transferHost,
+  resetRoomToLobby,
+  dissolveRoom,
   normalizeRoomCode,
   proposeMissionTeam,
   removePlayer,
@@ -80,6 +83,8 @@ function App() {
   const [includePercivalMorgana, setIncludePercivalMorgana] = useState(false);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [restorableSnapshot, setRestorableSnapshot] = useState<RoomSnapshot>();
+  const [restorablePlayerId, setRestorablePlayerId] = useState('');
 
   const currentPlayer = snapshot?.players.find((player) => player.id === currentPlayerId);
   const isDemoMode = Boolean(snapshot?.room.settings.createdInDemoMode);
@@ -90,6 +95,9 @@ function App() {
   );
 
   useEffect(() => {
+    const explicitEntryScreen = parseEntryStep(window.location.href);
+    if (explicitEntryScreen !== 'home') return;
+
     const sessionKeys = getSessionStorageKeys();
     const storedRoomId = localStorage.getItem(sessionKeys.currentRoomId);
     const storedPlayerId = localStorage.getItem(sessionKeys.currentPlayerId);
@@ -100,16 +108,14 @@ function App() {
       .then((restoredSnapshot) => {
         if (cancelled) return;
         if (restoredSnapshot?.players.some((player) => player.id === storedPlayerId)) {
-          setCurrentPlayerId(storedPlayerId);
-          setSnapshot(restoredSnapshot);
-          clearEntryStepFromUrl();
-          setScreen('room');
+          setRestorableSnapshot(restoredSnapshot);
+          setRestorablePlayerId(storedPlayerId);
           return;
         }
         clearSessionBinding();
         setCurrentPlayerId('');
         setSnapshot(undefined);
-        setScreen('join');
+        setScreen('home');
         setMessage(t('You were removed from the room.'));
       })
       .catch((error) => {
@@ -138,7 +144,14 @@ function App() {
   useEffect(() => {
     if (!snapshot || snapshot.room.settings.createdInDemoMode) return undefined;
     return subscribeToRoom(snapshot.room.id, (nextSnapshot) => {
-      if (!nextSnapshot) return;
+      if (!nextSnapshot) {
+        clearSessionBinding();
+        setCurrentPlayerId('');
+        setSnapshot(undefined);
+        setScreen('join');
+        setMessage(t('Room expired or was closed.'));
+        return;
+      }
       if (currentPlayerId && !nextSnapshot.players.some((player) => player.id === currentPlayerId)) {
         clearSessionBinding();
         setCurrentPlayerId('');
@@ -192,7 +205,7 @@ function App() {
   }
 
   async function handleReady() {
-    if (!snapshot || !currentPlayer) return;
+    if (!snapshot || !currentPlayer || busy) return;
     if (isDemoMode) {
       setSnapshot({
         ...snapshot,
@@ -200,12 +213,20 @@ function App() {
       });
       return;
     }
-    setSnapshot(await setReady(snapshot.room.id, currentPlayer.id, !currentPlayer.isReady));
+    setBusy(true);
+    setMessage('');
+    try {
+      setSnapshot(await setReady(snapshot.room.id, currentPlayer.id, !currentPlayer.isReady));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t('Could not update ready state.'));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleRename(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!snapshot || !currentPlayer) return;
+    if (!snapshot || !currentPlayer || busy) return;
     const form = new FormData(event.currentTarget);
     const name = String(form.get('displayName') ?? '').trim();
     if (!name) return;
@@ -216,14 +237,31 @@ function App() {
       });
       return;
     }
-    setSnapshot(await updateNickname(snapshot.room.id, currentPlayer.id, name));
+    setBusy(true);
+    setMessage('');
+    try {
+      setSnapshot(await updateNickname(snapshot.room.id, currentPlayer.id, name));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t('Could not update nickname.'));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleStartGame() {
-    if (!snapshot || !currentPlayer || startValidation) return;
-    const result = await startGame(snapshot.room.id);
-    if (result.snapshot) setSnapshot(result.snapshot);
-    setMessage(result.ok ? '' : result.reason ?? t('Could not start game.'));
+    if (!snapshot || !currentPlayer || startValidation || busy) return;
+    if (!currentPlayer.isHost) return setMessage(t('Only the host can start the game.'));
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await startGame(snapshot.room.id, currentPlayer.id);
+      if (result.snapshot) setSnapshot(result.snapshot);
+      setMessage(result.ok ? '' : result.reason ?? t('Could not start game.'));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t('Could not start game.'));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleMissionStateChange(nextMissionState: MissionState) {
@@ -241,7 +279,7 @@ function App() {
       return;
     }
     try {
-      setSnapshot(await updateMissionState(snapshot.room.id, nextMissionState));
+      setSnapshot(await updateMissionState(snapshot.room.id, currentPlayer.id, nextMissionState));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t('Could not update mission flow.'));
     }
@@ -349,15 +387,71 @@ function App() {
     }
   }
 
-  async function handleLeaveRoom() {
-    if (!snapshot || !currentPlayer) return;
+  async function handleTransferHost(targetPlayerId: string) {
+    if (!snapshot || !currentPlayer?.isHost || busy) return;
+    if (!window.confirm(t('Transfer host rights to this player?'))) return;
     setBusy(true);
     setMessage('');
-    if (isDemoMode) {
+    try {
+      setSnapshot(await transferHost(snapshot.room.id, currentPlayer.id, targetPlayerId));
+      setMessage(t('Host rights transferred.'));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t('Could not transfer host.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleResetRoomToLobby() {
+    if (!snapshot || !currentPlayer?.isHost || busy) return;
+    if (!window.confirm(t('Abandon this game and return everyone to the lobby? Roles and mission progress will be cleared.'))) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      setSnapshot(await resetRoomToLobby(snapshot.room.id, currentPlayer.id));
+      setMessage(t('Game abandoned. Back to lobby.'));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t('Could not reset game.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDissolveRoom() {
+    if (!snapshot || !currentPlayer?.isHost || busy) return;
+    if (!window.confirm(t('Dissolve this room for everyone? This cannot be undone.'))) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      await dissolveRoom(snapshot.room.id, currentPlayer.id);
+      clearSessionBinding();
       setCurrentPlayerId('');
       setSnapshot(undefined);
       navigateEntry('home', { replace: true });
-      setMessage(t('You left the demo room.'));
+      setMessage(t('Room dissolved.'));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t('Could not dissolve room.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleLeaveRoom() {
+    if (!snapshot || !currentPlayer) return;
+    const started = snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup';
+    const finished = snapshot.room.status === 'finished' || snapshot.room.settings.missionState?.phase === 'finished';
+    setBusy(true);
+    setMessage('');
+    if (isDemoMode || (started && !finished)) {
+      if (started && !finished && !window.confirm(t('This game has already started. Leave this device and go back home? The table will keep your seat so the active game is not broken.'))) {
+        setBusy(false);
+        return;
+      }
+      clearSessionBinding();
+      setCurrentPlayerId('');
+      setSnapshot(undefined);
+      navigateEntry('home', { replace: true });
+      setMessage(isDemoMode ? t('You left the demo room.') : t('You left this table on this device.'));
       setBusy(false);
       return;
     }
@@ -377,6 +471,48 @@ function App() {
     }
   }
 
+  async function handleLeaveRestorableRoom() {
+    if (!restorableSnapshot || !restorablePlayerId || busy) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      if (restorableSnapshot.room.status === 'lobby' || restorableSnapshot.room.status === 'setup' || restorableSnapshot.room.status === 'finished') {
+        await leaveRoom(restorableSnapshot.room.id, restorablePlayerId);
+      }
+    } catch {
+      // If the stale room is already gone or in progress, clearing local binding is enough to unblock the user.
+    } finally {
+      clearSessionBinding();
+      setRestorableSnapshot(undefined);
+      setRestorablePlayerId('');
+      setCurrentPlayerId('');
+      setSnapshot(undefined);
+      setScreen('home');
+      setMessage(t('Old room cleared.'));
+      setBusy(false);
+    }
+  }
+
+  function handleRestoreRoom() {
+    if (!restorableSnapshot || !restorablePlayerId) return;
+    setCurrentPlayerId(restorablePlayerId);
+    setSnapshot(restorableSnapshot);
+    setRestorableSnapshot(undefined);
+    setRestorablePlayerId('');
+    clearEntryStepFromUrl();
+    setScreen('room');
+    setMessage('');
+  }
+
+  function handleCreateNewFromRestore() {
+    clearSessionBinding();
+    setRestorableSnapshot(undefined);
+    setRestorablePlayerId('');
+    setCurrentPlayerId('');
+    setSnapshot(undefined);
+    navigateEntry('create');
+  }
+
   return (
     <main className={`shell ${screen === 'demo' || screen === 'demoJoin' ? 'demo-shell' : ''}`}>
       <header className="hero">
@@ -387,6 +523,19 @@ function App() {
       </header>
 
       {message && <p className="notice">{message}</p>}
+
+      {screen === 'home' && restorableSnapshot && (
+        <section className="panel restore-panel">
+          <p className="eyebrow">{t('Previous room found')}</p>
+          <h2>{t('You were previously at room')} {restorableSnapshot.room.code}</h2>
+          <p>{t('Choose whether to re-enter it, leave the old room, or start fresh.')}</p>
+          <div className="share-actions">
+            <button type="button" className="primary" onClick={handleRestoreRoom} disabled={busy}>{t('Re-enter Room')}</button>
+            <button type="button" onClick={handleLeaveRestorableRoom} disabled={busy}>{t('Leave Old Room')}</button>
+            <button type="button" onClick={handleCreateNewFromRestore} disabled={busy}>{t('Create New Room')}</button>
+          </div>
+        </section>
+      )}
 
       {screen === 'home' && (
         <section className="entry">
@@ -508,6 +657,9 @@ function App() {
           onStart={handleStartGame}
           onRename={handleRename}
           onRemovePlayer={handleRemovePlayer}
+          onTransferHost={handleTransferHost}
+          onResetRoomToLobby={handleResetRoomToLobby}
+          onDissolveRoom={handleDissolveRoom}
           onLeave={handleLeaveRoom}
           onMissionStateChange={handleMissionStateChange}
           onProposeMissionTeam={handleProposeMissionTeam}
@@ -515,6 +667,7 @@ function App() {
           onSubmitMissionCard={handleSubmitMissionCard}
           onAssassination={handleAssassination}
           isDemoMode={isDemoMode}
+          busy={busy}
         />
       )}
     </main>
@@ -1733,6 +1886,9 @@ function RoomView({
   onStart,
   onRename,
   onRemovePlayer,
+  onTransferHost,
+  onResetRoomToLobby,
+  onDissolveRoom,
   onLeave,
   onMissionStateChange,
   onProposeMissionTeam,
@@ -1740,6 +1896,7 @@ function RoomView({
   onSubmitMissionCard,
   onAssassination,
   isDemoMode,
+  busy,
 }: {
   snapshot: RoomSnapshot;
   currentPlayer?: RoomPlayer;
@@ -1749,6 +1906,9 @@ function RoomView({
   onStart: () => void;
   onRename: (event: React.FormEvent<HTMLFormElement>) => void;
   onRemovePlayer: (targetPlayerId: string) => void;
+  onTransferHost: (targetPlayerId: string) => void;
+  onResetRoomToLobby: () => void;
+  onDissolveRoom: () => void;
   onLeave: () => void;
   onMissionStateChange: (missionState: MissionState) => void;
   onProposeMissionTeam: (selectedTeamIds: string[]) => void;
@@ -1756,6 +1916,7 @@ function RoomView({
   onSubmitMissionCard: (card: MissionCard) => void;
   onAssassination: (targetPlayerId: string) => void;
   isDemoMode: boolean;
+  busy: boolean;
 }) {
   const { t } = useI18n();
   const started = snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup';
@@ -1764,9 +1925,9 @@ function RoomView({
   const currentTeamSize = missionState ? getTeamSize(snapshot.players.length, missionState.roundIndex) : 0;
   const [assassinationTargetId, setAssassinationTargetId] = useState('');
   const readyCount = snapshot.players.filter((player) => player.isReady).length;
-  const canStart = canStartGame(snapshot.players);
+  const canStart = Boolean(currentPlayer?.isHost) && canStartGame(snapshot.players);
   const isFinished = snapshot.room.status === 'finished' || missionState?.phase === 'finished';
-  const showJoinPanel = !started || isFinished;
+  const showJoinPanel = !started;
   const joinLinkPath = buildJoinUrl(window.location.href, snapshot.room.code);
   const joinLink = `${window.location.origin}${joinLinkPath}`;
   const assassinationTargets = snapshot.players.filter((player) => player.id !== currentPlayer?.id);
@@ -1829,17 +1990,26 @@ function RoomView({
       <section className="panel">
         <div className="panel-header">
           <h2>{started ? t('Private Reveal') : t('Current Room')}</h2>
-          {currentPlayer && !started && (
-            <button type="button" className="small-danger room-leave" onClick={onLeave}>{t('Leave Room')}</button>
+          {currentPlayer && (
+            <button type="button" className="small-danger room-leave" onClick={onLeave} disabled={busy}>
+              {started && !isFinished ? t('Exit Table') : t('Leave Room')}
+            </button>
           )}
         </div>
+        {currentPlayer?.isHost && (
+          <div className="share-actions host-room-actions">
+            {started && <button type="button" onClick={onResetRoomToLobby} disabled={busy}>{t('Abandon Game')}</button>}
+            <button type="button" className="small-danger" onClick={onDissolveRoom} disabled={busy}>{t('Dissolve Room')}</button>
+          </div>
+        )}
+
         {currentPlayer && !started && (
           <>
             <form className="inline-form" onSubmit={onRename}>
               <input name="displayName" defaultValue={currentPlayer.displayName} maxLength={24} aria-label={t('Nickname')} />
-              <button type="submit">{t('Save')}</button>
+              <button type="submit" disabled={busy}>{t('Save')}</button>
             </form>
-            <button type="button" className={currentPlayer.isReady ? 'active-soft' : 'primary'} onClick={onReady}>
+            <button type="button" className={currentPlayer.isReady ? 'active-soft' : 'primary'} onClick={onReady} disabled={busy}>
               {currentPlayer.isReady ? t('Ready') : t('Set Ready')}
             </button>
           </>
@@ -1893,15 +2063,18 @@ function RoomView({
                 <small>{player.isHost ? t('Host') : `${t('Seat')} ${player.seatIndex + 1}`}</small>
                 <strong>{player.isReady ? t('Ready') : t('Waiting')}</strong>
                 {currentPlayer?.isHost && !player.isHost && !isDemoMode && (
-                  <button type="button" className="small-danger" onClick={() => onRemovePlayer(player.id)}>{t('Remove')}</button>
+                  <>
+                    <button type="button" onClick={() => onTransferHost(player.id)} disabled={busy}>{t('Make Host')}</button>
+                    {!started && <button type="button" className="small-danger" onClick={() => onRemovePlayer(player.id)} disabled={busy}>{t('Remove')}</button>}
+                  </>
                 )}
               </li>
             ))}
           </ol>
-          {currentPlayer && (
+          {currentPlayer?.isHost ? (
             <button type="button"
               className="primary"
-              disabled={!canStart}
+              disabled={!canStart || busy}
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -1910,6 +2083,8 @@ function RoomView({
             >
               {canStart ? t('Start Game') : startValidation}
             </button>
+          ) : (
+            <p className="hint">{t('Waiting for the host to start the game.')}</p>
           )}
         </section>
       )}
