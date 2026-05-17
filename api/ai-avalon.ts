@@ -85,7 +85,6 @@ async function requestDecision(provider: ReturnType<typeof getProviderConfig>, r
     },
     body: JSON.stringify({
       model: provider.model,
-      temperature: 0.7,
       response_format: { type: 'json_object' },
       messages: [
         {
