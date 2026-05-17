@@ -132,7 +132,7 @@ describe('five-player local room smoke', () => {
     expect(snapshot.room.settings.missionState).toMatchObject({
       phase: 'proposal',
       roundIndex: 1,
-      missionResults: [{ roundIndex: 0, outcome: 'success', successCount: 2, failCount: 0, requiredFails: 1 }],
+      missionResults: [{ roundIndex: 0, outcome: 'success', successCount: 2, failCount: 0, requiredFails: 1, selectedTeamIds }],
       missionCardSubmissions: undefined,
     });
   });

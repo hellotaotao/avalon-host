@@ -82,7 +82,7 @@ describe('mission flow', () => {
     expect(state).toMatchObject({
       phase: 'proposal',
       roundIndex: 1,
-      missionResults: [{ outcome: 'fail', successCount: 1, failCount: 1 }],
+      missionResults: [{ outcome: 'fail', successCount: 1, failCount: 1, selectedTeamIds: ['p2', 'p3'] }],
       missionCardSubmissions: undefined,
     });
   });
@@ -114,7 +114,7 @@ describe('mission flow', () => {
     expect(next.phase).toBe('proposal');
     expect(next.roundIndex).toBe(1);
     expect(next.leaderPlayerId).toBe('p2');
-    expect(next.missionResults).toMatchObject([{ outcome: 'success', successCount: 2, failCount: 0 }]);
+    expect(next.missionResults).toMatchObject([{ outcome: 'success', successCount: 2, failCount: 0, selectedTeamIds: ['p1', 'p2'] }]);
   });
 
   it('enters the assassin phase after three good quest successes', () => {

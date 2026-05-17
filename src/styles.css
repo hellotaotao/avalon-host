@@ -481,6 +481,29 @@ label {
   color: #fff7de;
 }
 
+.vote-status-pill {
+  width: fit-content;
+  border: 2px solid #ac7b38;
+  border-radius: 999px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.86rem;
+  font-weight: 1000;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.vote-status-pill.approve {
+  border-color: #58783d;
+  background: #d9e7ca;
+  color: #26351f;
+}
+
+.vote-status-pill.reject {
+  border-color: #9d3e2e;
+  background: #f8c8a9;
+  color: #61170e;
+}
+
 .role-preset {
   display: grid;
   gap: 0.4rem;
@@ -1505,12 +1528,22 @@ label {
 }
 
 .quest-track span {
+  display: grid;
+  align-content: center;
+  gap: 0.2rem;
   border: 1px solid #ac7b38;
   border-radius: 8px;
   background: #fff0bd;
   padding: 0.55rem 0.35rem;
   text-align: center;
   font-weight: 900;
+}
+
+.quest-track span small {
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
 }
 
 .quest-track .current {
@@ -1592,6 +1625,23 @@ label {
 
 .mission-quest-track .quest-card.pending {
   opacity: 0.82;
+}
+
+.quest-team-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.18rem;
+}
+
+.mission-quest-track .quest-card .quest-team-chips span {
+  border: 1px solid rgba(106, 75, 48, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 248, 221, 0.55);
+  padding: 0.12rem 0.28rem;
+  color: #4b2e18;
+  font-size: 0.68rem;
+  line-height: 1.1;
 }
 
 .expedition-summary {

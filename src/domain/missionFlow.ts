@@ -15,6 +15,7 @@ export interface MissionResultState {
   successCount: number;
   failCount: number;
   requiredFails: number;
+  selectedTeamIds?: string[];
 }
 
 export interface AssassinationState {
@@ -143,6 +144,7 @@ export function advanceMissionResult(state: MissionState, playerIds: string[], s
       successCount,
       failCount: resolved.failCount,
       requiredFails: resolved.requiredFails,
+      selectedTeamIds: [...state.selectedTeamIds],
     },
   ];
   const successTotal = missionResults.filter((result) => result.outcome === 'success').length;

@@ -746,6 +746,7 @@ interface DemoMissionResult {
   successCount: number;
   failCount: number;
   requiredFails: number;
+  selectedTeamIds?: string[];
 }
 
 interface DemoHistoryEntry {
@@ -1061,9 +1062,11 @@ function DemoSimulator() {
           {[0, 1, 2, 3, 4].map((roundIndex) => {
             const result = demo.missionResults.find((item) => item.roundIndex === roundIndex);
             const threshold = rule.failThresholds[roundIndex];
+            const teamNames = getDemoQuestTeamNames(demo, result?.selectedTeamIds ?? (roundIndex === demo.roundIndex ? demo.selectedTeamIds : []));
             return (
               <span key={roundIndex} className={result?.outcome ?? (roundIndex === demo.roundIndex ? 'current' : '')}>
-                Q{roundIndex + 1}: {rule.teamSizes[roundIndex]}{threshold > 1 ? ` / ${threshold} fails` : ''}
+                <strong>Q{roundIndex + 1}: {rule.teamSizes[roundIndex]}{threshold > 1 ? ` / ${threshold} fails` : ''}</strong>
+                {teamNames.length > 0 && <small>{teamNames.join(', ')}</small>}
               </span>
             );
           })}
@@ -1582,8 +1585,17 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
               <p>{t('Votes in')}: {action.submittedVoteCount}/{action.playerCount}</p>
             )}
           </>
+        ) : action.currentVote ? (
+          <>
+            <div className={`vote-status-pill ${action.currentVote}`} aria-label={t('Submitted vote')}>
+              {action.currentVote === 'approve' ? t('Approve') : t('Reject')}
+            </div>
+            {typeof action.submittedVoteCount === 'number' && action.playerCount && (
+              <p>{t('Votes in')}: {action.submittedVoteCount}/{action.playerCount}</p>
+            )}
+          </>
         ) : (
-          <p>{t('Waiting for all players to vote.')}</p>
+          <p>{t('Vote not submitted yet.')} {typeof action.submittedVoteCount === 'number' && action.playerCount ? `${t('Votes in')}: ${action.submittedVoteCount}/${action.playerCount}.` : ''}</p>
         )}
       </div>
     );
@@ -1856,6 +1868,7 @@ function resolveDemoMissionIfReady(current: DemoState, players: DemoPlayer[]): D
     successCount: cards.filter((card) => card === 'success').length,
     failCount: resolved.failCount,
     requiredFails: resolved.requiredFails,
+    selectedTeamIds: [...current.selectedTeamIds],
   };
   return {
     ...current,
@@ -1884,6 +1897,10 @@ function getDemoWinner(demo: DemoState): Allegiance | undefined {
   if (goodScore >= 3) return 'good';
   if (evilScore >= 3) return 'evil';
   return undefined;
+}
+
+function getDemoQuestTeamNames(demo: DemoState, teamIds: string[] = []): string[] {
+  return teamIds.map((id) => demo.players.find((player) => player.id === id)?.displayName ?? id);
 }
 
 function createAgentMemory(playerIds: string[], selfId: string): AgentMemory {
@@ -2604,6 +2621,10 @@ function RoomView({
   );
 }
 
+function getRoomPlayerNames(players: RoomPlayer[], playerIds: string[] = []): string[] {
+  return playerIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id);
+}
+
 function MissionPanel({
   missionState,
   players,
@@ -2724,6 +2745,7 @@ function MissionPanel({
           {[0, 1, 2, 3, 4].map((roundIndex) => {
             const result = missionState.missionResults.find((item) => item.roundIndex === roundIndex);
             const state = result?.outcome ?? (roundIndex === missionState.roundIndex && missionState.phase !== 'finished' ? 'current' : 'pending');
+            const questTeamNames = getRoomPlayerNames(players, result?.selectedTeamIds ?? (state === 'current' ? visibleTeamIds : []));
             return (
               <div key={roundIndex} className={`quest-card ${state}`}>
                 <span>Q{roundIndex + 1}</span>
@@ -2733,6 +2755,11 @@ function MissionPanel({
                     ? result.outcome === 'success' ? t('Good won') : t('Evil won')
                     : roundIndex === missionState.roundIndex && missionState.phase !== 'finished' ? t('Current') : t('Pending')}
                 </small>
+                {questTeamNames.length > 0 && (
+                  <div className="quest-team-chips" aria-label={t('Quest team')}>
+                    {questTeamNames.map((name) => <span key={name}>{name}</span>)}
+                  </div>
+                )}
               </div>
             );
           })}
