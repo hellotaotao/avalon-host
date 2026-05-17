@@ -22,13 +22,13 @@ export interface AiTableHistoryEntryInput {
   roundIndex: number;
   actorId?: string;
   actorName?: string;
-  kind: 'speech' | 'proposal' | 'vote' | 'mission' | 'result';
+  kind: 'speech' | 'proposal' | 'vote' | 'mission' | 'result' | 'assassin';
   text: string;
 }
 
 export interface AiTableStateInput {
   playerCount: number;
-  phase: 'setup' | 'proposal' | 'vote' | 'mission' | 'result';
+  phase: 'setup' | 'proposal' | 'vote' | 'mission' | 'result' | 'assassin' | 'finished';
   roundIndex: number;
   leaderIndex: number;
   selectedTeamIds: string[];
@@ -42,19 +42,21 @@ export interface AiTableStateInput {
 export type AiAvalonLegalAction =
   | { type: 'proposeTeam'; teamSize: number; candidatePlayerIds: string[] }
   | { type: 'vote'; values: Vote[]; selectedTeamIds: string[] }
-  | { type: 'missionCard'; values: MissionCard[]; selectedTeamIds: string[] };
+  | { type: 'missionCard'; values: MissionCard[]; selectedTeamIds: string[] }
+  | { type: 'assassinate'; candidatePlayerIds: string[] };
 
 export type AiAvalonDecisionAction =
   | { type: 'proposeTeam'; teamIds: string[] }
   | { type: 'vote'; vote: Vote }
-  | { type: 'missionCard'; card: MissionCard };
+  | { type: 'missionCard'; card: MissionCard }
+  | { type: 'assassinate'; targetPlayerId: string };
 
 export interface AiAvalonDecisionRequest {
   game: {
     name: 'Avalon Lite';
     playerCount: number;
     roundIndex: number;
-    phase: Exclude<AiTableStateInput['phase'], 'setup' | 'result'>;
+    phase: Exclude<AiTableStateInput['phase'], 'setup' | 'result' | 'finished'>;
     teamSize: number;
     selectedTeamIds: string[];
     missionResults: AiTableStateInput['missionResults'];
@@ -62,7 +64,7 @@ export interface AiAvalonDecisionRequest {
     lastMission?: AiTableStateInput['lastMission'];
   };
   currentTurn: {
-    phase: Exclude<AiTableStateInput['phase'], 'setup' | 'result'>;
+    phase: Exclude<AiTableStateInput['phase'], 'setup' | 'result' | 'finished'>;
     actorId: string;
     actorName: string;
     instruction: string;
@@ -106,11 +108,12 @@ export function findNextAiActor(state: AiTableStateInput): AiTablePlayerInput | 
   }
   if (state.phase === 'vote') return state.players.find((player) => player.controller === 'ai' && !player.teamVote);
   if (state.phase === 'mission') return state.players.find((player) => player.controller === 'ai' && state.selectedTeamIds.includes(player.id) && !player.missionCard);
+  if (state.phase === 'assassin') return state.players.find((player) => player.controller === 'ai' && player.role === 'Assassin');
   return undefined;
 }
 
 export function buildAiAvalonDecisionRequest(state: AiTableStateInput, actorId: string, persona?: string): AiAvalonDecisionRequest {
-  if (state.phase === 'setup' || state.phase === 'result') throw new Error('AI decisions are only available during proposal, vote, or mission phases.');
+  if (state.phase === 'setup' || state.phase === 'result' || state.phase === 'finished') throw new Error('AI decisions are only available during proposal, vote, mission, or assassin phases.');
   const actor = state.players.find((player) => player.id === actorId);
   if (!actor) throw new Error('Acting player is not at this table.');
   const legalActions = getLegalActionsForActor(state, actor);
@@ -165,6 +168,9 @@ export function getLegalActionsForActor(state: AiTableStateInput, actor: AiTable
   if (state.phase === 'mission' && state.selectedTeamIds.includes(actor.id) && !actor.missionCard) {
     return [{ type: 'missionCard', values: roleAllegiance(actor.role) === 'evil' ? ['success', 'fail'] : ['success'], selectedTeamIds: [...state.selectedTeamIds] }];
   }
+  if (state.phase === 'assassin' && actor.role === 'Assassin') {
+    return [{ type: 'assassinate', candidatePlayerIds: state.players.filter((player) => player.id !== actor.id).map((player) => player.id) }];
+  }
   return [];
 }
 
@@ -190,6 +196,11 @@ export function validateAiAvalonDecisionAction(request: AiAvalonDecisionRequest,
     if (!legal.values.includes(action.card)) throw new Error('AI mission card is not legal for this role.');
     return { type: 'missionCard', card: action.card };
   }
+  if (legal.type === 'assassinate') {
+    if (action.type !== 'assassinate' || typeof action.targetPlayerId !== 'string') throw new Error('AI action must choose an assassination target.');
+    if (!legal.candidatePlayerIds.includes(action.targetPlayerId)) throw new Error('AI assassination target is not legal.');
+    return { type: 'assassinate', targetPlayerId: action.targetPlayerId };
+  }
   throw new Error('Unsupported legal action.');
 }
 
@@ -212,7 +223,7 @@ function buildCurrentActionContext(
   publicPlayers: AiAvalonDecisionRequest['publicPlayers'],
   roleVisibleInfo: AiAvalonDecisionRequest['roleVisibleInfo'],
 ): AiAvalonDecisionRequest['currentActionContext'] {
-  const currentProposedTeamIds = legalAction.type === 'proposeTeam' ? [] : [...state.selectedTeamIds];
+  const currentProposedTeamIds = legalAction.type === 'vote' || legalAction.type === 'missionCard' ? [...state.selectedTeamIds] : [];
   const currentProposedTeamIdSet = new Set(currentProposedTeamIds);
   const currentProposedTeam = currentProposedTeamIds.map((id) => publicPlayers.find((player) => player.playerId === id)).filter(Boolean) as AiAvalonDecisionRequest['publicPlayers'];
   const currentTeamRoleVisibleInfo = roleVisibleInfo.filter((item) => currentProposedTeamIdSet.has(item.playerId));
@@ -228,13 +239,16 @@ function buildCurrentActionContext(
       ? `You are voting only on the current proposed team now: ${currentProposedTeamText}. Public table history is historical context and may describe previous proposals. First check currentTeamRoleVisibleInfo/roleVisiblePlayersOnCurrentTeam for role-visible information about this exact team.`
       : actionType === 'missionCard'
         ? `You are submitting a mission card only for the current mission team now: ${currentProposedTeamText}. Public table history is historical context. First check currentTeamRoleVisibleInfo/roleVisiblePlayersOnCurrentTeam for role-visible information about this exact team. Include a brief privateReasoningSummary explaining why you chose success or fail; good players must submit success, while evil players should weigh sabotage against staying hidden. Do not reveal the chosen mission card in publicSpeech.`
-        : 'You are proposing a new team now. Public table history is historical context only.',
+        : actionType === 'assassinate'
+          ? 'Good completed three quests. As Assassin, choose one good player as Merlin. If you hit Merlin, Evil wins; otherwise Good wins. Use public history and your private memory only; you are not told Merlin by the orchestrator.'
+          : 'You are proposing a new team now. Public table history is historical context only.',
   };
 }
 
 function buildCurrentTurnInstruction(phase: AiAvalonDecisionRequest['game']['phase'], currentTeamText: string): string {
   if (phase === 'vote') return `Vote approve or reject for the current proposed team only: ${currentTeamText}. Do not vote on or cite an older historical team as if it is current.`;
   if (phase === 'mission') return `Submit a mission card for the current mission team only: ${currentTeamText}. Include a brief private reason for the card choice: good players must submit success; evil players should weigh sabotage pressure against staying hidden. Do not reveal the chosen card publicly before mission resolution.`;
+  if (phase === 'assassin') return 'Good completed three quests. Choose exactly one good player as Merlin for the Assassin endgame; do not claim certainty unless your own information supports it.';
   return 'Propose a new legal mission team for the current round.';
 }
 

@@ -755,8 +755,15 @@ interface DemoHistoryEntry {
   roundIndex: number;
   actorId?: string;
   actorName?: string;
-  kind: 'speech' | 'proposal' | 'vote' | 'mission' | 'result';
+  kind: 'speech' | 'proposal' | 'vote' | 'mission' | 'result' | 'assassin';
   text: string;
+}
+
+interface DemoAssassination {
+  targetPlayerId: string;
+  targetName: string;
+  hitMerlin: boolean;
+  winner: Allegiance;
 }
 
 interface DemoState {
@@ -765,7 +772,7 @@ interface DemoState {
   mode: DemoMode;
   humanCount: number;
   players: DemoPlayer[];
-  phase: 'setup' | 'proposal' | 'vote' | 'mission' | 'result';
+  phase: 'setup' | 'proposal' | 'vote' | 'mission' | 'result' | 'assassin' | 'finished';
   roundIndex: number;
   leaderIndex: number;
   selectedTeamIds: string[];
@@ -774,6 +781,7 @@ interface DemoState {
   aiHistory: DemoHistoryEntry[];
   lastVote?: { approveCount: number; rejectCount: number; passed: boolean };
   lastMission?: DemoMissionResult;
+  assassination?: DemoAssassination;
 }
 
 const demoNames = ['Arthur', 'Bors', 'Cai', 'Dagonet', 'Elaine', 'Gareth', 'Helena', 'Isolde', 'Lucan', 'Yvain'];
@@ -819,7 +827,7 @@ function DemoSimulator() {
   }, [demo.phase, demo.roundIndex, demo.missionResults.length, winner]);
 
   useEffect(() => {
-    if (demo.mode !== 'ai' || !autoAi || aiBusy || winner || demo.phase === 'setup' || demo.phase === 'result') return undefined;
+    if (demo.mode !== 'ai' || !autoAi || aiBusy || winner || demo.phase === 'setup' || demo.phase === 'result' || demo.phase === 'finished') return undefined;
     if (!hasPendingAiAction(demo)) return undefined;
     const timeout = window.setTimeout(() => {
       void runAiOnce();
@@ -940,6 +948,11 @@ function DemoSimulator() {
         tableHistory: [...next.tableHistory, makeHistory(current, actor, 'mission', `${actor?.displayName ?? playerId} submitted a mission card.`)],
       };
     });
+  }
+
+  function chooseAssassinationTarget(targetPlayerId: string) {
+    if (demo.phase !== 'assassin') return;
+    setDemo((current) => resolveDemoAssassination(current, targetPlayerId));
   }
 
   function toggleRoleReveal(playerId: string) {
@@ -1080,7 +1093,10 @@ function DemoSimulator() {
         </div>
         {demo.lastVote && <p className="hint">Last vote: {demo.lastVote.approveCount} approve, {demo.lastVote.rejectCount} reject. Team {demo.lastVote.passed ? 'approved' : 'rejected'}.</p>}
         {demo.lastMission && <p className="notice">Quest {demo.lastMission.roundIndex + 1} {demo.lastMission.outcome === 'success' ? 'succeeded' : 'failed'} with {demo.lastMission.failCount} fail card(s).</p>}
-        {winner && <p className="notice">{winner === 'good' ? 'Good' : 'Evil'} has reached three quests. Reset the table to try another setup.</p>}
+        {demo.phase === 'assassin' && <p className="notice">Good completed three quests. The Assassin now chooses one Merlin target; only after that guess is resolved is the winner final.</p>}
+        {demo.phase === 'finished' && winner && (
+          <p className="notice">{winner === 'good' ? 'Good wins: the Assassin missed Merlin.' : demo.assassination?.hitMerlin ? 'Evil wins: the Assassin found Merlin.' : 'Evil wins.'} Reset the table to try another setup.</p>
+        )}
         {demo.phase === 'setup' && (
           <div className="mission-step">
             <p>{t('Choose player count and roles, then start the tabletop.')}</p>
@@ -1104,6 +1120,16 @@ function DemoSimulator() {
         {demo.phase === 'result' && !winner && (
           <div className="mission-step">
             <p>{t('Quest result is public on every phone. Next quest starts automatically.')}</p>
+          </div>
+        )}
+        {demo.phase === 'assassin' && (
+          <div className="mission-step">
+            <p>Good has three successful quests. Assassin chooses one player as Merlin: hit Merlin and Evil wins; miss and Good wins.</p>
+          </div>
+        )}
+        {demo.phase === 'finished' && demo.assassination && (
+          <div className="mission-step">
+            <p>Assassin targeted {demo.assassination.targetName}. {demo.assassination.hitMerlin ? 'That was Merlin.' : 'That was not Merlin.'}</p>
           </div>
         )}
       </section>
@@ -1153,6 +1179,8 @@ function DemoSimulator() {
             onVote={vote}
             onPlayMissionCard={playMissionCard}
             onProposeTeam={proposeTeam}
+            onAssassinate={chooseAssassinationTarget}
+            assassination={demo.assassination}
             winner={winner}
             lastMission={demo.lastMission}
             tableMode={demo.mode}
@@ -1176,6 +1204,8 @@ function DemoPhone({
   onVote,
   onPlayMissionCard,
   onProposeTeam,
+  onAssassinate,
+  assassination,
   winner,
   lastMission,
   tableMode,
@@ -1192,6 +1222,8 @@ function DemoPhone({
   onVote: (playerId: string, vote: Vote) => void;
   onPlayMissionCard: (playerId: string, card: MissionCard) => void;
   onProposeTeam: () => void;
+  onAssassinate: (targetPlayerId: string) => void;
+  assassination?: DemoAssassination;
   winner?: Allegiance;
   lastMission?: DemoMissionResult;
   tableMode: DemoMode;
@@ -1233,6 +1265,8 @@ function DemoPhone({
         onVote,
         onPlayMissionCard,
         onProposeTeam,
+        onAssassinate,
+        assassination,
       })}
     />
   );
@@ -1294,12 +1328,15 @@ type PlayerPhoneAction =
   | {
       kind: 'assassin';
       isAssassin: boolean;
+      candidates: PlayerPhonePerson[];
+      onAssassinate?: (targetPlayerId: string) => void;
     }
   | {
       kind: 'finished';
       winner?: Allegiance;
       playerWon?: boolean;
       result?: PlayerPhoneResult;
+      assassination?: DemoAssassination;
     };
 
 function PlayerPhone({
@@ -1409,6 +1446,8 @@ function getDemoPhoneAction({
   onVote,
   onPlayMissionCard,
   onProposeTeam,
+  onAssassinate,
+  assassination,
 }: {
   player: DemoPlayer;
   players: DemoPlayer[];
@@ -1425,6 +1464,8 @@ function getDemoPhoneAction({
   onVote: (playerId: string, vote: Vote) => void;
   onPlayMissionCard: (playerId: string, card: MissionCard) => void;
   onProposeTeam: () => void;
+  onAssassinate: (targetPlayerId: string) => void;
+  assassination?: DemoAssassination;
 }): PlayerPhoneAction | undefined {
   const isAiControlled = player.controller === 'ai';
   if (phase === 'proposal') {
@@ -1468,6 +1509,23 @@ function getDemoPhoneAction({
       winner,
       playerWon: winner && roleAllegiance(player.role) === winner,
       result: lastMission,
+    };
+  }
+  if (phase === 'assassin') {
+    return {
+      kind: 'assassin',
+      isAssassin: player.role === 'Assassin',
+      candidates: players.filter((candidate) => candidate.role !== 'Assassin'),
+      onAssassinate: player.role === 'Assassin' && !isAiControlled ? onAssassinate : undefined,
+    };
+  }
+  if (phase === 'finished') {
+    return {
+      kind: 'finished',
+      winner,
+      playerWon: winner && roleAllegiance(player.role) === winner,
+      result: lastMission,
+      assassination,
     };
   }
   return undefined;
@@ -1536,7 +1594,7 @@ function getLivePhoneAction({
     };
   }
   if (missionState.phase === 'assassin') {
-    return { kind: 'assassin', isAssassin: player.role === 'Assassin' };
+    return { kind: 'assassin', isAssassin: player.role === 'Assassin', candidates: players.filter((candidate) => candidate.role !== 'Assassin') };
   }
   return {
     kind: 'finished',
@@ -1646,9 +1704,20 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
 
   if (action.kind === 'assassin') {
     return (
-      <div className="phone-action phone-readonly">
+      <div className={`phone-action ${action.onAssassinate ? '' : 'phone-readonly'}`}>
         <span>{t('Assassin phase')}</span>
-        <p>{action.isAssassin ? t('Choose Merlin from the Assassin panel.') : t('Good completed three quests. The Assassin is choosing Merlin.')}</p>
+        {action.onAssassinate ? (
+          <>
+            <p>Good completed three quests. Choose Merlin: hit Merlin and Evil wins; miss and Good wins.</p>
+            <div className="choice-row">
+              {action.candidates.map((candidate) => (
+                <button key={candidate.id} type="button" onClick={() => action.onAssassinate?.(candidate.id)}>{candidate.displayName}</button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p>{action.isAssassin ? 'Waiting for the AI Assassin to choose Merlin.' : t('Good completed three quests. The Assassin is choosing Merlin.')}</p>
+        )}
       </div>
     );
   }
@@ -1658,6 +1727,9 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
     <div className={`phone-action ${action.winner ? 'phone-result' : 'phone-readonly'}`}>
       <span>{action.winner || isFinished ? t('Game result') : t('Quest result')}</span>
       {action.result && <MissionResultReveal result={action.result} />}
+      {action.kind === 'finished' && action.assassination && (
+        <p>Assassin targeted {action.assassination.targetName}. {action.assassination.hitMerlin ? 'Merlin was found.' : 'Merlin survived.'}</p>
+      )}
       {action.winner ? (
         <p>{action.playerWon ? t('Victory') : t('Defeat')} · {action.winner === 'good' ? t('Good wins') : t('Evil wins')}</p>
       ) : (
@@ -1879,12 +1951,17 @@ function resolveDemoMissionIfReady(current: DemoState, players: DemoPlayer[]): D
     requiredFails: resolved.requiredFails,
     selectedTeamIds: [...current.selectedTeamIds],
   };
+  const missionResults = [...current.missionResults, result];
+  const goodScore = missionResults.filter((item) => item.outcome === 'success').length;
+  const evilScore = missionResults.filter((item) => item.outcome === 'fail').length;
   return {
     ...current,
     players,
-    phase: 'result',
-    missionResults: [...current.missionResults, result],
+    phase: evilScore >= 3 ? 'finished' : goodScore >= 3 ? 'assassin' : 'result',
+    missionResults,
+    selectedTeamIds: goodScore >= 3 || evilScore >= 3 ? [] : current.selectedTeamIds,
     lastMission: result,
+    assassination: undefined,
   };
 }
 
@@ -1900,11 +1977,34 @@ function advanceDemoToNextQuest(current: DemoState): DemoState {
   };
 }
 
+function resolveDemoAssassination(current: DemoState, targetPlayerId: string): DemoState {
+  if (current.phase !== 'assassin') return current;
+  const target = current.players.find((player) => player.id === targetPlayerId);
+  if (!target || target.role === 'Assassin') return current;
+  const assassin = current.players.find((player) => player.role === 'Assassin');
+  const hitMerlin = target.role === 'Merlin';
+  const winner: Allegiance = hitMerlin ? 'evil' : 'good';
+  const assassination: DemoAssassination = {
+    targetPlayerId: target.id,
+    targetName: target.displayName,
+    hitMerlin,
+    winner,
+  };
+  return {
+    ...current,
+    phase: 'finished',
+    assassination,
+    tableHistory: [
+      ...current.tableHistory,
+      makeHistory(current, assassin, 'assassin', `${assassin?.displayName ?? 'Assassin'} chose ${target.displayName} as Merlin. ${hitMerlin ? 'Merlin was found; Evil wins.' : 'Merlin survived; Good wins.'}`),
+    ],
+  };
+}
+
 function getDemoWinner(demo: DemoState): Allegiance | undefined {
-  const goodScore = demo.missionResults.filter((result) => result.outcome === 'success').length;
   const evilScore = demo.missionResults.filter((result) => result.outcome === 'fail').length;
-  if (goodScore >= 3) return 'good';
-  if (evilScore >= 3) return 'evil';
+  if (demo.phase === 'finished' && demo.assassination) return demo.assassination.winner;
+  if (demo.phase === 'finished' && evilScore >= 3) return 'evil';
   return undefined;
 }
 
@@ -1936,19 +2036,21 @@ function hasPendingAiAction(demo: DemoState): boolean {
   if (demo.phase === 'proposal') return demo.players[demo.leaderIndex]?.controller === 'ai';
   if (demo.phase === 'vote') return demo.players.some((player) => player.controller === 'ai' && !player.teamVote);
   if (demo.phase === 'mission') return demo.players.some((player) => player.controller === 'ai' && demo.selectedTeamIds.includes(player.id) && !player.missionCard);
+  if (demo.phase === 'assassin') return demo.players.some((player) => player.controller === 'ai' && player.role === 'Assassin');
   return false;
 }
 
 function runNextAiAction(current: DemoState): DemoState {
-  if (current.mode !== 'ai' || current.phase === 'setup' || current.phase === 'result' || getDemoWinner(current)) return current;
+  if (current.mode !== 'ai' || current.phase === 'setup' || current.phase === 'result' || current.phase === 'finished' || getDemoWinner(current)) return current;
   if (current.phase === 'proposal') return runAiProposal(current);
   if (current.phase === 'vote') return runAiVote(current);
   if (current.phase === 'mission') return runAiMission(current);
+  if (current.phase === 'assassin') return runAiAssassination(current);
   return current;
 }
 
 function applyAiDecision(current: DemoState, actorId: string, decision: AiAvalonDecision): DemoState {
-  if (current.mode !== 'ai' || current.phase === 'setup' || current.phase === 'result' || getDemoWinner(current)) return current;
+  if (current.mode !== 'ai' || current.phase === 'setup' || current.phase === 'result' || current.phase === 'finished' || getDemoWinner(current)) return current;
   const actor = current.players.find((player) => player.id === actorId);
   if (!actor || actor.controller !== 'ai') return current;
   const publicSpeech = buildAiSpeech(current, actor, decision.publicSpeech);
@@ -2004,6 +2106,26 @@ function applyAiDecision(current: DemoState, actorId: string, decision: AiAvalon
       aiHistory: [
         ...next.aiHistory,
         makeHistory(current, actor, 'mission', formatMissionReasoningSummaryForHistory(decision.privateReasoningSummary)),
+      ],
+    };
+  }
+
+  const decisionAction = decision.action;
+  if (current.phase === 'assassin' && actor.role === 'Assassin' && decisionAction.type === 'assassinate') {
+    const target = current.players.find((player) => player.id === decisionAction.targetPlayerId && player.role !== 'Assassin');
+    if (!target) return runAiAssassination(current);
+    const rememberedPlayers = current.players.map((player) => (player.id === actor.id ? rememberedActor : player));
+    const resolved = resolveDemoAssassination({ ...current, players: rememberedPlayers }, target.id);
+    return {
+      ...resolved,
+      tableHistory: [
+        ...current.tableHistory,
+        makeHistory(current, rememberedActor, 'speech', publicSpeech),
+        makeHistory(current, rememberedActor, 'assassin', `${rememberedActor.displayName} chose ${target.displayName} as Merlin. ${target.role === 'Merlin' ? 'Merlin was found; Evil wins.' : 'Merlin survived; Good wins.'}`),
+      ],
+      aiHistory: [
+        ...current.aiHistory,
+        makeHistory(current, rememberedActor, 'assassin', `Assassin reasoning: ${decision.privateReasoningSummary}`),
       ],
     };
   }
@@ -2101,6 +2223,29 @@ function runAiMission(current: DemoState): DemoState {
   };
 }
 
+function runAiAssassination(current: DemoState): DemoState {
+  const assassin = current.players.find((player) => player.controller === 'ai' && player.role === 'Assassin');
+  if (!assassin) return current;
+  const target = chooseAiAssassinationTarget(current, assassin);
+  const publicSpeech = buildAiSpeech(current, assassin, `I choose ${target.displayName} as Merlin.`);
+  const reasoning = `Assassin heuristic: target the good player with the strongest Merlin signals from private suspicion memory and public quest history; selected ${target.displayName}.`;
+  const rememberedAssassin = rememberAgent(assassin, current, reasoning, publicSpeech);
+  const withMemory = { ...current, players: current.players.map((player) => (player.id === assassin.id ? rememberedAssassin : player)) };
+  const resolved = resolveDemoAssassination(withMemory, target.id);
+  return {
+    ...resolved,
+    tableHistory: [
+      ...current.tableHistory,
+      makeHistory(current, rememberedAssassin, 'speech', publicSpeech),
+      makeHistory(current, rememberedAssassin, 'assassin', `${rememberedAssassin.displayName} chose ${target.displayName} as Merlin. ${target.role === 'Merlin' ? 'Merlin was found; Evil wins.' : 'Merlin survived; Good wins.'}`),
+    ],
+    aiHistory: [
+      ...current.aiHistory,
+      makeHistory(current, rememberedAssassin, 'assassin', reasoning),
+    ],
+  };
+}
+
 function chooseAiTeam(current: DemoState, leader: DemoPlayer, teamSize: number): string[] {
   const bySuspicion = [...current.players].sort((left, right) => suspicionFor(leader, left.id) - suspicionFor(leader, right.id));
   const team = new Set<string>();
@@ -2137,6 +2282,22 @@ function chooseEvilMissionCard(current: DemoState, actor: DemoPlayer): MissionCa
   const evilOnTeam = current.selectedTeamIds.filter((id) => roleAllegiance(current.players.find((player) => player.id === id)?.role ?? 'Loyal Servant') === 'evil').length;
   if (current.roundIndex === 0 && evilOnTeam > 1 && actor.role !== 'Assassin') return 'success';
   return 'fail';
+}
+
+function chooseAiAssassinationTarget(current: DemoState, assassin: DemoPlayer): DemoPlayer {
+  const goodCandidates = current.players.filter((player) => player.role !== 'Assassin');
+  const successfulTeamIds = current.missionResults
+    .filter((result) => result.outcome === 'success')
+    .flatMap((result) => result.selectedTeamIds ?? []);
+  const successfulTeamCounts = successfulTeamIds.reduce<Record<string, number>>((counts, id) => {
+    counts[id] = (counts[id] ?? 0) + 1;
+    return counts;
+  }, {});
+  return [...goodCandidates].sort((left, right) => {
+    const rightScore = suspicionFor(assassin, right.id) + (successfulTeamCounts[right.id] ?? 0) * 12 - (right.role === 'Percival' ? 8 : 0);
+    const leftScore = suspicionFor(assassin, left.id) + (successfulTeamCounts[left.id] ?? 0) * 12 - (left.role === 'Percival' ? 8 : 0);
+    return rightScore - leftScore || left.seatIndex - right.seatIndex;
+  })[0] ?? goodCandidates[0] ?? current.players[0];
 }
 
 function rememberAgent(player: DemoPlayer, current: DemoState, reasoning: string, publicSpeech: string): DemoPlayer {

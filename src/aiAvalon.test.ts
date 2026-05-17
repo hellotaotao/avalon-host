@@ -224,4 +224,24 @@ describe('AI Avalon request filtering and validation', () => {
       memoryUpdate: { suspicion: { p1: 25 } },
     }).action).toEqual({ type: 'missionCard', card: 'fail' });
   });
+
+  it('builds and validates Assassin endgame target decisions without revealing Merlin', () => {
+    const state: AiTableStateInput = {
+      ...baseState,
+      phase: 'assassin',
+      missionResults: [
+        { roundIndex: 0, outcome: 'success', successCount: 2, failCount: 0, requiredFails: 1 },
+        { roundIndex: 1, outcome: 'success', successCount: 3, failCount: 0, requiredFails: 1 },
+        { roundIndex: 2, outcome: 'success', successCount: 2, failCount: 0, requiredFails: 1 },
+      ],
+    };
+    const request = buildAiAvalonDecisionRequest(state, 'p2');
+
+    expect(request.currentTurn.instruction).toContain('Choose exactly one good player as Merlin');
+    expect(request.legalActions).toEqual([{ type: 'assassinate', candidatePlayerIds: ['p1', 'p3', 'p4', 'p5'] }]);
+    expect(JSON.stringify(request.publicPlayers)).not.toContain('\"role\"');
+    expect(validateAiAvalonDecisionAction(request, { type: 'assassinate', targetPlayerId: 'p1' })).toEqual({ type: 'assassinate', targetPlayerId: 'p1' });
+    expect(() => validateAiAvalonDecisionAction(request, { type: 'assassinate', targetPlayerId: 'p2' })).toThrow('not legal');
+  });
+
 });

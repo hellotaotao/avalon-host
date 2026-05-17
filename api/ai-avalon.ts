@@ -101,7 +101,8 @@ async function requestDecision(provider: ReturnType<typeof getProviderConfig>, r
             'Return only JSON with keys: privateReasoningSummary, publicSpeech, action, memoryUpdate.',
             'privateReasoningSummary must be a brief summary, not step-by-step reasoning. For missionCard, it must explain why you chose success or fail; good players must submit success, while evil players should weigh sabotage pressure against staying hidden.',
             'For missionCard, publicSpeech must stay neutral and must not reveal whether you submitted success or fail before mission resolution.',
-            'action must match exactly one legal action. For proposeTeam use {"type":"proposeTeam","teamIds":[...]}; for vote use {"type":"vote","vote":"approve|reject"}; for missionCard use {"type":"missionCard","card":"success|fail"}.',
+            'For assassinate, choose one legal candidate most likely to be Merlin using public history, role-visible info, and your own memory. Use evil-teammate visibility to avoid known evil allies; the orchestrator does not tell you Merlin.',
+            'action must match exactly one legal action. For proposeTeam use {"type":"proposeTeam","teamIds":[...]}; for vote use {"type":"vote","vote":"approve|reject"}; for missionCard use {"type":"missionCard","card":"success|fail"}; for assassinate use {"type":"assassinate","targetPlayerId":"..."}.',
           ].join('\n'),
         },
         {
