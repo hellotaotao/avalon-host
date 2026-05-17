@@ -92,7 +92,9 @@ async function requestDecision(provider: ReturnType<typeof getProviderConfig>, r
           role: 'system',
           content: [
             'You are one independent AI participant in Avalon Lite, not an omniscient narrator.',
-            'Use only the JSON input provided: your own role, role-visible info, public table history, your own memory, current phase, and legal actions.',
+            'Use only the JSON input provided: your own role, role-visible info, your own memory, currentTurn, currentActionContext, legal actions, and historical publicTableHistory.',
+            'currentActionContext is authoritative for the action happening now. publicTableHistory is historical and may mention older proposals.',
+            'During vote phase, vote only on currentActionContext.currentProposedTeam/currentProposedTeamIds. In publicSpeech, refer to that current team, not a stale team from history.',
             'Never infer or reveal hidden roles beyond roleVisibleInfo. Do not produce chain-of-thought.',
             'Return only JSON with keys: privateReasoningSummary, publicSpeech, action, memoryUpdate.',
             'privateReasoningSummary must be a brief summary, not step-by-step reasoning.',
@@ -136,6 +138,23 @@ function readRequest(body: unknown): AiAvalonDecisionRequest {
       lastVote: request.game.lastVote ? { ...request.game.lastVote } : undefined,
       lastMission: request.game.lastMission ? { ...request.game.lastMission } : undefined,
     },
+    currentTurn: {
+      phase: request.currentTurn.phase,
+      actorId: request.currentTurn.actorId,
+      actorName: request.currentTurn.actorName,
+      instruction: request.currentTurn.instruction,
+    },
+    currentActionContext: {
+      actionType: request.currentActionContext.actionType,
+      currentProposedTeamIds: [...request.currentActionContext.currentProposedTeamIds],
+      currentProposedTeam: request.currentActionContext.currentProposedTeam.map((player) => ({
+        playerId: player.playerId,
+        displayName: player.displayName,
+        seatIndex: player.seatIndex,
+      })),
+      currentProposedTeamText: request.currentActionContext.currentProposedTeamText,
+      historyNote: request.currentActionContext.historyNote,
+    },
     actingPlayer: {
       playerId: request.actingPlayer.playerId,
       displayName: request.actingPlayer.displayName,
@@ -150,6 +169,7 @@ function readRequest(body: unknown): AiAvalonDecisionRequest {
       seatIndex: player.seatIndex,
     })),
     roleVisibleInfo: request.roleVisibleInfo.map((item) => ({ playerId: item.playerId, displayName: item.displayName, hint: item.hint })),
+    publicTableHistoryNote: request.publicTableHistoryNote,
     publicTableHistory: request.publicTableHistory.map((entry) => ({
       roundIndex: entry.roundIndex,
       actorId: entry.actorId,
@@ -167,8 +187,17 @@ function readRequest(body: unknown): AiAvalonDecisionRequest {
 }
 
 function assertFilteredRequest(request: AiAvalonDecisionRequest) {
-  if (!isRecord(request) || !isRecord(request.game) || !isRecord(request.actingPlayer) || !Array.isArray(request.publicPlayers) || !Array.isArray(request.roleVisibleInfo) || !Array.isArray(request.publicTableHistory) || !Array.isArray(request.legalActions)) {
+  if (!isRecord(request) || !isRecord(request.game) || !isRecord(request.currentTurn) || !isRecord(request.currentActionContext) || !isRecord(request.actingPlayer) || !Array.isArray(request.publicPlayers) || !Array.isArray(request.roleVisibleInfo) || !Array.isArray(request.publicTableHistory) || !Array.isArray(request.legalActions)) {
     throw new Error('Malformed AI decision request.');
+  }
+  if (!Array.isArray(request.currentActionContext.currentProposedTeamIds) || !Array.isArray(request.currentActionContext.currentProposedTeam)) {
+    throw new Error('Malformed current action context.');
+  }
+  for (const player of request.currentActionContext.currentProposedTeam) {
+    if (!isRecord(player)) throw new Error('Malformed current proposed team entry.');
+    if ('role' in player || 'memory' in player || 'teamVote' in player || 'missionCard' in player) {
+      throw new Error('AI request must not include hidden current team state.');
+    }
   }
   for (const player of request.publicPlayers) {
     if (!isRecord(player)) throw new Error('Malformed public player entry.');

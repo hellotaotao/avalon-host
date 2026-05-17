@@ -55,6 +55,58 @@ describe('AI Avalon request filtering and validation', () => {
     expect(() => validateAiAvalonDecisionAction(request, { type: 'proposeTeam', teamIds: ['p1', 'px'] })).toThrow('unknown player');
   });
 
+
+  it('makes the current vote team authoritative even when history mentions an older proposal', () => {
+    const voteState: AiTableStateInput = {
+      ...baseState,
+      phase: 'vote',
+      selectedTeamIds: ['p3', 'p5'],
+      tableHistory: [
+        ...baseState.tableHistory,
+        { roundIndex: 0, actorId: 'p1', actorName: 'Arthur AI', kind: 'proposal', text: 'Arthur AI proposed Arthur AI, Bors AI.' },
+        { roundIndex: 0, actorId: 'p2', actorName: 'Bors AI', kind: 'speech', text: 'I reject Arthur AI and Bors AI.' },
+      ],
+    };
+
+    const request = buildAiAvalonDecisionRequest(voteState, 'p1');
+
+    expect(request.currentTurn.instruction).toContain('current proposed team only: Loyal (p3), Loyal 2 (p5)');
+    expect(request.currentActionContext).toMatchObject({
+      actionType: 'vote',
+      currentProposedTeamIds: ['p3', 'p5'],
+      currentProposedTeamText: 'Loyal (p3), Loyal 2 (p5)',
+    });
+    expect(request.currentActionContext.currentProposedTeam).toEqual([
+      { playerId: 'p3', displayName: 'Loyal', seatIndex: 2 },
+      { playerId: 'p5', displayName: 'Loyal 2', seatIndex: 4 },
+    ]);
+    expect(request.publicTableHistoryNote).toContain('Historical public transcript only');
+    expect(request.publicTableHistory.map((entry) => entry.text).join(' ')).toContain('Arthur AI, Bors AI');
+    expect(request.legalActions).toEqual([{ type: 'vote', values: ['approve', 'reject'], selectedTeamIds: ['p3', 'p5'] }]);
+  });
+
+  it('replaces stale vote public speech with the current vote team', () => {
+    const voteState: AiTableStateInput = {
+      ...baseState,
+      phase: 'vote',
+      selectedTeamIds: ['p3', 'p5'],
+      tableHistory: [
+        { roundIndex: 0, actorId: 'p1', actorName: 'Arthur AI', kind: 'proposal', text: 'Arthur AI proposed Arthur AI, Bors AI.' },
+      ],
+    };
+    const request = buildAiAvalonDecisionRequest(voteState, 'p1');
+
+    const decision = normalizeAiAvalonDecision(request, {
+      privateReasoningSummary: 'brief',
+      publicSpeech: 'I reject Arthur AI and Bors AI because that pairing is risky.',
+      action: { type: 'vote', vote: 'reject' },
+      memoryUpdate: {},
+    });
+
+    expect(decision.publicSpeech).toBe('I reject the current proposed team: Loyal (p3), Loyal 2 (p5).');
+    expect(decision.publicSpeech).not.toContain('Arthur AI');
+  });
+
   it('prevents Good players from submitting fail mission cards', () => {
     const state: AiTableStateInput = { ...baseState, phase: 'mission', selectedTeamIds: ['p1', 'p2'] };
     const request = buildAiAvalonDecisionRequest(state, 'p1');

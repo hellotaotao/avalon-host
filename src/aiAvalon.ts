@@ -61,6 +61,19 @@ export interface AiAvalonDecisionRequest {
     lastVote?: AiTableStateInput['lastVote'];
     lastMission?: AiTableStateInput['lastMission'];
   };
+  currentTurn: {
+    phase: Exclude<AiTableStateInput['phase'], 'setup' | 'result'>;
+    actorId: string;
+    actorName: string;
+    instruction: string;
+  };
+  currentActionContext: {
+    actionType: AiAvalonLegalAction['type'];
+    currentProposedTeamIds: string[];
+    currentProposedTeam: Array<{ playerId: string; displayName: string; seatIndex: number }>;
+    currentProposedTeamText: string;
+    historyNote: string;
+  };
   actingPlayer: {
     playerId: string;
     displayName: string;
@@ -71,6 +84,7 @@ export interface AiAvalonDecisionRequest {
   };
   publicPlayers: Array<{ playerId: string; displayName: string; seatIndex: number }>;
   roleVisibleInfo: Array<{ playerId: string; displayName: string; hint: string }>;
+  publicTableHistoryNote: string;
   publicTableHistory: AiTableHistoryEntryInput[];
   ownMemory: AiAgentMemory;
   legalActions: AiAvalonLegalAction[];
@@ -100,6 +114,8 @@ export function buildAiAvalonDecisionRequest(state: AiTableStateInput, actorId: 
   const legalActions = getLegalActionsForActor(state, actor);
   if (!legalActions.length) throw new Error('Acting player has no legal action.');
   const visibility = getVisibilityInfo(toAvalonPlayer(actor), state.players.map(toAvalonPlayer));
+  const publicPlayers = state.players.map((player) => ({ playerId: player.id, displayName: player.displayName, seatIndex: player.seatIndex }));
+  const currentActionContext = buildCurrentActionContext(state, legalActions[0], publicPlayers);
   return {
     game: {
       name: 'Avalon Lite',
@@ -112,6 +128,13 @@ export function buildAiAvalonDecisionRequest(state: AiTableStateInput, actorId: 
       lastVote: state.lastVote ? { ...state.lastVote } : undefined,
       lastMission: state.lastMission ? { ...state.lastMission } : undefined,
     },
+    currentTurn: {
+      phase: state.phase,
+      actorId: actor.id,
+      actorName: actor.displayName,
+      instruction: buildCurrentTurnInstruction(state.phase, currentActionContext.currentProposedTeamText),
+    },
+    currentActionContext,
     actingPlayer: {
       playerId: actor.id,
       displayName: actor.displayName,
@@ -120,8 +143,9 @@ export function buildAiAvalonDecisionRequest(state: AiTableStateInput, actorId: 
       allegiance: roleAllegiance(actor.role),
       persona,
     },
-    publicPlayers: state.players.map((player) => ({ playerId: player.id, displayName: player.displayName, seatIndex: player.seatIndex })),
+    publicPlayers,
     roleVisibleInfo: visibility.sees.map((item) => ({ playerId: item.playerId, displayName: item.name, hint: item.hint })),
+    publicTableHistoryNote: 'Historical public transcript only. It may mention older proposed teams; do not treat those as the current proposal. For the action now, use currentActionContext as authoritative.',
     publicTableHistory: state.tableHistory.slice(-24).map((entry) => ({ ...entry })),
     ownMemory: cloneMemory(actor.memory, state.players.map((player) => player.id), actor.id),
     legalActions,
@@ -167,12 +191,58 @@ export function validateAiAvalonDecisionAction(request: AiAvalonDecisionRequest,
 export function normalizeAiAvalonDecision(request: AiAvalonDecisionRequest, value: unknown): AiAvalonDecision {
   if (!isRecord(value)) throw new Error('AI decision must be a JSON object.');
   const action = validateAiAvalonDecisionAction(request, value.action);
+  const publicSpeech = ensurePublicSpeechReferencesCurrentTeam(request, action, cleanText(value.publicSpeech, 'I have made my move.'));
   return {
     privateReasoningSummary: cleanText(value.privateReasoningSummary, 'No private summary provided.').slice(0, 500),
-    publicSpeech: cleanText(value.publicSpeech, 'I have made my move.').slice(0, 500),
+    publicSpeech: publicSpeech.slice(0, 500),
     action,
     memoryUpdate: normalizeMemoryUpdate(value.memoryUpdate),
   };
+}
+
+function buildCurrentActionContext(
+  state: AiTableStateInput,
+  legalAction: AiAvalonLegalAction,
+  publicPlayers: AiAvalonDecisionRequest['publicPlayers'],
+): AiAvalonDecisionRequest['currentActionContext'] {
+  const currentProposedTeamIds = legalAction.type === 'proposeTeam' ? [] : [...state.selectedTeamIds];
+  const currentProposedTeam = currentProposedTeamIds.map((id) => publicPlayers.find((player) => player.playerId === id)).filter(Boolean) as AiAvalonDecisionRequest['publicPlayers'];
+  const currentProposedTeamText = formatTeamText(currentProposedTeam);
+  const actionType = legalAction.type;
+  return {
+    actionType,
+    currentProposedTeamIds,
+    currentProposedTeam,
+    currentProposedTeamText,
+    historyNote: actionType === 'vote'
+      ? `You are voting only on the current proposed team now: ${currentProposedTeamText}. Public table history is historical context and may describe previous proposals.`
+      : actionType === 'missionCard'
+        ? `You are submitting a mission card only for the current mission team now: ${currentProposedTeamText}. Public table history is historical context.`
+        : 'You are proposing a new team now. Public table history is historical context only.',
+  };
+}
+
+function buildCurrentTurnInstruction(phase: AiAvalonDecisionRequest['game']['phase'], currentTeamText: string): string {
+  if (phase === 'vote') return `Vote approve or reject for the current proposed team only: ${currentTeamText}. Do not vote on or cite an older historical team as if it is current.`;
+  if (phase === 'mission') return `Submit a mission card for the current mission team only: ${currentTeamText}.`;
+  return 'Propose a new legal mission team for the current round.';
+}
+
+function formatTeamText(team: AiAvalonDecisionRequest['publicPlayers']): string {
+  return team.length ? team.map((player) => `${player.displayName} (${player.playerId})`).join(', ') : 'none selected yet';
+}
+
+function ensurePublicSpeechReferencesCurrentTeam(request: AiAvalonDecisionRequest, action: AiAvalonDecisionAction, publicSpeech: string): string {
+  if (request.currentActionContext.actionType !== 'vote') return publicSpeech;
+  const teamText = request.currentActionContext.currentProposedTeamText;
+  if (!request.currentActionContext.currentProposedTeam.length) return publicSpeech;
+  const speechLower = publicSpeech.toLowerCase();
+  const referencesCurrentTeam = request.currentActionContext.currentProposedTeam.every((player) =>
+    speechLower.includes(player.displayName.toLowerCase()) || speechLower.includes(player.playerId.toLowerCase()),
+  );
+  if (referencesCurrentTeam) return publicSpeech;
+  const vote = action.type === 'vote' ? action.vote : 'vote';
+  return `I ${vote} the current proposed team: ${teamText}.`;
 }
 
 export function mergeAiAgentMemory(current: AiAgentMemory, update: AiAvalonDecision['memoryUpdate'], fallbackNote: string, publicSpeech: string): AiAgentMemory {
