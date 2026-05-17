@@ -28,6 +28,12 @@ import {
   type MissionResultState,
   type MissionState,
 } from './domain/missionFlow';
+import {
+  buildAiAvalonDecisionRequest,
+  findNextAiActor,
+  mergeAiAgentMemory,
+  type AiAvalonDecision,
+} from './aiAvalon';
 import { buildJoinUrl, buildStepUrl, parseEntryStep, parseJoinCodeFromUrl, type EntryScreen } from './navigationState';
 import {
   canStartGame,
@@ -781,6 +787,8 @@ function DemoSimulator() {
   const { t, language } = useI18n();
   const [demo, setDemo] = useState(() => createDemoState(7, { includeMorgana: true }));
   const [autoAi, setAutoAi] = useState(true);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiStatus, setAiStatus] = useState('');
   const rule = getPlayerCountRule(demo.playerCount);
   const preset = buildRolePreset(demo.playerCount, demo.roleOptions);
   const teamSize = getTeamSize(demo.playerCount, demo.roundIndex);
@@ -808,11 +816,13 @@ function DemoSimulator() {
   }, [demo.phase, demo.roundIndex, demo.missionResults.length, winner]);
 
   useEffect(() => {
-    if (demo.mode !== 'ai' || !autoAi || winner || demo.phase === 'setup' || demo.phase === 'result') return undefined;
+    if (demo.mode !== 'ai' || !autoAi || aiBusy || winner || demo.phase === 'setup' || demo.phase === 'result') return undefined;
     if (!hasPendingAiAction(demo)) return undefined;
-    const timeout = window.setTimeout(() => setDemo(runNextAiAction), 750);
+    const timeout = window.setTimeout(() => {
+      void runAiOnce();
+    }, 750);
     return () => window.clearTimeout(timeout);
-  }, [autoAi, demo, winner]);
+  }, [aiBusy, autoAi, demo, winner]);
 
   function resetWith(playerCount: number, roleOptions: RolePresetOptions, options: { mode?: DemoMode; humanCount?: number } = {}) {
     setDemo(createDemoState(playerCount, sanitizeRoleOptions(playerCount, roleOptions), {
@@ -844,8 +854,31 @@ function DemoSimulator() {
     resetWith(demo.playerCount, { ...demo.roleOptions, [key]: !demo.roleOptions[key] });
   }
 
-  function runAiOnce() {
-    setDemo(runNextAiAction);
+  async function runAiOnce() {
+    if (aiBusy || !hasPendingAiAction(demo)) return;
+    const actor = findNextAiActor(demo);
+    if (!actor) return;
+    setAiBusy(true);
+    setAiStatus(`Asking ${actor.displayName}…`);
+    try {
+      const request = buildAiAvalonDecisionRequest(demo, actor.id, actor.persona);
+      const response = await fetch('/api/ai-avalon', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ request }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body?.ok !== true) {
+        throw new Error(typeof body?.error?.message === 'string' ? body.error.message : 'AI provider unavailable; using heuristic fallback.');
+      }
+      setDemo((current) => applyAiDecision(current, actor.id, body.decision));
+      setAiStatus(`LLM move from ${body.provider ?? 'AI'}${body.model ? ` (${body.model})` : ''}.`);
+    } catch (error) {
+      setDemo(runNextAiAction);
+      setAiStatus(`${error instanceof Error ? error.message : 'AI failed.'} Used local heuristic fallback.`);
+    } finally {
+      setAiBusy(false);
+    }
   }
 
   function toggleTeamPlayer(playerId: string) {
@@ -1080,9 +1113,10 @@ function DemoSimulator() {
             </div>
             <div className="choice-row">
               <button type="button" className={autoAi ? 'selected' : ''} onClick={() => setAutoAi(!autoAi)}>{autoAi ? 'Auto AI on' : 'Auto AI off'}</button>
-              <button type="button" onClick={runAiOnce} disabled={!hasPendingAiAction(demo) || Boolean(winner)}>Run next AI action</button>
+              <button type="button" onClick={() => void runAiOnce()} disabled={aiBusy || !hasPendingAiAction(demo) || Boolean(winner)}>{aiBusy ? 'AI thinking…' : 'Run next AI action'}</button>
             </div>
           </div>
+          {aiStatus && <p className="ai-status" aria-live="polite">{aiStatus}</p>}
           <div className="ai-history">
             {demo.tableHistory.slice(-8).map((entry) => (
               <p key={entry.id}><strong>{entry.actorName ?? 'Table'}:</strong> {entry.text}</p>
@@ -1885,6 +1919,77 @@ function runNextAiAction(current: DemoState): DemoState {
   if (current.phase === 'vote') return runAiVote(current);
   if (current.phase === 'mission') return runAiMission(current);
   return current;
+}
+
+function applyAiDecision(current: DemoState, actorId: string, decision: AiAvalonDecision): DemoState {
+  if (current.mode !== 'ai' || current.phase === 'setup' || current.phase === 'result' || getDemoWinner(current)) return current;
+  const actor = current.players.find((player) => player.id === actorId);
+  if (!actor || actor.controller !== 'ai') return current;
+  const publicSpeech = buildAiSpeech(current, actor, decision.publicSpeech);
+  const rememberedActor = rememberAgentFromDecision(actor, current, decision, publicSpeech);
+
+  if (current.phase === 'proposal' && current.players[current.leaderIndex]?.id === actor.id && decision.action.type === 'proposeTeam') {
+    const teamSize = getTeamSize(current.playerCount, current.roundIndex);
+    const teamIds = [...new Set(decision.action.teamIds)].filter((id) => current.players.some((player) => player.id === id)).slice(0, teamSize);
+    if (teamIds.length !== teamSize) return runAiProposal(current);
+    const players = current.players.map((player) => (player.id === actor.id ? rememberedActor : { ...player, teamVote: undefined, missionCard: undefined }));
+    const proposedState = { ...current, phase: 'vote' as const, selectedTeamIds: teamIds, players, lastVote: undefined, lastMission: undefined };
+    return {
+      ...proposedState,
+      tableHistory: [
+        ...current.tableHistory,
+        makeHistory(current, rememberedActor, 'speech', publicSpeech),
+        makeHistory(current, rememberedActor, 'proposal', `${rememberedActor.displayName} proposed ${teamIds.map((id) => playerName(current, id)).join(', ')}.`),
+      ],
+    };
+  }
+
+  if (current.phase === 'vote' && !actor.teamVote && decision.action.type === 'vote') {
+    const vote = decision.action.vote;
+    const playersWithVote = current.players.map((player) => (
+      player.id === actor.id ? { ...rememberedActor, teamVote: vote } : player
+    ));
+    const resolved = resolveDemoVoteIfReady(current, playersWithVote);
+    return {
+      ...current,
+      players: resolved.players,
+      tableHistory: [
+        ...current.tableHistory,
+        makeHistory(current, actor, 'speech', publicSpeech),
+        makeHistory(current, actor, 'vote', `${actor.displayName} voted ${vote}.`),
+      ],
+      ...resolved.statePatch,
+    };
+  }
+
+  if (current.phase === 'mission' && current.selectedTeamIds.includes(actor.id) && !actor.missionCard && decision.action.type === 'missionCard') {
+    const legalCard = decision.action.card === 'fail' && roleAllegiance(actor.role) !== 'evil' ? 'success' : decision.action.card;
+    const playersWithCard = current.players.map((player) => (
+      player.id === actor.id ? { ...rememberedActor, missionCard: legalCard } : player
+    ));
+    const next = resolveDemoMissionIfReady(current, playersWithCard);
+    return {
+      ...next,
+      tableHistory: [
+        ...next.tableHistory,
+        makeHistory(current, actor, 'speech', publicSpeech),
+        makeHistory(current, actor, 'mission', `${actor.displayName} submitted a mission card.`),
+      ],
+    };
+  }
+
+  return runNextAiAction(current);
+}
+
+function rememberAgentFromDecision(player: DemoPlayer, current: DemoState, decision: AiAvalonDecision, publicSpeech: string): DemoPlayer {
+  const memory = player.memory ?? createAgentMemory(current.players.map((candidate) => candidate.id), player.id);
+  const nextMemory = mergeAiAgentMemory(memory, decision.memoryUpdate, decision.privateReasoningSummary, publicSpeech);
+  return {
+    ...player,
+    memory: nextMemory,
+    lastReasoningSummary: decision.privateReasoningSummary,
+    lastPublicSpeech: publicSpeech,
+  };
 }
 
 function runAiProposal(current: DemoState): DemoState {
