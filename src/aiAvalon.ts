@@ -150,7 +150,7 @@ export function buildAiAvalonDecisionRequest(state: AiTableStateInput, actorId: 
     publicPlayers,
     roleVisibleInfo,
     roleVisiblePlayersOnCurrentTeam,
-    publicTableHistoryNote: 'Historical public transcript only. It may mention older proposed teams; do not treat those as the current proposal. For the action now, use currentActionContext as authoritative.',
+    publicTableHistoryNote: 'Historical public transcript only. It may mention older proposed teams; do not treat those as the current proposal. For the action now, use currentActionContext as authoritative. During mission-card actions, give a brief private reason for the card choice; public speech must not reveal the chosen card before mission resolution.',
     publicTableHistory: state.tableHistory.slice(-24).map((entry) => ({ ...entry })),
     ownMemory: cloneMemory(actor.memory, state.players.map((player) => player.id), actor.id),
     legalActions,
@@ -197,7 +197,7 @@ export function normalizeAiAvalonDecision(request: AiAvalonDecisionRequest, valu
   if (!isRecord(value)) throw new Error('AI decision must be a JSON object.');
   const action = guardVoteAgainstVisibleEvil(request, validateAiAvalonDecisionAction(request, value.action), cleanText(value.privateReasoningSummary, 'No private summary provided.'));
   const privateReasoningSummary = ensurePrivateReasoningAccountsForVisibleTeamInfo(request, action, cleanText(value.privateReasoningSummary, 'No private summary provided.'));
-  const publicSpeech = ensurePublicSpeechReferencesCurrentTeam(request, action, cleanText(value.publicSpeech, 'I have made my move.'));
+  const publicSpeech = ensurePublicSpeechReferencesCurrentTeam(request, action, sanitizeMissionCardPublicSpeech(request, action, cleanText(value.publicSpeech, 'I have made my move.')));
   return {
     privateReasoningSummary: privateReasoningSummary.slice(0, 500),
     publicSpeech: publicSpeech.slice(0, 500),
@@ -227,14 +227,14 @@ function buildCurrentActionContext(
     historyNote: actionType === 'vote'
       ? `You are voting only on the current proposed team now: ${currentProposedTeamText}. Public table history is historical context and may describe previous proposals. First check currentTeamRoleVisibleInfo/roleVisiblePlayersOnCurrentTeam for role-visible information about this exact team.`
       : actionType === 'missionCard'
-        ? `You are submitting a mission card only for the current mission team now: ${currentProposedTeamText}. Public table history is historical context. First check currentTeamRoleVisibleInfo/roleVisiblePlayersOnCurrentTeam for role-visible information about this exact team.`
+        ? `You are submitting a mission card only for the current mission team now: ${currentProposedTeamText}. Public table history is historical context. First check currentTeamRoleVisibleInfo/roleVisiblePlayersOnCurrentTeam for role-visible information about this exact team. Include a brief privateReasoningSummary explaining why you chose success or fail; good players must submit success, while evil players should weigh sabotage against staying hidden. Do not reveal the chosen mission card in publicSpeech.`
         : 'You are proposing a new team now. Public table history is historical context only.',
   };
 }
 
 function buildCurrentTurnInstruction(phase: AiAvalonDecisionRequest['game']['phase'], currentTeamText: string): string {
   if (phase === 'vote') return `Vote approve or reject for the current proposed team only: ${currentTeamText}. Do not vote on or cite an older historical team as if it is current.`;
-  if (phase === 'mission') return `Submit a mission card for the current mission team only: ${currentTeamText}.`;
+  if (phase === 'mission') return `Submit a mission card for the current mission team only: ${currentTeamText}. Include a brief private reason for the card choice: good players must submit success; evil players should weigh sabotage pressure against staying hidden. Do not reveal the chosen card publicly before mission resolution.`;
   return 'Propose a new legal mission team for the current round.';
 }
 
@@ -286,6 +286,26 @@ function ensurePublicSpeechReferencesCurrentTeam(request: AiAvalonDecisionReques
   if (referencesCurrentTeam) return publicSpeech;
   const vote = action.type === 'vote' ? action.vote : 'vote';
   return `I ${vote} the current proposed team: ${teamText}.`;
+}
+
+export function formatMissionReasoningSummaryForHistory(privateReasoningSummary: string): string {
+  return `Mission reasoning: ${redactExplicitMissionCardOutcome(cleanText(privateReasoningSummary, 'No private summary provided.'))}`;
+}
+
+function sanitizeMissionCardPublicSpeech(request: AiAvalonDecisionRequest, action: AiAvalonDecisionAction, publicSpeech: string): string {
+  if (request.currentActionContext.actionType !== 'missionCard' || action.type !== 'missionCard') return publicSpeech;
+  const lowered = publicSpeech.toLowerCase();
+  if (/\b(success|fail)\b/.test(lowered) || /\b(sabotage|sabotaged|hide|hidden|evil)\b/.test(lowered)) {
+    return 'Mission card submitted. We will learn from the result.';
+  }
+  return publicSpeech;
+}
+
+function redactExplicitMissionCardOutcome(text: string): string {
+  return text
+    .replace(/\b(played|submitted|chose|choose|picked|selected|used|sent)\s+(a\s+)?(mission\s+)?(card\s+)?(success|fail)\b/gi, '$1 a mission card')
+    .replace(/\b(success|fail)\s+card\b/gi, 'mission card')
+    .replace(/\b(card|mission card)\s*:\s*(success|fail)\b/gi, '$1 submitted');
 }
 
 export function mergeAiAgentMemory(current: AiAgentMemory, update: AiAvalonDecision['memoryUpdate'], fallbackNote: string, publicSpeech: string): AiAgentMemory {

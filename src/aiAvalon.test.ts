@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAiAvalonDecisionRequest,
+  formatMissionReasoningSummaryForHistory,
   normalizeAiAvalonDecision,
   validateAiAvalonDecisionAction,
   type AiTableStateInput,
@@ -173,6 +174,16 @@ describe('AI Avalon request filtering and validation', () => {
     expect(decision.publicSpeech).not.toContain('Arthur AI');
   });
 
+  it('asks mission-card actors for private card-choice reasoning without public reveal', () => {
+    const state: AiTableStateInput = { ...baseState, phase: 'mission', selectedTeamIds: ['p1', 'p2'] };
+    const request = buildAiAvalonDecisionRequest(state, 'p2');
+
+    expect(request.currentTurn.instruction).toContain('private reason for the card choice');
+    expect(request.currentTurn.instruction).toContain('weigh sabotage pressure against staying hidden');
+    expect(request.currentTurn.instruction).toContain('Do not reveal the chosen card publicly');
+    expect(request.currentActionContext.historyNote).toContain('privateReasoningSummary explaining why you chose success or fail');
+  });
+
   it('prevents Good players from submitting fail mission cards', () => {
     const state: AiTableStateInput = { ...baseState, phase: 'mission', selectedTeamIds: ['p1', 'p2'] };
     const request = buildAiAvalonDecisionRequest(state, 'p1');
@@ -183,6 +194,23 @@ describe('AI Avalon request filtering and validation', () => {
       action: { type: 'missionCard', card: 'fail' },
       memoryUpdate: {},
     })).toThrow('not legal for this role');
+  });
+
+  it('neutralizes mission-card public speech while preserving private reasoning', () => {
+    const state: AiTableStateInput = { ...baseState, phase: 'mission', selectedTeamIds: ['p1', 'p2'] };
+    const request = buildAiAvalonDecisionRequest(state, 'p2');
+
+    const decision = normalizeAiAvalonDecision(request, {
+      privateReasoningSummary: 'Choose fail because sabotage pressure is high, but I need to stay hidden.',
+      publicSpeech: 'I submitted fail to sabotage this quest.',
+      action: { type: 'missionCard', card: 'fail' },
+      memoryUpdate: {},
+    });
+
+    expect(decision.action).toEqual({ type: 'missionCard', card: 'fail' });
+    expect(decision.privateReasoningSummary).toContain('sabotage pressure');
+    expect(decision.publicSpeech).toBe('Mission card submitted. We will learn from the result.');
+    expect(formatMissionReasoningSummaryForHistory(decision.privateReasoningSummary)).toBe('Mission reasoning: Choose a mission card because sabotage pressure is high, but I need to stay hidden.');
   });
 
   it('allows Evil players to choose fail during mission', () => {

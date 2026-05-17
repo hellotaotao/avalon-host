@@ -621,6 +621,14 @@ label {
   font-weight: 800;
 }
 
+.ai-private-history {
+  border-top-color: rgba(140, 208, 255, 0.35);
+}
+
+.ai-private-history p {
+  color: #d7ecff;
+}
+
 .demo-phone-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

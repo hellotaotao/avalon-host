@@ -31,6 +31,7 @@ import {
 import {
   buildAiAvalonDecisionRequest,
   findNextAiActor,
+  formatMissionReasoningSummaryForHistory,
   mergeAiAgentMemory,
   type AiAvalonDecision,
 } from './aiAvalon';
@@ -770,6 +771,7 @@ interface DemoState {
   selectedTeamIds: string[];
   missionResults: DemoMissionResult[];
   tableHistory: DemoHistoryEntry[];
+  aiHistory: DemoHistoryEntry[];
   lastVote?: { approveCount: number; rejectCount: number; passed: boolean };
   lastMission?: DemoMissionResult;
 }
@@ -1125,6 +1127,13 @@ function DemoSimulator() {
               <p key={entry.id}><strong>{entry.actorName ?? 'Table'}:</strong> {entry.text}</p>
             ))}
           </div>
+          {demo.aiHistory.length > 0 && (
+            <div className="ai-history ai-private-history" aria-label="AI private reasoning log">
+              {demo.aiHistory.slice(-5).map((entry) => (
+                <p key={entry.id}><strong>{entry.actorName ?? 'AI'}:</strong> {entry.text}</p>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
@@ -1992,6 +2001,10 @@ function applyAiDecision(current: DemoState, actorId: string, decision: AiAvalon
         makeHistory(current, actor, 'speech', publicSpeech),
         makeHistory(current, actor, 'mission', `${actor.displayName} submitted a mission card.`),
       ],
+      aiHistory: [
+        ...next.aiHistory,
+        makeHistory(current, actor, 'mission', formatMissionReasoningSummaryForHistory(decision.privateReasoningSummary)),
+      ],
     };
   }
 
@@ -2067,7 +2080,9 @@ function runAiMission(current: DemoState): DemoState {
   if (!actor) return current;
   const card: MissionCard = roleAllegiance(actor.role) === 'evil' ? chooseEvilMissionCard(current, actor) : 'success';
   const publicSpeech = buildAiSpeech(current, actor, 'Mission card submitted. We will learn from the result.');
-  const reasoning = roleAllegiance(actor.role) === 'evil' ? `Played ${card}; balance sabotage pressure against staying hidden.` : 'Good roles must play success.';
+  const reasoning = roleAllegiance(actor.role) === 'evil'
+    ? 'Mission choice weighs sabotage pressure against staying hidden; early stacked evil teams may hide to avoid linking allies.'
+    : 'Good roles must submit success, so the mission choice is forced.';
   const playersWithCard = current.players.map((player) => (
     player.id === actor.id ? { ...rememberAgent(actor, current, reasoning, publicSpeech), missionCard: card } : player
   ));
@@ -2078,6 +2093,10 @@ function runAiMission(current: DemoState): DemoState {
       ...next.tableHistory,
       makeHistory(current, actor, 'speech', publicSpeech),
       makeHistory(current, actor, 'mission', `${actor.displayName} submitted a mission card.`),
+    ],
+    aiHistory: [
+      ...next.aiHistory,
+      makeHistory(current, actor, 'mission', formatMissionReasoningSummaryForHistory(reasoning)),
     ],
   };
 }
@@ -2234,6 +2253,7 @@ function createDemoState(
     selectedTeamIds: [],
     missionResults: [],
     tableHistory: [],
+    aiHistory: [],
   };
 }
 
