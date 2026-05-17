@@ -72,6 +72,7 @@ export interface AiAvalonDecisionRequest {
     currentProposedTeamIds: string[];
     currentProposedTeam: Array<{ playerId: string; displayName: string; seatIndex: number }>;
     currentProposedTeamText: string;
+    currentTeamRoleVisibleInfo: Array<{ playerId: string; displayName: string; hint: string }>;
     historyNote: string;
   };
   actingPlayer: {
@@ -84,6 +85,7 @@ export interface AiAvalonDecisionRequest {
   };
   publicPlayers: Array<{ playerId: string; displayName: string; seatIndex: number }>;
   roleVisibleInfo: Array<{ playerId: string; displayName: string; hint: string }>;
+  roleVisiblePlayersOnCurrentTeam: Array<{ playerId: string; displayName: string; hint: string }>;
   publicTableHistoryNote: string;
   publicTableHistory: AiTableHistoryEntryInput[];
   ownMemory: AiAgentMemory;
@@ -114,8 +116,10 @@ export function buildAiAvalonDecisionRequest(state: AiTableStateInput, actorId: 
   const legalActions = getLegalActionsForActor(state, actor);
   if (!legalActions.length) throw new Error('Acting player has no legal action.');
   const visibility = getVisibilityInfo(toAvalonPlayer(actor), state.players.map(toAvalonPlayer));
+  const roleVisibleInfo = visibility.sees.map((item) => ({ playerId: item.playerId, displayName: item.name, hint: item.hint }));
   const publicPlayers = state.players.map((player) => ({ playerId: player.id, displayName: player.displayName, seatIndex: player.seatIndex }));
-  const currentActionContext = buildCurrentActionContext(state, legalActions[0], publicPlayers);
+  const currentActionContext = buildCurrentActionContext(state, legalActions[0], publicPlayers, roleVisibleInfo);
+  const roleVisiblePlayersOnCurrentTeam = currentActionContext.currentTeamRoleVisibleInfo;
   return {
     game: {
       name: 'Avalon Lite',
@@ -144,7 +148,8 @@ export function buildAiAvalonDecisionRequest(state: AiTableStateInput, actorId: 
       persona,
     },
     publicPlayers,
-    roleVisibleInfo: visibility.sees.map((item) => ({ playerId: item.playerId, displayName: item.name, hint: item.hint })),
+    roleVisibleInfo,
+    roleVisiblePlayersOnCurrentTeam,
     publicTableHistoryNote: 'Historical public transcript only. It may mention older proposed teams; do not treat those as the current proposal. For the action now, use currentActionContext as authoritative.',
     publicTableHistory: state.tableHistory.slice(-24).map((entry) => ({ ...entry })),
     ownMemory: cloneMemory(actor.memory, state.players.map((player) => player.id), actor.id),
@@ -190,10 +195,11 @@ export function validateAiAvalonDecisionAction(request: AiAvalonDecisionRequest,
 
 export function normalizeAiAvalonDecision(request: AiAvalonDecisionRequest, value: unknown): AiAvalonDecision {
   if (!isRecord(value)) throw new Error('AI decision must be a JSON object.');
-  const action = validateAiAvalonDecisionAction(request, value.action);
+  const action = guardVoteAgainstVisibleEvil(request, validateAiAvalonDecisionAction(request, value.action), cleanText(value.privateReasoningSummary, 'No private summary provided.'));
+  const privateReasoningSummary = ensurePrivateReasoningAccountsForVisibleTeamInfo(request, action, cleanText(value.privateReasoningSummary, 'No private summary provided.'));
   const publicSpeech = ensurePublicSpeechReferencesCurrentTeam(request, action, cleanText(value.publicSpeech, 'I have made my move.'));
   return {
-    privateReasoningSummary: cleanText(value.privateReasoningSummary, 'No private summary provided.').slice(0, 500),
+    privateReasoningSummary: privateReasoningSummary.slice(0, 500),
     publicSpeech: publicSpeech.slice(0, 500),
     action,
     memoryUpdate: normalizeMemoryUpdate(value.memoryUpdate),
@@ -204,9 +210,12 @@ function buildCurrentActionContext(
   state: AiTableStateInput,
   legalAction: AiAvalonLegalAction,
   publicPlayers: AiAvalonDecisionRequest['publicPlayers'],
+  roleVisibleInfo: AiAvalonDecisionRequest['roleVisibleInfo'],
 ): AiAvalonDecisionRequest['currentActionContext'] {
   const currentProposedTeamIds = legalAction.type === 'proposeTeam' ? [] : [...state.selectedTeamIds];
+  const currentProposedTeamIdSet = new Set(currentProposedTeamIds);
   const currentProposedTeam = currentProposedTeamIds.map((id) => publicPlayers.find((player) => player.playerId === id)).filter(Boolean) as AiAvalonDecisionRequest['publicPlayers'];
+  const currentTeamRoleVisibleInfo = roleVisibleInfo.filter((item) => currentProposedTeamIdSet.has(item.playerId));
   const currentProposedTeamText = formatTeamText(currentProposedTeam);
   const actionType = legalAction.type;
   return {
@@ -214,10 +223,11 @@ function buildCurrentActionContext(
     currentProposedTeamIds,
     currentProposedTeam,
     currentProposedTeamText,
+    currentTeamRoleVisibleInfo,
     historyNote: actionType === 'vote'
-      ? `You are voting only on the current proposed team now: ${currentProposedTeamText}. Public table history is historical context and may describe previous proposals.`
+      ? `You are voting only on the current proposed team now: ${currentProposedTeamText}. Public table history is historical context and may describe previous proposals. First check currentTeamRoleVisibleInfo/roleVisiblePlayersOnCurrentTeam for role-visible information about this exact team.`
       : actionType === 'missionCard'
-        ? `You are submitting a mission card only for the current mission team now: ${currentProposedTeamText}. Public table history is historical context.`
+        ? `You are submitting a mission card only for the current mission team now: ${currentProposedTeamText}. Public table history is historical context. First check currentTeamRoleVisibleInfo/roleVisiblePlayersOnCurrentTeam for role-visible information about this exact team.`
         : 'You are proposing a new team now. Public table history is historical context only.',
   };
 }
@@ -230,6 +240,39 @@ function buildCurrentTurnInstruction(phase: AiAvalonDecisionRequest['game']['pha
 
 function formatTeamText(team: AiAvalonDecisionRequest['publicPlayers']): string {
   return team.length ? team.map((player) => `${player.displayName} (${player.playerId})`).join(', ') : 'none selected yet';
+}
+
+function guardVoteAgainstVisibleEvil(request: AiAvalonDecisionRequest, action: AiAvalonDecisionAction, privateReasoningSummary: string): AiAvalonDecisionAction {
+  const visibleEvilOnTeam = visibleEvilPlayersOnCurrentTeam(request);
+  if (request.currentActionContext.actionType !== 'vote' || action.type !== 'vote' || action.vote !== 'approve' || !visibleEvilOnTeam.length) return action;
+  if (hasExplicitStrategicVisibleEvilApprovalJustification(privateReasoningSummary, visibleEvilOnTeam)) return action;
+  return { type: 'vote', vote: 'reject' };
+}
+
+function ensurePrivateReasoningAccountsForVisibleTeamInfo(request: AiAvalonDecisionRequest, action: AiAvalonDecisionAction, privateReasoningSummary: string): string {
+  const visibleEvilOnTeam = visibleEvilPlayersOnCurrentTeam(request);
+  if (request.currentActionContext.actionType !== 'vote' || !visibleEvilOnTeam.length) return privateReasoningSummary;
+  if (mentionsVisibleTeamInfo(privateReasoningSummary, visibleEvilOnTeam)) return privateReasoningSummary;
+  const names = visibleEvilOnTeam.map((item) => `${item.displayName} (${item.hint})`).join(', ');
+  const decision = action.type === 'vote' ? action.vote : 'vote';
+  return `${privateReasoningSummary} Visible role info on the current team flags ${names}; I should ${decision === 'approve' ? 'only approve with a deliberate Merlin-cover strategy' : 'reject by default without publicly revealing certainty'}.`;
+}
+
+function visibleEvilPlayersOnCurrentTeam(request: AiAvalonDecisionRequest): AiAvalonDecisionRequest['roleVisibleInfo'] {
+  const source = request.roleVisiblePlayersOnCurrentTeam?.length
+    ? request.roleVisiblePlayersOnCurrentTeam
+    : request.currentActionContext.currentTeamRoleVisibleInfo;
+  return source.filter((item) => item.hint.toLowerCase() === 'evil player');
+}
+
+function mentionsVisibleTeamInfo(privateReasoningSummary: string, visibleItems: AiAvalonDecisionRequest['roleVisibleInfo']): boolean {
+  const text = privateReasoningSummary.toLowerCase();
+  return visibleItems.some((item) => text.includes(item.playerId.toLowerCase()) || text.includes(item.displayName.toLowerCase()) || text.includes(item.hint.toLowerCase()));
+}
+
+function hasExplicitStrategicVisibleEvilApprovalJustification(privateReasoningSummary: string, visibleItems: AiAvalonDecisionRequest['roleVisibleInfo']): boolean {
+  const text = privateReasoningSummary.toLowerCase();
+  return mentionsVisibleTeamInfo(privateReasoningSummary, visibleItems) && /\b(merlin|assassin|hide|hiding|cover|strategic|strategy|bait|trap)\b/.test(text);
 }
 
 function ensurePublicSpeechReferencesCurrentTeam(request: AiAvalonDecisionRequest, action: AiAvalonDecisionAction, publicSpeech: string): string {

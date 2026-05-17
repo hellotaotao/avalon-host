@@ -2042,7 +2042,10 @@ function runAiVote(current: DemoState): DemoState {
   const vote = chooseAiVote(current, voter);
   const selectedNames = current.selectedTeamIds.map((id) => playerName(current, id)).join(', ');
   const publicSpeech = buildAiSpeech(current, voter, vote === 'approve' ? `I can approve ${selectedNames}; the table composition is acceptable for this quest.` : `I reject ${selectedNames}; this team does not give me enough confidence.`);
-  const reasoning = `Vote ${vote}; team suspicion score ${scoreTeamSuspicion(current, voter, current.selectedTeamIds)}.`;
+  const visibleEvil = visibleEvilPlayersOnCurrentDemoTeam(current, voter);
+  const reasoning = visibleEvil.length
+    ? `Vote ${vote}; role-visible info flags ${visibleEvil.map((player) => player.name).join(', ')} as evil on the current team, so avoid approving without exposing certainty.`
+    : `Vote ${vote}; team suspicion score ${scoreTeamSuspicion(current, voter, current.selectedTeamIds)}.`;
   const playersWithVote = current.players.map((player) => (
     player.id === voter.id ? { ...rememberAgent(voter, current, reasoning, publicSpeech), teamVote: vote } : player
   ));
@@ -2099,7 +2102,16 @@ function chooseAiVote(current: DemoState, voter: DemoPlayer): Vote {
   const selfOnTeam = current.selectedTeamIds.includes(voter.id);
   const suspicionScore = scoreTeamSuspicion(current, voter, current.selectedTeamIds);
   if (roleAllegiance(voter.role) === 'evil') return selfOnTeam || suspicionScore > -30 ? 'approve' : 'reject';
+  if (visibleEvilPlayersOnCurrentDemoTeam(current, voter).length) return 'reject';
   return suspicionScore <= 45 || selfOnTeam ? 'approve' : 'reject';
+}
+
+function visibleEvilPlayersOnCurrentDemoTeam(current: DemoState, viewer: DemoPlayer): Array<{ playerId: string; name: string; hint: string }> {
+  const currentTeamIds = new Set(current.selectedTeamIds);
+  return getVisibilityInfo(
+    { id: viewer.id, name: viewer.displayName, role: viewer.role },
+    current.players.map((player) => ({ id: player.id, name: player.displayName, role: player.role })),
+  ).sees.filter((item) => item.hint === 'Evil player' && currentTeamIds.has(item.playerId));
 }
 
 function chooseEvilMissionCard(current: DemoState, actor: DemoPlayer): MissionCard {

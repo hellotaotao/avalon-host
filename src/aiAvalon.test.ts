@@ -85,6 +85,72 @@ describe('AI Avalon request filtering and validation', () => {
     expect(request.legalActions).toEqual([{ type: 'vote', values: ['approve', 'reject'], selectedTeamIds: ['p3', 'p5'] }]);
   });
 
+  it('exposes role-visible info intersected with the current vote team without hidden leakage', () => {
+    const voteState: AiTableStateInput = {
+      ...baseState,
+      phase: 'vote',
+      selectedTeamIds: ['p2', 'p3'],
+    };
+
+    const request = buildAiAvalonDecisionRequest(voteState, 'p1');
+
+    expect(request.roleVisiblePlayersOnCurrentTeam).toEqual([
+      { playerId: 'p2', displayName: 'Assassin AI', hint: 'Evil player' },
+    ]);
+    expect(request.currentActionContext.currentTeamRoleVisibleInfo).toEqual(request.roleVisiblePlayersOnCurrentTeam);
+    expect(JSON.stringify(request)).not.toContain('"role":"Assassin"');
+    expect(JSON.stringify(request)).not.toContain('private p2 note');
+  });
+
+  it('guards Merlin from approving a current team containing role-visible evil without justification', () => {
+    const voteState: AiTableStateInput = {
+      ...baseState,
+      phase: 'vote',
+      selectedTeamIds: ['p2', 'p3'],
+    };
+    const request = buildAiAvalonDecisionRequest(voteState, 'p1');
+
+    const decision = normalizeAiAvalonDecision(request, {
+      privateReasoningSummary: 'The current team looks trustworthy based on public behaviour.',
+      publicSpeech: 'This team looks trustworthy to me.',
+      action: { type: 'vote', vote: 'approve' },
+      memoryUpdate: {},
+    });
+
+    expect(decision.action).toEqual({ type: 'vote', vote: 'reject' });
+    expect(decision.privateReasoningSummary).toContain('Evil player');
+    expect(decision.publicSpeech).toBe('I reject the current proposed team: Assassin AI (p2), Loyal (p3).');
+  });
+
+  it('does not treat Percival Merlin-candidate visibility as known evil', () => {
+    const percivalState: AiTableStateInput = {
+      ...baseState,
+      playerCount: 7,
+      phase: 'vote',
+      selectedTeamIds: ['p2', 'p4'],
+      players: [
+        { id: 'p1', displayName: 'Merlin AI', seatIndex: 0, role: 'Merlin', controller: 'ai' },
+        { id: 'p2', displayName: 'Morgana AI', seatIndex: 1, role: 'Morgana', controller: 'ai' },
+        { id: 'p3', displayName: 'Percival AI', seatIndex: 2, role: 'Percival', controller: 'ai' },
+        { id: 'p4', displayName: 'Loyal', seatIndex: 3, role: 'Loyal Servant', controller: 'human' },
+        { id: 'p5', displayName: 'Loyal 2', seatIndex: 4, role: 'Loyal Servant', controller: 'human' },
+        { id: 'p6', displayName: 'Assassin AI', seatIndex: 5, role: 'Assassin', controller: 'ai' },
+        { id: 'p7', displayName: 'Loyal 3', seatIndex: 6, role: 'Loyal Servant', controller: 'human' },
+      ],
+    };
+    const request = buildAiAvalonDecisionRequest(percivalState, 'p3');
+
+    expect(request.roleVisiblePlayersOnCurrentTeam).toEqual([
+      { playerId: 'p2', displayName: 'Morgana AI', hint: 'Merlin candidate' },
+    ]);
+    expect(normalizeAiAvalonDecision(request, {
+      privateReasoningSummary: 'Percival sees ambiguity here, not confirmed evil.',
+      publicSpeech: 'I approve Morgana AI and Loyal for information.',
+      action: { type: 'vote', vote: 'approve' },
+      memoryUpdate: {},
+    }).action).toEqual({ type: 'vote', vote: 'approve' });
+  });
+
   it('replaces stale vote public speech with the current vote team', () => {
     const voteState: AiTableStateInput = {
       ...baseState,

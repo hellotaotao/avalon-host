@@ -95,6 +95,9 @@ async function requestDecision(provider: ReturnType<typeof getProviderConfig>, r
             'Use only the JSON input provided: your own role, role-visible info, your own memory, currentTurn, currentActionContext, legal actions, and historical publicTableHistory.',
             'currentActionContext is authoritative for the action happening now. publicTableHistory is historical and may mention older proposals.',
             'During vote phase, vote only on currentActionContext.currentProposedTeam/currentProposedTeamIds. In publicSpeech, refer to that current team, not a stale team from history.',
+            'Before evaluating a vote or mission team, explicitly check roleVisiblePlayersOnCurrentTeam/currentActionContext.currentTeamRoleVisibleInfo; this is the intersection of the current team and your role-visible information.',
+            'Prioritize roleVisibleInfo over table vibes when evaluating the current team. If you are Merlin and the current team contains a player hinted as "Evil player", your privateReasoningSummary must account for that known evil. Usually reject such teams unless you explicitly justify a Merlin-cover strategy; never reveal that certainty publicly.',
+            'Percival "Merlin candidate" hints are ambiguity, not evil certainty. Evil-player and evil-teammate hints have different meanings; do not overgeneralize hint strings.',
             'Never infer or reveal hidden roles beyond roleVisibleInfo. Do not produce chain-of-thought.',
             'Return only JSON with keys: privateReasoningSummary, publicSpeech, action, memoryUpdate.',
             'privateReasoningSummary must be a brief summary, not step-by-step reasoning.',
@@ -153,6 +156,7 @@ function readRequest(body: unknown): AiAvalonDecisionRequest {
         seatIndex: player.seatIndex,
       })),
       currentProposedTeamText: request.currentActionContext.currentProposedTeamText,
+      currentTeamRoleVisibleInfo: intersectRoleVisibleInfoWithCurrentTeam(request.roleVisibleInfo, request.currentActionContext.currentProposedTeamIds),
       historyNote: request.currentActionContext.historyNote,
     },
     actingPlayer: {
@@ -169,6 +173,7 @@ function readRequest(body: unknown): AiAvalonDecisionRequest {
       seatIndex: player.seatIndex,
     })),
     roleVisibleInfo: request.roleVisibleInfo.map((item) => ({ playerId: item.playerId, displayName: item.displayName, hint: item.hint })),
+    roleVisiblePlayersOnCurrentTeam: intersectRoleVisibleInfoWithCurrentTeam(request.roleVisibleInfo, request.currentActionContext.currentProposedTeamIds),
     publicTableHistoryNote: request.publicTableHistoryNote,
     publicTableHistory: request.publicTableHistory.map((entry) => ({
       roundIndex: entry.roundIndex,
@@ -193,6 +198,9 @@ function assertFilteredRequest(request: AiAvalonDecisionRequest) {
   if (!Array.isArray(request.currentActionContext.currentProposedTeamIds) || !Array.isArray(request.currentActionContext.currentProposedTeam)) {
     throw new Error('Malformed current action context.');
   }
+  if ('currentTeamRoleVisibleInfo' in request.currentActionContext && !Array.isArray(request.currentActionContext.currentTeamRoleVisibleInfo)) {
+    throw new Error('Malformed current team role-visible info.');
+  }
   for (const player of request.currentActionContext.currentProposedTeam) {
     if (!isRecord(player)) throw new Error('Malformed current proposed team entry.');
     if ('role' in player || 'memory' in player || 'teamVote' in player || 'missionCard' in player) {
@@ -205,9 +213,22 @@ function assertFilteredRequest(request: AiAvalonDecisionRequest) {
       throw new Error('AI request must not include hidden public player state.');
     }
   }
+  for (const item of request.roleVisibleInfo) {
+    if (!isRecord(item)) throw new Error('Malformed role-visible info.');
+    if ('role' in item || 'memory' in item || 'teamVote' in item || 'missionCard' in item) {
+      throw new Error('AI request must not include hidden role-visible player state.');
+    }
+  }
   if (!isRecord(request.ownMemory) || !isRecord(request.ownMemory.suspicion) || !Array.isArray(request.ownMemory.notes) || !Array.isArray(request.ownMemory.publicClaims)) {
     throw new Error('AI request must include only acting player memory.');
   }
+}
+
+function intersectRoleVisibleInfoWithCurrentTeam(roleVisibleInfo: AiAvalonDecisionRequest['roleVisibleInfo'], currentTeamIds: string[]) {
+  const currentTeamIdSet = new Set(currentTeamIds);
+  return roleVisibleInfo
+    .filter((item) => currentTeamIdSet.has(item.playerId))
+    .map((item) => ({ playerId: item.playerId, displayName: item.displayName, hint: item.hint }));
 }
 
 function parseBody(body: unknown): unknown {
