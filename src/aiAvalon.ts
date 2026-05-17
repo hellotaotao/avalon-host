@@ -1,4 +1,4 @@
-import { getTeamSize, getVisibilityInfo, roleAllegiance, type MissionCard, type Player, type Role, type Vote } from './domain/avalon';
+import { getTeamSize, getVisibilityInfo, roleAllegiance, type MissionCard, type Player, type Role, type Vote } from './domain/avalon.js';
 
 export interface AiAgentMemory {
   suspicion: Record<string, number>;
