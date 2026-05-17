@@ -708,6 +708,16 @@ function App() {
   }
 }
 
+type DemoController = 'human' | 'ai';
+
+type DemoMode = 'manual' | 'ai';
+
+interface AgentMemory {
+  suspicion: Record<string, number>;
+  notes: string[];
+  publicClaims: string[];
+}
+
 interface DemoPlayer {
   id: string;
   displayName: string;
@@ -715,6 +725,11 @@ interface DemoPlayer {
   role: Role;
   revealRole: boolean;
   revealNightInfo: boolean;
+  controller: DemoController;
+  persona?: string;
+  memory?: AgentMemory;
+  lastReasoningSummary?: string;
+  lastPublicSpeech?: string;
   teamVote?: Vote;
   missionCard?: MissionCard;
 }
@@ -727,20 +742,33 @@ interface DemoMissionResult {
   requiredFails: number;
 }
 
+interface DemoHistoryEntry {
+  id: string;
+  roundIndex: number;
+  actorId?: string;
+  actorName?: string;
+  kind: 'speech' | 'proposal' | 'vote' | 'mission' | 'result';
+  text: string;
+}
+
 interface DemoState {
   playerCount: number;
   roleOptions: RolePresetOptions;
+  mode: DemoMode;
+  humanCount: number;
   players: DemoPlayer[];
   phase: 'setup' | 'proposal' | 'vote' | 'mission' | 'result';
   roundIndex: number;
   leaderIndex: number;
   selectedTeamIds: string[];
   missionResults: DemoMissionResult[];
+  tableHistory: DemoHistoryEntry[];
   lastVote?: { approveCount: number; rejectCount: number; passed: boolean };
   lastMission?: DemoMissionResult;
 }
 
 const demoNames = ['Arthur', 'Bors', 'Cai', 'Dagonet', 'Elaine', 'Gareth', 'Helena', 'Isolde', 'Lucan', 'Yvain'];
+const aiPersonas = ['Cautious analyst', 'Aggressive accuser', 'Quiet observer', 'Social diplomat', 'Chaotic liar', 'Risk-aware captain', 'Pattern hunter', 'Overconfident knight', 'Skeptical voter'];
 const optionalRoleControls: Array<{ key: keyof RolePresetOptions; role: Role; label: string; note: string }> = [
   { key: 'includePercival', role: 'Percival', label: 'Percival', note: 'Good, sees Merlin candidates.' },
   { key: 'includeMorgana', role: 'Morgana', label: 'Morgana', note: 'Evil, appears as Merlin candidate.' },
@@ -752,6 +780,7 @@ const DEMO_RESULT_AUTO_ADVANCE_MS = 2200;
 function DemoSimulator() {
   const { t, language } = useI18n();
   const [demo, setDemo] = useState(() => createDemoState(7, { includeMorgana: true }));
+  const [autoAi, setAutoAi] = useState(true);
   const rule = getPlayerCountRule(demo.playerCount);
   const preset = buildRolePreset(demo.playerCount, demo.roleOptions);
   const teamSize = getTeamSize(demo.playerCount, demo.roundIndex);
@@ -778,16 +807,45 @@ function DemoSimulator() {
     return () => window.clearTimeout(timeout);
   }, [demo.phase, demo.roundIndex, demo.missionResults.length, winner]);
 
-  function resetWith(playerCount: number, roleOptions: RolePresetOptions) {
-    setDemo(createDemoState(playerCount, sanitizeRoleOptions(playerCount, roleOptions)));
+  useEffect(() => {
+    if (demo.mode !== 'ai' || !autoAi || winner || demo.phase === 'setup' || demo.phase === 'result') return undefined;
+    if (!hasPendingAiAction(demo)) return undefined;
+    const timeout = window.setTimeout(() => setDemo(runNextAiAction), 750);
+    return () => window.clearTimeout(timeout);
+  }, [autoAi, demo, winner]);
+
+  function resetWith(playerCount: number, roleOptions: RolePresetOptions, options: { mode?: DemoMode; humanCount?: number } = {}) {
+    setDemo(createDemoState(playerCount, sanitizeRoleOptions(playerCount, roleOptions), {
+      mode: options.mode ?? demo.mode,
+      humanCount: options.humanCount ?? demo.humanCount,
+    }));
   }
 
   function startTable() {
-    setDemo((current) => ({ ...current, phase: 'proposal' }));
+    setDemo((current) => ({
+      ...current,
+      phase: 'proposal',
+      tableHistory: [
+        ...current.tableHistory,
+        makeHistory(current, undefined, 'result', `${current.mode === 'ai' ? 'AI Table' : 'Manual demo'} started with ${current.playerCount} players.`),
+      ],
+    }));
+  }
+
+  function switchDemoMode(mode: DemoMode) {
+    resetWith(demo.playerCount, demo.roleOptions, { mode, humanCount: mode === 'ai' ? Math.min(demo.humanCount, 3) : demo.humanCount });
+  }
+
+  function setHumanCount(humanCount: number) {
+    resetWith(demo.playerCount, demo.roleOptions, { mode: 'ai', humanCount });
   }
 
   function toggleOptionalRole(key: keyof RolePresetOptions) {
     resetWith(demo.playerCount, { ...demo.roleOptions, [key]: !demo.roleOptions[key] });
+  }
+
+  function runAiOnce() {
+    setDemo(runNextAiAction);
   }
 
   function toggleTeamPlayer(playerId: string) {
@@ -806,6 +864,15 @@ function DemoSimulator() {
       ...current,
       phase: 'vote',
       players: current.players.map((player) => ({ ...player, teamVote: undefined, missionCard: undefined })),
+      tableHistory: [
+        ...current.tableHistory,
+        makeHistory(
+          current,
+          current.players[current.leaderIndex],
+          'proposal',
+          `${current.players[current.leaderIndex]?.displayName} proposed ${current.selectedTeamIds.map((id) => current.players.find((player) => player.id === id)?.displayName ?? id).join(', ')}.`,
+        ),
+      ],
       lastVote: undefined,
       lastMission: undefined,
     }));
@@ -814,17 +881,28 @@ function DemoSimulator() {
   function vote(playerId: string, teamVote: Vote) {
     if (demo.phase !== 'vote') return;
     setDemo((current) => {
+      const voter = current.players.find((player) => player.id === playerId);
       const nextPlayers = current.players.map((player) => (player.id === playerId ? { ...player, teamVote } : player));
       const resolved = resolveDemoVoteIfReady(current, nextPlayers);
-      return { ...current, players: resolved.players, ...resolved.statePatch };
+      return {
+        ...current,
+        players: resolved.players,
+        tableHistory: [...current.tableHistory, makeHistory(current, voter, 'vote', `${voter?.displayName ?? playerId} voted ${teamVote}.`)],
+        ...resolved.statePatch,
+      };
     });
   }
 
   function playMissionCard(playerId: string, missionCard: MissionCard) {
     if (demo.phase !== 'mission') return;
     setDemo((current) => {
+      const actor = current.players.find((player) => player.id === playerId);
       const nextPlayers = current.players.map((player) => (player.id === playerId ? { ...player, missionCard } : player));
-      return resolveDemoMissionIfReady(current, nextPlayers);
+      const next = resolveDemoMissionIfReady(current, nextPlayers);
+      return {
+        ...next,
+        tableHistory: [...next.tableHistory, makeHistory(current, actor, 'mission', `${actor?.displayName ?? playerId} submitted a mission card.`)],
+      };
     });
   }
 
@@ -858,6 +936,23 @@ function DemoSimulator() {
 
       {demo.phase === 'setup' ? (
         <section className="demo-setup">
+          <div className="demo-mode-tabs">
+            <button type="button" className={demo.mode === 'manual' ? 'selected' : ''} onClick={() => switchDemoMode('manual')}>Manual phones</button>
+            <button type="button" className={demo.mode === 'ai' ? 'selected' : ''} onClick={() => switchDemoMode('ai')}>AI Table</button>
+          </div>
+          <div className="demo-ai-intro">
+            {demo.mode === 'ai' ? (
+              <>
+                <h3>AI fill seats</h3>
+                <p>Start solo or keep 2–3 human seats. Each AI player gets only its role-visible information, public table history, and its own private suspicion memory.</p>
+              </>
+            ) : (
+              <>
+                <h3>Manual multi-phone demo</h3>
+                <p>Drive every virtual phone yourself to demonstrate reveal, proposal, voting, and mission flow.</p>
+              </>
+            )}
+          </div>
           <div>
             <h3>{t('Players')}</h3>
             <div className="segmented" aria-label={t('Player count')}>
@@ -874,6 +969,19 @@ function DemoSimulator() {
             </div>
             <p>{rule.goodCount} {t('Good')} / {rule.evilCount} {t('Evil')}</p>
           </div>
+          {demo.mode === 'ai' && (
+            <div>
+              <h3>Human seats</h3>
+              <div className="segmented" aria-label="Human seats">
+                {[1, 2, 3].map((count) => (
+                  <button key={count} type="button" className={demo.humanCount === count ? 'selected' : ''} onClick={() => setHumanCount(count)}>
+                    {count}
+                  </button>
+                ))}
+              </div>
+              <p>{demo.playerCount - demo.humanCount} AI agents will fill the table.</p>
+            </div>
+          )}
           <div>
             <h3>{t('Role setup')}</h3>
             <div className="role-preset">
@@ -893,13 +1001,21 @@ function DemoSimulator() {
               })}
             </div>
           </div>
+          {demo.mode === 'ai' && (
+            <div className="ai-instruction-card">
+              <h3>Agent input contract</h3>
+              <p>On each turn the orchestrator sends: rules + current phase + legal actions + public history + that agent’s role vision + that agent’s private memory. Other agents’ private memory is never included.</p>
+            </div>
+          )}
           <div className="demo-start-row">
-            <button type="button" className="primary" onClick={startTable}>{t('Start tabletop')}</button>
+            <button type="button" className="primary" onClick={startTable}>{demo.mode === 'ai' ? 'Start AI table' : t('Start tabletop')}</button>
           </div>
         </section>
       ) : (
         <section className="demo-setup-summary" aria-label={t('Demo table setup')}>
+          <span>{demo.mode === 'ai' ? 'AI Table' : 'Manual Demo'}</span>
           <span>{demo.playerCount} {t('players')}</span>
+          {demo.mode === 'ai' && <span>{demo.humanCount} human / {demo.playerCount - demo.humanCount} AI</span>}
           <span>{rule.goodCount} {t('Good')} / {rule.evilCount} {t('Evil')}</span>
           <span>{t('Special roles')}: {includedSpecialRoles.length ? includedSpecialRoles.map((role) => formatRole(role, language)).join(', ') : t('None')}</span>
           <span>{t('Base')}: {preset.requiredRoles.map((role) => formatRole(role, language)).join(', ')}</span>
@@ -954,6 +1070,27 @@ function DemoSimulator() {
         )}
       </section>
 
+      {demo.mode === 'ai' && demo.phase !== 'setup' && (
+        <section className="ai-table-panel" aria-label="AI table orchestration">
+          <div className="ai-table-controls">
+            <div>
+              <p className="eyebrow">AI Orchestrator</p>
+              <h3>Independent agents, filtered vision</h3>
+              <p>AI actions are generated from each player’s own role, legal moves, public history, and private suspicion memory.</p>
+            </div>
+            <div className="choice-row">
+              <button type="button" className={autoAi ? 'selected' : ''} onClick={() => setAutoAi(!autoAi)}>{autoAi ? 'Auto AI on' : 'Auto AI off'}</button>
+              <button type="button" onClick={runAiOnce} disabled={!hasPendingAiAction(demo) || Boolean(winner)}>Run next AI action</button>
+            </div>
+          </div>
+          <div className="ai-history">
+            {demo.tableHistory.slice(-8).map((entry) => (
+              <p key={entry.id}><strong>{entry.actorName ?? 'Table'}:</strong> {entry.text}</p>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="demo-phone-grid" aria-label={t('Virtual phones')}>
         {demo.players.map((player) => (
           <DemoPhone
@@ -972,6 +1109,7 @@ function DemoSimulator() {
             onProposeTeam={proposeTeam}
             winner={winner}
             lastMission={demo.lastMission}
+            tableMode={demo.mode}
           />
         ))}
       </section>
@@ -994,6 +1132,7 @@ function DemoPhone({
   onProposeTeam,
   winner,
   lastMission,
+  tableMode,
 }: {
   player: DemoPlayer;
   players: DemoPlayer[];
@@ -1009,6 +1148,7 @@ function DemoPhone({
   onProposeTeam: () => void;
   winner?: Allegiance;
   lastMission?: DemoMissionResult;
+  tableMode: DemoMode;
 }) {
   const { t, language } = useI18n();
   const isLeader = player.id === leaderId;
@@ -1030,6 +1170,7 @@ function DemoPhone({
       result={phase === 'result' ? lastMission : undefined}
       roleReveal={{ revealed: player.revealRole, onToggle: onToggleRoleReveal }}
       nightInfoReveal={{ revealed: player.revealNightInfo, onToggle: onToggleNightInfoReveal }}
+      agentView={tableMode === 'ai' ? getAgentViewSummary(player, privateInfo) : undefined}
       action={getDemoPhoneAction({
         player,
         players,
@@ -1125,6 +1266,7 @@ function PlayerPhone({
   result,
   roleReveal,
   nightInfoReveal,
+  agentView,
   action,
 }: {
   mode: PlayerPhoneMode;
@@ -1136,6 +1278,7 @@ function PlayerPhone({
   result?: PlayerPhoneResult;
   roleReveal?: PlayerPhoneRevealControl;
   nightInfoReveal?: PlayerPhoneRevealControl;
+  agentView?: React.ReactNode;
   action?: PlayerPhoneAction;
 }) {
   const { t } = useI18n();
@@ -1198,6 +1341,7 @@ function PlayerPhone({
           onHide={() => setNightInfoRevealed(false)}
         />
       )}
+      {agentView}
       {action && <PlayerPhoneActionPanel action={action} />}
     </article>
   );
@@ -1236,6 +1380,7 @@ function getDemoPhoneAction({
   onPlayMissionCard: (playerId: string, card: MissionCard) => void;
   onProposeTeam: () => void;
 }): PlayerPhoneAction | undefined {
+  const isAiControlled = player.controller === 'ai';
   if (phase === 'proposal') {
     return {
       kind: 'proposal',
@@ -1244,7 +1389,7 @@ function getDemoPhoneAction({
       teamSize,
       selectedTeamIds,
       players,
-      canEdit: isLeader,
+      canEdit: isLeader && !isAiControlled,
       onToggleTeamPlayer,
       onProposeTeam,
     };
@@ -1256,7 +1401,7 @@ function getDemoPhoneAction({
       currentVote: player.teamVote,
       submittedVoteCount: players.filter((candidate) => candidate.teamVote).length,
       playerCount: players.length,
-      onVote: (vote) => onVote(player.id, vote),
+      onVote: isAiControlled ? undefined : (vote) => onVote(player.id, vote),
     };
   }
   if (phase === 'mission') {
@@ -1268,7 +1413,7 @@ function getDemoPhoneAction({
       currentMissionCard: player.missionCard,
       missionCardSubmitted: Boolean(player.missionCard),
       submittedCardCount: players.filter((candidate) => selectedTeamIds.includes(candidate.id) && candidate.missionCard).length,
-      onPlayMissionCard: (card) => onPlayMissionCard(player.id, card),
+      onPlayMissionCard: isAiControlled ? undefined : (card) => onPlayMissionCard(player.id, card),
     };
   }
   if (phase === 'result') {
@@ -1707,25 +1852,254 @@ function getDemoWinner(demo: DemoState): Allegiance | undefined {
   return undefined;
 }
 
-function createDemoState(playerCount: number, roleOptions: RolePresetOptions): DemoState {
+function createAgentMemory(playerIds: string[], selfId: string): AgentMemory {
+  return {
+    suspicion: Object.fromEntries(playerIds.filter((id) => id !== selfId).map((id) => [id, 0])),
+    notes: ['Opening read: no public evidence yet.'],
+    publicClaims: [],
+  };
+}
+
+function makeHistory(demo: DemoState, actor: DemoPlayer | undefined, kind: DemoHistoryEntry['kind'], text: string): DemoHistoryEntry {
+  return {
+    id: `${Date.now()}-${demo.tableHistory.length}-${kind}`,
+    roundIndex: demo.roundIndex,
+    actorId: actor?.id,
+    actorName: actor?.displayName,
+    kind,
+    text,
+  };
+}
+
+function hasPendingAiAction(demo: DemoState): boolean {
+  if (demo.mode !== 'ai') return false;
+  if (demo.phase === 'proposal') return demo.players[demo.leaderIndex]?.controller === 'ai';
+  if (demo.phase === 'vote') return demo.players.some((player) => player.controller === 'ai' && !player.teamVote);
+  if (demo.phase === 'mission') return demo.players.some((player) => player.controller === 'ai' && demo.selectedTeamIds.includes(player.id) && !player.missionCard);
+  return false;
+}
+
+function runNextAiAction(current: DemoState): DemoState {
+  if (current.mode !== 'ai' || current.phase === 'setup' || current.phase === 'result' || getDemoWinner(current)) return current;
+  if (current.phase === 'proposal') return runAiProposal(current);
+  if (current.phase === 'vote') return runAiVote(current);
+  if (current.phase === 'mission') return runAiMission(current);
+  return current;
+}
+
+function runAiProposal(current: DemoState): DemoState {
+  const leader = current.players[current.leaderIndex];
+  if (!leader || leader.controller !== 'ai') return current;
+  const teamSize = getTeamSize(current.playerCount, current.roundIndex);
+  const teamIds = chooseAiTeam(current, leader, teamSize);
+  const publicSpeech = buildAiSpeech(current, leader, `I want to test ${teamIds.map((id) => playerName(current, id)).join(', ')}. This team gives us information without overloading one suspicious seat.`);
+  const reasoning = `As ${leader.role}, choose a team that includes self when useful, favours lower suspicion, and ${roleAllegiance(leader.role) === 'evil' ? 'keeps evil options live' : 'avoids suspicious seats'}.`;
+  const updatedLeader = rememberAgent(leader, current, reasoning, publicSpeech);
+  const players = current.players.map((player) => (player.id === leader.id ? updatedLeader : { ...player, teamVote: undefined, missionCard: undefined }));
+  const proposedState = {
+    ...current,
+    phase: 'vote' as const,
+    selectedTeamIds: teamIds,
+    players,
+    lastVote: undefined,
+    lastMission: undefined,
+  };
+  return {
+    ...proposedState,
+    tableHistory: [
+      ...current.tableHistory,
+      makeHistory(current, updatedLeader, 'speech', publicSpeech),
+      makeHistory(current, updatedLeader, 'proposal', `${updatedLeader.displayName} proposed ${teamIds.map((id) => playerName(current, id)).join(', ')}.`),
+    ],
+  };
+}
+
+function runAiVote(current: DemoState): DemoState {
+  const voter = current.players.find((player) => player.controller === 'ai' && !player.teamVote);
+  if (!voter) return current;
+  const vote = chooseAiVote(current, voter);
+  const selectedNames = current.selectedTeamIds.map((id) => playerName(current, id)).join(', ');
+  const publicSpeech = buildAiSpeech(current, voter, vote === 'approve' ? `I can approve ${selectedNames}; the table composition is acceptable for this quest.` : `I reject ${selectedNames}; this team does not give me enough confidence.`);
+  const reasoning = `Vote ${vote}; team suspicion score ${scoreTeamSuspicion(current, voter, current.selectedTeamIds)}.`;
+  const playersWithVote = current.players.map((player) => (
+    player.id === voter.id ? { ...rememberAgent(voter, current, reasoning, publicSpeech), teamVote: vote } : player
+  ));
+  const resolved = resolveDemoVoteIfReady(current, playersWithVote);
+  return {
+    ...current,
+    players: resolved.players,
+    tableHistory: [
+      ...current.tableHistory,
+      makeHistory(current, voter, 'speech', publicSpeech),
+      makeHistory(current, voter, 'vote', `${voter.displayName} voted ${vote}.`),
+    ],
+    ...resolved.statePatch,
+  };
+}
+
+function runAiMission(current: DemoState): DemoState {
+  const actor = current.players.find((player) => player.controller === 'ai' && current.selectedTeamIds.includes(player.id) && !player.missionCard);
+  if (!actor) return current;
+  const card: MissionCard = roleAllegiance(actor.role) === 'evil' ? chooseEvilMissionCard(current, actor) : 'success';
+  const publicSpeech = buildAiSpeech(current, actor, 'Mission card submitted. We will learn from the result.');
+  const reasoning = roleAllegiance(actor.role) === 'evil' ? `Played ${card}; balance sabotage pressure against staying hidden.` : 'Good roles must play success.';
+  const playersWithCard = current.players.map((player) => (
+    player.id === actor.id ? { ...rememberAgent(actor, current, reasoning, publicSpeech), missionCard: card } : player
+  ));
+  const next = resolveDemoMissionIfReady(current, playersWithCard);
+  return {
+    ...next,
+    tableHistory: [
+      ...next.tableHistory,
+      makeHistory(current, actor, 'speech', publicSpeech),
+      makeHistory(current, actor, 'mission', `${actor.displayName} submitted a mission card.`),
+    ],
+  };
+}
+
+function chooseAiTeam(current: DemoState, leader: DemoPlayer, teamSize: number): string[] {
+  const bySuspicion = [...current.players].sort((left, right) => suspicionFor(leader, left.id) - suspicionFor(leader, right.id));
+  const team = new Set<string>();
+  if (roleAllegiance(leader.role) === 'evil') {
+    team.add(leader.id);
+    const ally = current.players.find((player) => player.id !== leader.id && roleAllegiance(player.role) === 'evil' && player.role !== 'Oberon');
+    if (ally && team.size < teamSize) team.add(ally.id);
+  } else if (teamSize > 1) {
+    team.add(leader.id);
+  }
+  bySuspicion.forEach((player) => {
+    if (team.size < teamSize) team.add(player.id);
+  });
+  return [...team].slice(0, teamSize);
+}
+
+function chooseAiVote(current: DemoState, voter: DemoPlayer): Vote {
+  const selfOnTeam = current.selectedTeamIds.includes(voter.id);
+  const suspicionScore = scoreTeamSuspicion(current, voter, current.selectedTeamIds);
+  if (roleAllegiance(voter.role) === 'evil') return selfOnTeam || suspicionScore > -30 ? 'approve' : 'reject';
+  return suspicionScore <= 45 || selfOnTeam ? 'approve' : 'reject';
+}
+
+function chooseEvilMissionCard(current: DemoState, actor: DemoPlayer): MissionCard {
+  const evilOnTeam = current.selectedTeamIds.filter((id) => roleAllegiance(current.players.find((player) => player.id === id)?.role ?? 'Loyal Servant') === 'evil').length;
+  if (current.roundIndex === 0 && evilOnTeam > 1 && actor.role !== 'Assassin') return 'success';
+  return 'fail';
+}
+
+function rememberAgent(player: DemoPlayer, current: DemoState, reasoning: string, publicSpeech: string): DemoPlayer {
+  if (player.controller !== 'ai') return player;
+  const nextMemory = updateAgentMemory(player, current, reasoning, publicSpeech);
+  return {
+    ...player,
+    memory: nextMemory,
+    lastReasoningSummary: reasoning,
+    lastPublicSpeech: publicSpeech,
+  };
+}
+
+function updateAgentMemory(player: DemoPlayer, current: DemoState, reasoning: string, publicSpeech: string): AgentMemory {
+  const memory = player.memory ?? createAgentMemory(current.players.map((candidate) => candidate.id), player.id);
+  const suspicion = { ...memory.suspicion };
+  if (current.lastMission?.outcome === 'fail') {
+    current.selectedTeamIds.forEach((id) => {
+      if (id !== player.id) suspicion[id] = (suspicion[id] ?? 0) + 18;
+    });
+  }
+  current.selectedTeamIds.forEach((id) => {
+    if (id !== player.id && roleAllegiance(player.role) === 'evil' && roleAllegiance(current.players.find((candidate) => candidate.id === id)?.role ?? 'Loyal Servant') === 'evil') {
+      suspicion[id] = -35;
+    }
+  });
+  return {
+    suspicion,
+    notes: [...memory.notes.slice(-3), reasoning],
+    publicClaims: [...memory.publicClaims.slice(-3), publicSpeech],
+  };
+}
+
+function scoreTeamSuspicion(current: DemoState, voter: DemoPlayer, teamIds: string[]): number {
+  return teamIds.reduce((score, id) => score + suspicionFor(voter, id), 0);
+}
+
+function suspicionFor(viewer: DemoPlayer, targetId: string): number {
+  if (targetId === viewer.id) return roleAllegiance(viewer.role) === 'evil' ? -20 : -12;
+  return viewer.memory?.suspicion[targetId] ?? 0;
+}
+
+function buildAiSpeech(_current: DemoState, player: DemoPlayer, fallback: string): string {
+  if (player.role === 'Merlin' && fallback.includes('confidence')) return fallback.replace('confidence', 'behavioural confidence');
+  if (player.persona?.includes('Aggressive')) return fallback.replace('I ', 'I strongly ');
+  return fallback;
+}
+
+function playerName(current: DemoState, playerId: string): string {
+  return current.players.find((player) => player.id === playerId)?.displayName ?? playerId;
+}
+
+function deterministicShuffle<T>(items: T[], seed: string): T[] {
+  const copy = [...items];
+  let state = [...seed].reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) >>> 0, 2166136261);
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    const swapIndex = state % (index + 1);
+    [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
+  }
+  return copy;
+}
+
+function getAgentViewSummary(player: DemoPlayer, privateInfo: VisibilityInfo): React.ReactNode {
+  if (player.controller !== 'ai') return <div className="agent-card human-card"><span>Human seat</span><p>You make this player's decisions.</p></div>;
+  const suspicionEntries = Object.entries(player.memory?.suspicion ?? {})
+    .sort(([, left], [, right]) => right - left)
+    .slice(0, 2);
+  return (
+    <div className="agent-card">
+      <span>AI Agent · {player.persona}</span>
+      <p><strong>Visible info:</strong> {privateInfo.sees.length ? privateInfo.sees.map((item) => `${item.name} (${item.hint})`).join(', ') : 'No private identity info.'}</p>
+      {player.lastPublicSpeech && <p><strong>Public:</strong> “{player.lastPublicSpeech}”</p>}
+      {player.lastReasoningSummary && <p><strong>Reasoning summary:</strong> {player.lastReasoningSummary}</p>}
+      {suspicionEntries.length > 0 && <p><strong>Memory:</strong> {suspicionEntries.map(([id, score]) => `${id.replace('demo-player-', 'P')} ${score > 0 ? '+' : ''}${score}`).join(', ')}</p>}
+    </div>
+  );
+}
+
+function createDemoState(
+  playerCount: number,
+  roleOptions: RolePresetOptions,
+  options: { mode?: DemoMode; humanCount?: number } = {},
+): DemoState {
   const sanitizedOptions = sanitizeRoleOptions(playerCount, roleOptions);
-  const preset = buildRolePreset(playerCount, sanitizedOptions);
+  const mode = options.mode ?? 'manual';
+  const humanCount = mode === 'ai' ? Math.min(Math.max(options.humanCount ?? 1, 1), Math.min(3, playerCount)) : playerCount;
+  const basePlayers = demoNames.slice(0, playerCount).map((name, index) => ({ id: `demo-player-${index + 1}`, name }));
+  const presetRoles = buildRolePreset(playerCount, sanitizedOptions).roles;
+  const roles = mode === 'ai' ? deterministicShuffle(presetRoles, `ai-table-${playerCount}-${JSON.stringify(sanitizedOptions)}`) : presetRoles;
+  const assignedPlayers = basePlayers.map((player, index) => ({ ...player, role: roles[index] }));
   return {
     playerCount,
     roleOptions: sanitizedOptions,
-    players: preset.roles.map((role, index) => ({
-      id: `demo-player-${index + 1}`,
-      displayName: demoNames[index],
-      seatIndex: index,
-      role,
-      revealRole: false,
-      revealNightInfo: false,
-    })),
+    mode,
+    humanCount,
+    players: assignedPlayers.map((player, index) => {
+      const controller: DemoController = mode === 'ai' && index >= humanCount ? 'ai' : 'human';
+      return {
+        id: player.id,
+        displayName: controller === 'ai' ? `${player.name} AI` : player.name,
+        seatIndex: index,
+        role: player.role ?? 'Loyal Servant',
+        revealRole: false,
+        revealNightInfo: false,
+        controller,
+        persona: controller === 'ai' ? aiPersonas[(index - humanCount + aiPersonas.length) % aiPersonas.length] : undefined,
+        memory: controller === 'ai' ? createAgentMemory(basePlayers.map((candidate) => candidate.id), player.id) : undefined,
+      };
+    }),
     phase: 'setup',
     roundIndex: 0,
     leaderIndex: 0,
     selectedTeamIds: [],
     missionResults: [],
+    tableHistory: [],
   };
 }
 
