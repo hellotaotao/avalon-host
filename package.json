@@ -8,8 +8,9 @@
     "dev:multi": "vite --host 127.0.0.1 --open /dev/multiplayer",
     "build": "tsc -b && vite build",
     "db:schema": "node scripts/apply-neon-schema.mjs",
-    "test": "vitest run",
-    "test:five-player": "vitest run src/services/fivePlayerSmoke.test.ts"
+    "test": "vitest run --exclude \"e2e/**\"",
+    "test:five-player": "vitest run src/services/fivePlayerSmoke.test.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -20,6 +21,7 @@
     "vite": "^6.4.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "vitest": "^1.6.1"

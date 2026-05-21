@@ -9,3 +9,7 @@ vite.config.d.ts
 !.env.example
 .codex-*.md
 .vercel
+
+# Playwright artifacts
+test-results/
+playwright-report/
