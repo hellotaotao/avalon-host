@@ -28,7 +28,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const request = readRequest(parseBody(req.body));
+    const body = parseBody(req.body);
+    const request = readRequest(body);
+    const outputLocale = readOutputLocale(body);
     const provider = getProviderConfig();
     if (!provider) {
       res.status(200).json({
@@ -41,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    const rawDecision = await requestDecision(provider, request);
+    const rawDecision = await requestDecision(provider, request, outputLocale);
     const decision = normalizeAiAvalonDecision(request, rawDecision);
     res.status(200).json({ ok: true, provider: provider.name, model: provider.model, decision });
   } catch (error) {
@@ -75,7 +77,27 @@ function getProviderConfig() {
   return undefined;
 }
 
-async function requestDecision(provider: ReturnType<typeof getProviderConfig>, request: AiAvalonDecisionRequest) {
+type AiOutputLocale = 'en' | 'zh' | 'ja';
+
+function readOutputLocale(body: unknown): AiOutputLocale {
+  if (!isRecord(body)) return 'en';
+  const locale = typeof body.locale === 'string' ? body.locale.toLowerCase() : '';
+  if (locale.startsWith('zh')) return 'zh';
+  if (locale.startsWith('ja')) return 'ja';
+  return 'en';
+}
+
+function outputLanguageInstruction(locale: AiOutputLocale): string {
+  if (locale === 'zh') {
+    return 'Output language: Simplified Chinese. Write privateReasoningSummary, publicSpeech, memoryUpdate.note, and any other natural-language text in Simplified Chinese. Keep action enum values and JSON keys exactly as specified in English.';
+  }
+  if (locale === 'ja') {
+    return 'Output language: Japanese. Write privateReasoningSummary, publicSpeech, memoryUpdate.note, and any other natural-language text in Japanese. Keep action enum values and JSON keys exactly as specified in English.';
+  }
+  return 'Output language: English. Keep action enum values and JSON keys exactly as specified.';
+}
+
+async function requestDecision(provider: ReturnType<typeof getProviderConfig>, request: AiAvalonDecisionRequest, outputLocale: AiOutputLocale) {
   const response = await fetch(provider.url, {
     method: 'POST',
     headers: {
@@ -98,6 +120,7 @@ async function requestDecision(provider: ReturnType<typeof getProviderConfig>, r
             'Prioritize roleVisibleInfo over table vibes when evaluating the current team. If you are Merlin and the current team contains a player hinted as "Evil player", your privateReasoningSummary must account for that known evil. Usually reject such teams unless you explicitly justify a Merlin-cover strategy; never reveal that certainty publicly.',
             'Percival "Merlin candidate" hints are ambiguity, not evil certainty. Evil-player and evil-teammate hints have different meanings; do not overgeneralize hint strings.',
             'Never infer or reveal hidden roles beyond roleVisibleInfo. Do not produce chain-of-thought.',
+            outputLanguageInstruction(outputLocale),
             'Return only JSON with keys: privateReasoningSummary, publicSpeech, action, memoryUpdate.',
             'privateReasoningSummary must be a brief summary, not step-by-step reasoning. For missionCard, it must explain why you chose success or fail; good players must submit success, while evil players should weigh sabotage pressure against staying hidden.',
             'For missionCard, publicSpeech must stay neutral and must not reveal whether you submitted success or fail before mission resolution.',

@@ -10,6 +10,7 @@ export interface Player {
 }
 
 export interface AssignmentOptions {
+  /** @deprecated Formal rooms now use recommended role presets by player count. */
   includePercivalMorgana?: boolean;
   includeMordred?: boolean;
   includeOberon?: boolean;
@@ -75,11 +76,15 @@ export const goodCountByPlayers: Record<number, number> = {
 
 export function getRoleDistribution(playerCount: number, options: AssignmentOptions = {}): Role[] {
   return buildRolePreset(playerCount, {
-    includePercival: options.includePercivalMorgana && playerCount >= 7,
-    includeMorgana: options.includePercivalMorgana && playerCount >= 7,
-    includeMordred: options.includeMordred,
+    ...getRecommendedRolePresetOptions(playerCount),
+    includeMordred: getRecommendedRolePresetOptions(playerCount).includeMordred || options.includeMordred,
     includeOberon: options.includeOberon,
   }).roles;
+}
+
+export function getRecommendedRolePresetOptions(playerCount: number): RolePresetOptions {
+  if (playerCount >= 7) return { includePercival: true, includeMorgana: true, includeMordred: true };
+  return { includePercival: true, includeMorgana: true };
 }
 
 export function assignRoles(players: Player[], options: AssignmentOptions = {}, seed = 'avalon-host'): Player[] {

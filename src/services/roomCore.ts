@@ -38,7 +38,8 @@ export interface RoomSnapshot {
 
 export interface CreateRoomInput {
   displayName: string;
-  includePercivalMorgana: boolean;
+  /** @deprecated Formal rooms now use recommended role presets by player count. */
+  includePercivalMorgana?: boolean;
   deviceToken: string;
 }
 
@@ -313,7 +314,6 @@ function makeDemoSnapshot(roomId: string, code: string, players: RoomPlayer[]): 
       gameType: 'avalon_lite',
       settings: {
         createdInDemoMode: true,
-        includePercivalMorgana: false,
       },
     },
     players,

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import {
   buildRolePreset,
   getPlayerCountRule,
+  getRecommendedRolePresetOptions,
   getTeamSize,
   getVisibilityInfo,
   playerCountRange,
@@ -88,7 +89,6 @@ function App() {
   const [hostName, setHostName] = useState('');
   const [joinName, setJoinName] = useState('');
   const [joinCode, setJoinCode] = useState(() => parseJoinCodeFromUrl(window.location.href));
-  const [includePercivalMorgana, setIncludePercivalMorgana] = useState(false);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [restorableSnapshot, setRestorableSnapshot] = useState<RoomSnapshot>();
@@ -178,7 +178,7 @@ function App() {
     setBusy(true);
     setMessage('');
     try {
-      const result = await createRoom({ displayName: hostName, includePercivalMorgana, deviceToken });
+      const result = await createRoom({ displayName: hostName, deviceToken });
       saveSessionBinding(result.snapshot.room.id, result.currentPlayerId);
       setCurrentPlayerId(result.currentPlayerId);
       setSnapshot(result.snapshot);
@@ -630,14 +630,7 @@ function App() {
               {t('Your nickname')}
               <input value={hostName} onChange={(event) => setHostName(event.target.value)} maxLength={24} autoFocus />
             </label>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={includePercivalMorgana}
-                onChange={(event) => setIncludePercivalMorgana(event.target.checked)}
-              />
-              {t('Include Percival and Morgana when 7+ players join')}
-            </label>
+            <p className="hint">{t('Roles use the recommended Avalon setup by player count: 5–6 include Percival + Morgana; 7+ also adds Mordred.')}</p>
             <button type="submit" className="primary" disabled={busy}>{busy ? t('Creating...') : t('Create Room')}</button>
           </form>
         </section>
@@ -796,7 +789,7 @@ const DEMO_RESULT_AUTO_ADVANCE_MS = 2200;
 
 function DemoSimulator() {
   const { t, language } = useI18n();
-  const [demo, setDemo] = useState(() => createDemoState(7, { includeMorgana: true }));
+  const [demo, setDemo] = useState(() => createDemoState(7, getRecommendedRolePresetOptions(7)));
   const [autoAi, setAutoAi] = useState(true);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiStatus, setAiStatus] = useState('');
@@ -870,23 +863,23 @@ function DemoSimulator() {
     const actor = findNextAiActor(demo);
     if (!actor) return;
     setAiBusy(true);
-    setAiStatus(`Asking ${actor.displayName}…`);
+    setAiStatus(`${actor.displayName} ${t('is thinking…')}`);
     try {
       const request = buildAiAvalonDecisionRequest(demo, actor.id, actor.persona);
       const response = await fetch('/api/ai-avalon', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ request }),
+        body: JSON.stringify({ request, locale: language }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || body?.ok !== true) {
         throw new Error(typeof body?.error?.message === 'string' ? body.error.message : 'AI provider unavailable; using heuristic fallback.');
       }
       setDemo((current) => applyAiDecision(current, actor.id, body.decision));
-      setAiStatus(`LLM move from ${body.provider ?? 'AI'}${body.model ? ` (${body.model})` : ''}.`);
+      setAiStatus(`${t('AI move from')} ${body.provider ?? 'AI'}${body.model ? ` (${body.model})` : ''}.`);
     } catch (error) {
       setDemo(runNextAiAction);
-      setAiStatus(`${error instanceof Error ? error.message : 'AI failed.'} Used local heuristic fallback.`);
+      setAiStatus(`${error instanceof Error ? error.message : t('AI failed.')} ${t('Used local heuristic fallback.')}`);
     } finally {
       setAiBusy(false);
     }
@@ -986,19 +979,19 @@ function DemoSimulator() {
       {demo.phase === 'setup' ? (
         <section className="demo-setup">
           <div className="demo-mode-tabs">
-            <button type="button" className={demo.mode === 'manual' ? 'selected' : ''} onClick={() => switchDemoMode('manual')}>Manual phones</button>
-            <button type="button" className={demo.mode === 'ai' ? 'selected' : ''} onClick={() => switchDemoMode('ai')}>AI Table</button>
+            <button type="button" className={demo.mode === 'manual' ? 'selected' : ''} onClick={() => switchDemoMode('manual')}>{t('Manual phones')}</button>
+            <button type="button" className={demo.mode === 'ai' ? 'selected' : ''} onClick={() => switchDemoMode('ai')}>{t('AI Table')}</button>
           </div>
           <div className="demo-ai-intro">
             {demo.mode === 'ai' ? (
               <>
-                <h3>AI fill seats</h3>
-                <p>Start solo or keep 2–3 human seats. Each AI player gets only its role-visible information, public table history, and its own private suspicion memory.</p>
+                <h3>{t('AI fill seats')}</h3>
+                <p>{t('Start solo or keep 2–3 human seats. Each AI player gets only its role-visible information, public table history, and its own private suspicion memory.')}</p>
               </>
             ) : (
               <>
-                <h3>Manual multi-phone demo</h3>
-                <p>Drive every virtual phone yourself to demonstrate reveal, proposal, voting, and mission flow.</p>
+                <h3>{t('Manual multi-phone demo')}</h3>
+                <p>{t('Drive every virtual phone yourself to demonstrate reveal, proposal, voting, and mission flow.')}</p>
               </>
             )}
           </div>
@@ -1010,7 +1003,7 @@ function DemoSimulator() {
                   key={count}
                   type="button"
                   className={count === demo.playerCount ? 'selected' : ''}
-                  onClick={() => resetWith(count, demo.roleOptions)}
+                  onClick={() => resetWith(count, getRecommendedRolePresetOptions(count))}
                 >
                   {count}
                 </button>
@@ -1020,15 +1013,15 @@ function DemoSimulator() {
           </div>
           {demo.mode === 'ai' && (
             <div>
-              <h3>Human seats</h3>
-              <div className="segmented" aria-label="Human seats">
+              <h3>{t('Human seats')}</h3>
+              <div className="segmented" aria-label={t('Human seats')}>
                 {[1, 2, 3].map((count) => (
                   <button key={count} type="button" className={demo.humanCount === count ? 'selected' : ''} onClick={() => setHumanCount(count)}>
                     {count}
                   </button>
                 ))}
               </div>
-              <p>{demo.playerCount - demo.humanCount} AI agents will fill the table.</p>
+              <p>{demo.playerCount - demo.humanCount} {t('AI agents will fill the table.')}</p>
             </div>
           )}
           <div>
@@ -1052,19 +1045,19 @@ function DemoSimulator() {
           </div>
           {demo.mode === 'ai' && (
             <div className="ai-instruction-card">
-              <h3>Agent input contract</h3>
-              <p>On each turn the orchestrator sends: rules + current phase + legal actions + public history + that agent’s role vision + that agent’s private memory. Other agents’ private memory is never included.</p>
+              <h3>{t('Agent input contract')}</h3>
+              <p>{t('On each turn the orchestrator sends: rules + current phase + legal actions + public history + that agent’s role vision + that agent’s private memory. Other agents’ private memory is never included.')}</p>
             </div>
           )}
           <div className="demo-start-row">
-            <button type="button" className="primary" onClick={startTable}>{demo.mode === 'ai' ? 'Start AI table' : t('Start tabletop')}</button>
+            <button type="button" className="primary" onClick={startTable}>{demo.mode === 'ai' ? t('Start AI table') : t('Start tabletop')}</button>
           </div>
         </section>
       ) : (
         <section className="demo-setup-summary" aria-label={t('Demo table setup')}>
-          <span>{demo.mode === 'ai' ? 'AI Table' : 'Manual Demo'}</span>
+          <span>{demo.mode === 'ai' ? t('AI Table') : t('Manual Demo')}</span>
           <span>{demo.playerCount} {t('players')}</span>
-          {demo.mode === 'ai' && <span>{demo.humanCount} human / {demo.playerCount - demo.humanCount} AI</span>}
+          {demo.mode === 'ai' && <span>{demo.humanCount} {t('human')} / {demo.playerCount - demo.humanCount} AI</span>}
           <span>{rule.goodCount} {t('Good')} / {rule.evilCount} {t('Evil')}</span>
           <span>{t('Special roles')}: {includedSpecialRoles.length ? includedSpecialRoles.map((role) => formatRole(role, language)).join(', ') : t('None')}</span>
           <span>{t('Base')}: {preset.requiredRoles.map((role) => formatRole(role, language)).join(', ')}</span>
@@ -1080,7 +1073,7 @@ function DemoSimulator() {
             const teamNames = getDemoQuestTeamNames(demo, result?.selectedTeamIds ?? (roundIndex === demo.roundIndex ? demo.selectedTeamIds : []));
             return (
               <span key={roundIndex} className={result?.outcome ?? (roundIndex === demo.roundIndex ? 'current' : '')}>
-                <strong>Q{roundIndex + 1}: {rule.teamSizes[roundIndex]}{threshold > 1 ? ` / ${threshold} fails` : ''}</strong>
+                <strong>{formatQuestLabel(roundIndex, language)}: {rule.teamSizes[roundIndex]}{threshold > 1 ? formatFailThresholdLabel(threshold, language) : ''}</strong>
                 {teamNames.length > 0 && <small>{teamNames.join(', ')}</small>}
               </span>
             );
@@ -1135,16 +1128,16 @@ function DemoSimulator() {
       </section>
 
       {demo.mode === 'ai' && demo.phase !== 'setup' && (
-        <section className="ai-table-panel" aria-label="AI table orchestration">
+        <section className="ai-table-panel" aria-label={t('AI table orchestration')}>
           <div className="ai-table-controls">
             <div>
-              <p className="eyebrow">AI Orchestrator</p>
-              <h3>Independent agents, filtered vision</h3>
-              <p>AI actions are generated from each player’s own role, legal moves, public history, and private suspicion memory.</p>
+              <p className="eyebrow">{t('AI Orchestrator')}</p>
+              <h3>{t('Independent agents, filtered vision')}</h3>
+              <p>{t('AI actions are generated from each player’s own role, legal moves, public history, and private suspicion memory.')}</p>
             </div>
             <div className="choice-row">
-              <button type="button" className={autoAi ? 'selected' : ''} onClick={() => setAutoAi(!autoAi)}>{autoAi ? 'Auto AI on' : 'Auto AI off'}</button>
-              <button type="button" onClick={() => void runAiOnce()} disabled={aiBusy || !hasPendingAiAction(demo) || Boolean(winner)}>{aiBusy ? 'AI thinking…' : 'Run next AI action'}</button>
+              <button type="button" className={autoAi ? 'selected' : ''} onClick={() => setAutoAi(!autoAi)}>{autoAi ? t('Auto AI on') : t('Auto AI off')}</button>
+              <button type="button" onClick={() => void runAiOnce()} disabled={aiBusy || !hasPendingAiAction(demo) || Boolean(winner)}>{aiBusy ? t('AI thinking…') : t('Run next AI action')}</button>
             </div>
           </div>
           {aiStatus && <p className="ai-status" aria-live="polite">{aiStatus}</p>}
@@ -1154,7 +1147,7 @@ function DemoSimulator() {
             ))}
           </div>
           {demo.aiHistory.length > 0 && (
-            <div className="ai-history ai-private-history" aria-label="AI private reasoning log">
+            <div className="ai-history ai-private-history" aria-label={t('AI private reasoning log')}>
               {demo.aiHistory.slice(-5).map((entry) => (
                 <p key={entry.id}><strong>{entry.actorName ?? 'AI'}:</strong> {entry.text}</p>
               ))}
@@ -2455,6 +2448,14 @@ function formatRoleCount(role: Role, count: number, language: ReturnType<typeof 
   return count > 1 ? `${roleName} x${count}` : roleName;
 }
 
+function formatQuestLabel(roundIndex: number, language: ReturnType<typeof useI18n>['language']): string {
+  return language === 'zh' ? `任务 ${roundIndex + 1}` : `Q${roundIndex + 1}`;
+}
+
+function formatFailThresholdLabel(threshold: number, language: ReturnType<typeof useI18n>['language']): string {
+  return language === 'zh' ? ` · ${threshold} 张失败牌才失败` : ` / ${threshold} fails`;
+}
+
 const publicRoleOrder: Role[] = ['Merlin', 'Percival', 'Loyal Servant', 'Assassin', 'Morgana', 'Mordred', 'Oberon', 'Minion'];
 
 function summarizePublicRoleLineup(players: RoomPlayer[]): Array<{ role: Role; count: number }> {
@@ -2941,7 +2942,7 @@ function MissionPanel({
             const questTeamNames = getRoomPlayerNames(players, result?.selectedTeamIds ?? (state === 'current' ? visibleTeamIds : []));
             return (
               <div key={roundIndex} className={`quest-card ${state}`}>
-                <span>Q{roundIndex + 1}</span>
+                <span>{formatQuestLabel(roundIndex, language)}</span>
                 <strong>{getTeamSize(players.length, roundIndex)}</strong>
                 <small>
                   {result

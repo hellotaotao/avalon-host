@@ -169,9 +169,7 @@ const localRepository: RoomRepository = {
       code,
       status: 'lobby',
       gameType: 'avalon_lite',
-      settings: {
-        includePercivalMorgana: input.includePercivalMorgana,
-      },
+      settings: {},
       updatedAt: new Date().toISOString(),
     };
     const player = {

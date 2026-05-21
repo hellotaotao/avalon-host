@@ -35,17 +35,20 @@ describe('Avalon Lite rules', () => {
     expect(preset.roles.filter((role) => roleAllegiance(role) === 'evil')).toEqual(['Assassin', 'Morgana', 'Minion']);
   });
 
-  it('supports optional Percival and Morgana for larger tables', () => {
-    const roles = getRoleDistribution(7, { includePercivalMorgana: true });
+  it('uses recommended formal roles for 5-6 player tables', () => {
+    const roles = getRoleDistribution(6);
     expect(roles).toContain('Percival');
     expect(roles).toContain('Morgana');
-    expect(roles.filter((role) => roleAllegiance(role) === 'evil')).toHaveLength(3);
+    expect(roles).not.toContain('Mordred');
+    expect(roles.filter((role) => roleAllegiance(role) === 'evil')).toHaveLength(2);
   });
 
-  it('keeps the live Percival/Morgana option gated to 7+ players', () => {
-    const roles = getRoleDistribution(6, { includePercivalMorgana: true });
-    expect(roles).not.toContain('Percival');
-    expect(roles).not.toContain('Morgana');
+  it('uses recommended formal roles for 7+ player tables', () => {
+    const roles = getRoleDistribution(7);
+    expect(roles).toContain('Percival');
+    expect(roles).toContain('Morgana');
+    expect(roles).toContain('Mordred');
+    expect(roles.filter((role) => roleAllegiance(role) === 'evil')).toHaveLength(3);
   });
 
   it('assigns every player exactly one required role set', () => {

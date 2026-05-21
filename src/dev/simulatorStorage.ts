@@ -28,7 +28,7 @@ export function createSimulatorSnapshot(runId: string): RoomSnapshot {
       code: DEV_ROOM_CODE,
       status: 'lobby',
       gameType: 'avalon_lite',
-      settings: { includePercivalMorgana: false },
+      settings: {},
     },
     players,
   };

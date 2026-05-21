@@ -117,7 +117,7 @@ async function createRoom(input: CreateRoomInput) {
 
   const existingRooms = await sql`select code from rooms`;
   const code = generateRoomCode(existingRooms.map((room) => String(room.code)));
-  const settings: RoomSettings = { includePercivalMorgana: Boolean(input.includePercivalMorgana) };
+  const settings: RoomSettings = {};
   const [roomRow] = await sql`
     insert into rooms (code, status, game_type, settings)
     values (${code}, 'lobby', 'avalon_lite', ${JSON.stringify(settings)}::jsonb)
