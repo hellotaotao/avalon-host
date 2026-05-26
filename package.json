@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:multi": "vite --host 127.0.0.1 --open /dev/multiplayer",
+    "demo:five-tabs": "node scripts/demo-five-tabs.mjs",
     "build": "tsc -b && vite build",
     "db:schema": "node scripts/apply-neon-schema.mjs",
     "test": "vitest run --exclude \"e2e/**\"",

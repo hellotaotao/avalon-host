@@ -55,6 +55,26 @@ Useful controls:
 
 The route is guarded by `import.meta.env.DEV`, so production builds do not render the test UI. It is intentionally not linked from the normal app.
 
+## Live 5-Tab Demo Script
+
+To watch a full local 5-player room flow on this Mac:
+
+```bash
+npm run demo:five-tabs
+```
+
+The script starts Vite if needed, opens a headed Chromium window with five independent player tabs, creates a room, joins all five players, marks them ready, starts the game, reveals roles, approves the first quest team, submits mission cards, and leaves the browser open at the resulting table state.
+
+Useful flags:
+
+```bash
+npm run demo:five-tabs -- --headless --close
+```
+
+That mode verifies the same flow without leaving a visible browser open.
+
+The script uses dev-only `devSession` URL parameters so each tab gets its own player identity while sharing the same local room store. It does not require Neon and does not write production data.
+
 ## Automated 5-Player Smoke Test
 
 Run only the five-player smoke:
