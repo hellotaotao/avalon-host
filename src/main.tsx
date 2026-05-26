@@ -547,8 +547,8 @@ function App() {
     <main className={`shell ${screen === 'demo' || screen === 'demoJoin' ? 'demo-shell' : ''}`}>
       <header className="hero">
         <div className="hero-top"><p className="eyebrow">{t('Avalon Host')}</p><LanguageSwitcher /></div>
-        <h1>{screen === 'room' ? (snapshot?.room.status === 'reveal' ? t('The Merlin Reveal') : t('Round Table Lobby')) : t('Gather the Knights of Avalon')}</h1>
-        <p className="lede">{t('Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.')}</p>
+        <h1>{screen === 'room' ? getRoomHeroTitle(snapshot, t) : t('Gather the Knights of Avalon')}</h1>
+        <p className="lede">{screen === 'room' ? getRoomHeroCopy(snapshot, t) : t('Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.')}</p>
         <p className="mode">{isHostedConfigured && !isDevSessionActive() ? t('Neon API mode') : t('Local browser demo mode')}</p>
       </header>
 
@@ -1607,6 +1607,7 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
         <span>{action.canEdit ? `${t('Propose team')} · ${selectedCount}/${action.teamSize}` : t('Proposal')}</span>
         {action.canEdit ? (
           <>
+            <p>{t('You can change the crew until you submit. After submission, voting starts and the proposal is locked.')}</p>
             {action.players.map((candidate) => (
               <label key={candidate.id} className="check">
                 <input
@@ -1635,6 +1636,7 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
       <div className={`phone-action ${action.onVote ? '' : 'phone-readonly'}`}>
         <span>{t('Team vote')}</span>
         {action.selectedTeamNames.length > 0 && <p>{t('Team')}: {action.selectedTeamNames.join(', ')}</p>}
+        <p>{t('Every player votes on this proposal, including the captain.')}</p>
         {action.onVote ? (
           <>
             <div className="choice-row">
@@ -1886,7 +1888,7 @@ function PeekRevealCard({
 
   return (
     <div className={`${className} ${revealed ? revealedClassName : coveredClassName}`} ref={cardRef}>
-      <div className={faceClassName} aria-hidden={!revealed}>
+      <div className={`${faceClassName} ${revealed ? '' : 'peek-face-hidden'}`} aria-hidden={!revealed}>
         {children}
       </div>
       {!revealed && (
@@ -2476,6 +2478,32 @@ function getMissionPhaseLabel(missionState: MissionState): string {
   if (missionState.phase === 'mission') return 'Quest underway';
   if (missionState.phase === 'assassin') return 'Assassin endgame';
   return missionState.winner === 'evil' ? 'Evil victory' : 'Good victory';
+}
+
+function getRoomHeroTitle(snapshot: RoomSnapshot | undefined, t: (text: string) => string): string {
+  if (!snapshot) return t('Round Table Lobby');
+  const missionState = snapshot.room.settings.missionState;
+  if (snapshot.room.status === 'lobby' || snapshot.room.status === 'setup') return t('Round Table Lobby');
+  if (snapshot.room.status === 'reveal') return t('The Merlin Reveal');
+  if (!missionState) return t('Table Quest');
+  if (missionState.phase === 'proposal') return t('Choosing crew');
+  if (missionState.phase === 'vote') return t('Council vote');
+  if (missionState.phase === 'mission') return t('Quest underway');
+  if (missionState.phase === 'assassin') return t('Assassin endgame');
+  return missionState.winner === 'evil' ? t('Evil victory') : t('Good victory');
+}
+
+function getRoomHeroCopy(snapshot: RoomSnapshot | undefined, t: (text: string) => string): string {
+  if (!snapshot) return t('Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.');
+  const missionState = snapshot.room.settings.missionState;
+  if (snapshot.room.status === 'lobby' || snapshot.room.status === 'setup') return t('Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.');
+  if (snapshot.room.status === 'reveal') return t('Each player can privately reveal their role and night information before the first quest.');
+  if (!missionState) return t('The shared board tracks proposals, votes, mission cards, and quest results.');
+  if (missionState.phase === 'proposal') return t('The current captain picks a crew, then every player votes on that proposal.');
+  if (missionState.phase === 'vote') return t('Every player votes, including the captain who proposed the crew.');
+  if (missionState.phase === 'mission') return t('Only the selected crew submits mission cards; results stay anonymous.');
+  if (missionState.phase === 'assassin') return t('Good has three successful quests. The Assassin must guess Merlin before the winner is final.');
+  return t('The table is finished. Review the result or reset for the next game.');
 }
 
 function getMissionPhaseCopy({

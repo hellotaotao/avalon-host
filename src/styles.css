@@ -816,7 +816,7 @@ label {
 .phone-night-info {
   position: relative;
   grid-template-rows: minmax(0, 1fr) auto;
-  height: 124px;
+  height: 164px;
   overflow: hidden;
 }
 
@@ -835,7 +835,12 @@ label {
 .night-info-face {
   align-content: start;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding-right: 0.2rem;
+}
+
+.peek-face-hidden {
+  visibility: hidden;
 }
 
 .role-face strong {
