@@ -549,7 +549,6 @@ function App() {
         <div className="hero-top"><p className="eyebrow">{t('Avalon Host')}</p><LanguageSwitcher /></div>
         <h1>{screen === 'room' ? getRoomHeroTitle(snapshot, t) : t('Gather the Knights of Avalon')}</h1>
         <p className="lede">{screen === 'room' ? getRoomHeroCopy(snapshot, t) : t('Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.')}</p>
-        <p className="mode">{isHostedConfigured && !isDevSessionActive() ? t('Neon API mode') : t('Local browser demo mode')}</p>
       </header>
 
       {message && <p className="notice">{message}</p>}
@@ -693,6 +692,10 @@ function App() {
           busy={busy}
         />
       )}
+
+      <footer className="runtime-footer">
+        <span>{isHostedConfigured && !isDevSessionActive() ? t('Neon API mode') : t('Local browser demo mode')}</span>
+      </footer>
     </main>
   );
 
@@ -2732,7 +2735,7 @@ function RoomView({
         <div className="panel-header">
           <h2>{started ? t('Private Reveal') : t('Current Room')}</h2>
           {currentPlayer && (
-            <button type="button" className="small-danger room-leave" onClick={onLeave} disabled={busy}>
+            <button type="button" className="secondary-control room-leave" onClick={onLeave} disabled={busy}>
               {started && !isFinished ? t('Exit Table') : t('Leave Room')}
             </button>
           )}
@@ -2740,7 +2743,7 @@ function RoomView({
         {currentPlayer?.isHost && (
           <div className="share-actions host-room-actions">
             {started && <button type="button" onClick={onResetRoomToLobby} disabled={busy}>{t('Abandon Game')}</button>}
-            <button type="button" className="small-danger" onClick={onDissolveRoom} disabled={busy}>{t('Dissolve Room')}</button>
+            <button type="button" className="small-danger dissolve-room" onClick={onDissolveRoom} disabled={busy}>{t('Dissolve Room')}</button>
           </div>
         )}
 

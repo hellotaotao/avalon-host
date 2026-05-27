@@ -145,7 +145,6 @@ label {
 }
 
 .lede,
-.mode,
 .hint,
 .notice,
 .panel p {
@@ -157,17 +156,6 @@ label {
   max-width: 45rem;
   color: #f2ddae;
   font-weight: 700;
-}
-
-.mode {
-  width: fit-content;
-  border: 1px solid #cfac61;
-  border-radius: 999px;
-  background: #3d244c;
-  color: #ffe9aa;
-  padding: 0.4rem 0.7rem;
-  font-size: 0.82rem;
-  font-weight: 800;
 }
 
 .notice,
@@ -989,7 +977,7 @@ label {
 .room-code {
   display: grid;
   gap: 0.65rem;
-  align-content: start;
+  align-content: center;
   border: 2px solid #e7bd63;
   border-radius: 8px;
   background: linear-gradient(145deg, #311843, #4b1d21 62%, #7a451b);
@@ -1080,6 +1068,40 @@ label {
 .room-leave {
   flex: 0 0 auto;
   width: fit-content;
+}
+
+.secondary-control {
+  width: auto;
+  min-width: 0;
+  min-height: 38px;
+  border-color: #8a5b28;
+  background: #fff3d3;
+  color: #4a2a14;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+.secondary-control:hover:not(:disabled) {
+  border-color: #c99439;
+  background: #fff8df;
+}
+
+.host-room-actions {
+  grid-template-columns: repeat(auto-fit, minmax(9rem, max-content));
+  justify-content: end;
+  justify-items: end;
+}
+
+.dissolve-room {
+  border-color: #8f2119;
+  background: #e58c75;
+  color: #4e100b;
+}
+
+.dissolve-room:hover:not(:disabled) {
+  border-color: #6f160f;
+  background: #f2a089;
 }
 
 .inline-form {
@@ -1180,6 +1202,11 @@ label {
     padding: 0.45rem 0.6rem;
     font-size: 0.85rem;
   }
+
+  .host-room-actions {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
 }
 
 .next-step {
@@ -1251,6 +1278,20 @@ label {
   padding: 0.35rem 0.65rem;
   font-size: 0.82rem;
   white-space: nowrap;
+}
+
+.runtime-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.85rem 0 0.2rem;
+  color: rgba(255, 247, 222, 0.54);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.runtime-footer span {
+  border-top: 1px solid rgba(240, 199, 107, 0.22);
+  padding-top: 0.35rem;
 }
 
 @media (max-width: 560px) {
