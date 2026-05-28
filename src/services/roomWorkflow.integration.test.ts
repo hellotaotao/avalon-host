@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTeamSize, roleAllegiance, type MissionCard, type Vote } from '../domain/avalon';
+import { getNextRoomAiAction, type RoomAiAction } from './roomAi';
 import {
   createRoom,
   joinRoom,
@@ -152,6 +153,54 @@ describe('room workflow integration', () => {
     });
     expect(snapshot.room.settings.missionState?.missionResults).toEqual([]);
   });
+
+  it('fills a larger table with ready AI seats and persists AI actions through room service calls', async () => {
+    const host = await createRoom({
+      displayName: 'Tao P1',
+      humanPlayerCount: 2,
+      plannedPlayerCount: 5,
+      includePercivalMorgana: false,
+      deviceToken: 'ai-fill-device-1',
+    });
+    let snapshot = host.snapshot;
+
+    expect(snapshot.room.settings).toMatchObject({ humanPlayerCount: 2, plannedPlayerCount: 5 });
+    expect(snapshot.players.filter((player) => player.isAi)).toHaveLength(3);
+    expect(snapshot.players.filter((player) => player.isAi).every((player) => player.isReady)).toBe(true);
+
+    const joined = await joinRoom({
+      code: snapshot.room.code,
+      displayName: 'Tao P2',
+      deviceToken: 'ai-fill-device-2',
+    });
+    snapshot = joined.snapshot;
+    snapshot = await setReady(snapshot.room.id, host.currentPlayerId, true);
+    snapshot = await setReady(snapshot.room.id, joined.currentPlayerId, true);
+
+    const started = await startGame(snapshot.room.id, host.currentPlayerId);
+    expect(started.ok).toBe(true);
+    snapshot = started.snapshot!;
+    expect(snapshot.players).toHaveLength(5);
+
+    const leaderId = snapshot.room.settings.missionState!.leaderPlayerId;
+    const selectedTeamIds = snapshot.players.slice(0, getTeamSize(snapshot.players.length, 0)).map((player) => player.id);
+    snapshot = await proposeMissionTeam(snapshot.room.id, leaderId, selectedTeamIds);
+    snapshot = await runRoomAiActions(snapshot);
+
+    expect(Object.keys(snapshot.room.settings.missionState?.teamVotes ?? {}).sort()).toEqual(
+      snapshot.players.filter((player) => player.isAi).map((player) => player.id).sort(),
+    );
+
+    snapshot = await submitTeamVote(snapshot.room.id, host.currentPlayerId, 'approve');
+    snapshot = await submitTeamVote(snapshot.room.id, joined.currentPlayerId, 'approve');
+    snapshot = await runRoomAiActions(snapshot);
+
+    expect(snapshot.room.status).toMatch(/proposal|mission|assassin|finished/);
+    expect(snapshot.room.settings.missionState?.missionCardSubmissions?.submittedPlayerIds.every((playerId) => {
+      const player = snapshot.players.find((candidate) => candidate.id === playerId);
+      return !player?.isAi || selectedTeamIds.includes(playerId);
+    }) ?? true).toBe(true);
+  });
 });
 
 async function playThreeSuccessfulMissions(): Promise<RoomSnapshot> {
@@ -226,6 +275,23 @@ async function submitMissionCards(
     nextSnapshot = await submitMissionCard(snapshot.room.id, playerId, cardFor(playerId, index));
   }
   return nextSnapshot;
+}
+
+async function runRoomAiActions(snapshot: RoomSnapshot): Promise<RoomSnapshot> {
+  let nextSnapshot = snapshot;
+  for (let step = 0; step < 20; step += 1) {
+    const action = getNextRoomAiAction(nextSnapshot);
+    if (!action) return nextSnapshot;
+    nextSnapshot = await executeRoomAiAction(nextSnapshot.room.id, action);
+  }
+  throw new Error('AI actions did not settle.');
+}
+
+async function executeRoomAiAction(roomId: string, action: RoomAiAction): Promise<RoomSnapshot> {
+  if (action.type === 'proposeTeam') return proposeMissionTeam(roomId, action.leaderPlayerId, action.selectedTeamIds);
+  if (action.type === 'submitTeamVote') return submitTeamVote(roomId, action.playerId, action.vote);
+  if (action.type === 'submitMissionCard') return submitMissionCard(roomId, action.playerId, action.card);
+  return submitAssassination(roomId, action.assassinPlayerId, action.targetPlayerId);
 }
 
 function installLocalBrowserStorage() {

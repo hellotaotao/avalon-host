@@ -12,6 +12,7 @@ import type { MissionCard, Vote } from '../src/domain/avalon.js';
 import {
   applyMissionStateToSnapshot,
   assertDeletedRows,
+  buildAiPlayers,
   buildCreateRoomSettings,
   findPlayerByDisplayName,
   generateRoomCode,
@@ -129,10 +130,16 @@ async function createRoom(input: CreateRoomInput) {
     returning id::text as id
   `;
   const [playerRow] = await sql`
-    insert into players (room_id, display_name, seat_index, is_host, is_ready, device_token_hash)
-    values (${roomRow.id}, ${displayName}, 0, true, false, ${input.deviceToken})
+    insert into players (room_id, display_name, seat_index, is_host, is_ready, device_token_hash, is_ai)
+    values (${roomRow.id}, ${displayName}, 0, true, false, ${input.deviceToken}, false)
     returning id::text as id
   `;
+  for (const aiPlayer of buildAiPlayers(roomRow.id as string, settings, 1)) {
+    await sql`
+      insert into players (id, room_id, display_name, seat_index, is_host, is_ready, device_token_hash, is_ai)
+      values (${aiPlayer.id}, ${roomRow.id}, ${aiPlayer.displayName}, ${aiPlayer.seatIndex}, false, true, ${aiPlayer.deviceToken}, true)
+    `;
+  }
 
   return { snapshot: await fetchSnapshot(roomRow.id as string), currentPlayerId: playerRow.id as string };
 }
@@ -162,7 +169,7 @@ async function joinRoom(input: JoinRoomInput) {
 
   if (found.room.status !== 'lobby') throw new HttpError(409, 'This game has already started. Only original players can re-enter from the same device.');
 
-  const sameNamePlayer = findPlayerByDisplayName(found.players, displayName);
+  const sameNamePlayer = findPlayerByDisplayName(found.players.filter((player) => !player.isAi), displayName);
   if (sameNamePlayer) {
     await sql`
       update players
@@ -173,11 +180,12 @@ async function joinRoom(input: JoinRoomInput) {
     return { snapshot: await fetchSnapshot(found.room.id), currentPlayerId: sameNamePlayer.id };
   }
 
-  if (found.players.length >= 10) throw new HttpError(409, 'This room already has 10 players.');
+  const capacity = found.room.settings.plannedPlayerCount ?? 10;
+  if (found.players.length >= capacity) throw new HttpError(409, 'This room is already full.');
 
   const [playerRow] = await sql`
-    insert into players (room_id, display_name, seat_index, is_host, is_ready, device_token_hash)
-    values (${found.room.id}, ${displayName}, ${found.players.length}, false, false, ${input.deviceToken})
+    insert into players (room_id, display_name, seat_index, is_host, is_ready, device_token_hash, is_ai)
+    values (${found.room.id}, ${displayName}, ${found.players.length}, false, false, ${input.deviceToken}, false)
     returning id::text as id
   `;
   await touchRoom(found.room.id);
@@ -230,7 +238,8 @@ async function startGame(roomId: string, hostPlayerId: string): Promise<StartRes
       set seat_index = ${player.seatIndex},
           is_host = ${player.isHost},
           is_ready = ${player.isReady},
-          role = ${player.role ?? null}
+          role = ${player.role ?? null},
+          is_ai = ${Boolean(player.isAi)}
       where id = ${player.id} and room_id = ${roomId}
     `;
   }
@@ -291,7 +300,8 @@ async function readyForNextGame(roomId: string, playerId: string) {
       set seat_index = ${player.seatIndex},
           is_host = ${player.isHost},
           is_ready = ${player.isReady},
-          role = ${player.role ?? null}
+          role = ${player.role ?? null},
+          is_ai = ${Boolean(player.isAi)}
       where id = ${player.id} and room_id = ${roomId}
     `;
   }
@@ -336,7 +346,7 @@ async function resetRoomToLobby(roomId: string, hostPlayerId: string) {
   for (const player of snapshot.players) {
     await sql`
       update players
-      set seat_index = ${player.seatIndex}, is_ready = false, role = null
+      set seat_index = ${player.seatIndex}, is_ready = ${Boolean(player.isAi)}, role = null, is_ai = ${Boolean(player.isAi)}
       where id = ${player.id} and room_id = ${roomId}
     `;
   }
@@ -363,7 +373,7 @@ async function leaveRoom(roomId: string, playerId: string) {
   assertDeletedRows(deletedRows, 'Could not leave room.');
   if (snapshot.room.status === 'lobby') {
     await sql`update rooms set status = 'lobby', settings = ${JSON.stringify(snapshot.room.settings)}::jsonb where id = ${roomId}`;
-    await Promise.all(snapshot.players.map((player) => sql`update players set is_ready = false, role = null where id = ${player.id} and room_id = ${roomId}`));
+    await Promise.all(snapshot.players.map((player) => sql`update players set is_ready = ${Boolean(player.isAi)}, role = null where id = ${player.id} and room_id = ${roomId}`));
   }
   if (snapshot.players.length === 0) {
     await sql`delete from rooms where id = ${roomId}`;
@@ -418,7 +428,8 @@ async function fetchSnapshot(roomId: string): Promise<RoomSnapshot> {
              seat_index,
              is_host,
              is_ready,
-             role
+             role,
+             is_ai
       from players
       where room_id = ${roomId}
       order by seat_index

@@ -36,6 +36,7 @@ import {
   mergeAiAgentMemory,
   type AiAvalonDecision,
 } from './aiAvalon';
+import { getNextRoomAiAction, getRoomAiActionKey, type RoomAiAction } from './services/roomAi';
 import { buildJoinUrl, buildStepUrl, parseEntryStep, parseJoinCodeFromUrl, type EntryScreen } from './navigationState';
 import {
   applyMissionStateToSnapshot,
@@ -90,18 +91,20 @@ function App() {
   const [currentPlayerId, setCurrentPlayerId] = useState(localStorage.getItem(getSessionStorageKeys().currentPlayerId) ?? '');
   const [deviceToken] = useState(() => getOrCreateDeviceToken());
   const [hostName, setHostName] = useState('');
+  const [humanPlayerCount, setHumanPlayerCount] = useState(5);
   const [plannedPlayerCount, setPlannedPlayerCount] = useState<(typeof playerCountRange)[number]>(5);
   const [hostRoleOptions, setHostRoleOptions] = useState<RolePresetOptions>(() => getRecommendedRolePresetOptions(5));
   const [joinName, setJoinName] = useState('');
   const [joinCode, setJoinCode] = useState(() => parseJoinCodeFromUrl(window.location.href));
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const aiActionKeyRef = useRef('');
   const [restorableSnapshot, setRestorableSnapshot] = useState<RoomSnapshot>();
   const [restorablePlayerId, setRestorablePlayerId] = useState('');
 
   const currentPlayer = snapshot?.players.find((player) => player.id === currentPlayerId);
   const isDemoMode = Boolean(snapshot?.room.settings.createdInDemoMode);
-  const startValidation = snapshot ? getStartValidation(snapshot.players) : undefined;
+  const startValidation = snapshot ? getStartValidation(snapshot.players, snapshot.room.settings) : undefined;
   const privateInfo = useMemo(
     () => (currentPlayer && snapshot ? getPrivateRoleInfo(currentPlayer, snapshot.players) : undefined),
     [currentPlayer, snapshot],
@@ -177,6 +180,21 @@ function App() {
     });
   }, [currentPlayerId, snapshot?.room.id]);
 
+  useEffect(() => {
+    if (!snapshot || isDemoMode || !currentPlayer?.isHost) return;
+    const action = getNextRoomAiAction(snapshot);
+    if (!action) return;
+    const actionKey = `${snapshot.room.id}:${snapshot.room.updatedAt ?? ''}:${getRoomAiActionKey(action)}`;
+    if (aiActionKeyRef.current === actionKey) return;
+    aiActionKeyRef.current = actionKey;
+    const timer = window.setTimeout(() => {
+      void executeRoomAiAction(snapshot.room.id, action)
+        .then(setSnapshot)
+        .catch((error) => setMessage(error instanceof Error ? error.message : t('Could not run AI action.')));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [currentPlayer?.id, currentPlayer?.isHost, isDemoMode, snapshot]);
+
   async function handleCreateRoom(event: React.FormEvent) {
     event.preventDefault();
     if (!hostName.trim()) return setMessage(t('Enter your nickname first.'));
@@ -185,6 +203,7 @@ function App() {
     try {
       const result = await createRoom({
         displayName: hostName,
+        humanPlayerCount,
         plannedPlayerCount,
         roleOptions: hostRoleOptions,
         deviceToken,
@@ -198,6 +217,15 @@ function App() {
       setMessage(error instanceof Error ? error.message : t('Could not create room.'));
     } finally {
       setBusy(false);
+    }
+  }
+
+  function handleHumanPlayerCount(nextHumanPlayerCount: number) {
+    setHumanPlayerCount(nextHumanPlayerCount);
+    if (plannedPlayerCount < nextHumanPlayerCount) {
+      const nextPlayerCount = Math.max(5, nextHumanPlayerCount) as (typeof playerCountRange)[number];
+      setPlannedPlayerCount(nextPlayerCount);
+      setHostRoleOptions(getRecommendedRolePresetOptions(nextPlayerCount));
     }
   }
 
@@ -656,7 +684,9 @@ function App() {
               <input value={hostName} onChange={(event) => setHostName(event.target.value)} maxLength={24} autoFocus />
             </label>
             <CreateRoomRoleConfig
+              humanPlayerCount={humanPlayerCount}
               playerCount={plannedPlayerCount}
+              onHumanPlayerCountChange={handleHumanPlayerCount}
               roleOptions={hostRoleOptions}
               onPlayerCountChange={handlePlannedPlayerCount}
               onToggleRole={handleHostRoleToggle}
@@ -744,13 +774,17 @@ function App() {
 }
 
 function CreateRoomRoleConfig({
+  humanPlayerCount,
   playerCount,
   roleOptions,
+  onHumanPlayerCountChange,
   onPlayerCountChange,
   onToggleRole,
 }: {
+  humanPlayerCount: number;
   playerCount: (typeof playerCountRange)[number];
   roleOptions: RolePresetOptions;
+  onHumanPlayerCountChange: (playerCount: number) => void;
   onPlayerCountChange: (playerCount: (typeof playerCountRange)[number]) => void;
   onToggleRole: (key: keyof RolePresetOptions) => void;
 }) {
@@ -759,17 +793,35 @@ function CreateRoomRoleConfig({
   const preset = buildRolePreset(playerCount, roleOptions);
   const goodRoles = preset.roles.filter((role) => roleAllegiance(role) === 'good');
   const evilRoles = preset.roles.filter((role) => roleAllegiance(role) === 'evil');
+  const aiCount = Math.max(0, playerCount - humanPlayerCount);
 
   return (
     <section className="create-role-config" aria-label={t('Role configuration')}>
       <div>
-        <h3>{t('Planned players')}</h3>
-        <div className="segmented" aria-label={t('Planned player count')}>
+        <h3>{t('Human players')}</h3>
+        <div className="segmented" aria-label={t('Human player count')}>
+          {Array.from({ length: 9 }, (_, index) => index + 2).map((count) => (
+            <button
+              key={count}
+              type="button"
+              className={count === humanPlayerCount ? 'selected' : ''}
+              onClick={() => onHumanPlayerCountChange(count)}
+            >
+              {count}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <h3>{t('Table size')}</h3>
+        <div className="segmented" aria-label={t('Table size')}>
           {playerCountRange.map((count) => (
             <button
               key={count}
               type="button"
               className={count === playerCount ? 'selected' : ''}
+              disabled={count < humanPlayerCount}
               onClick={() => onPlayerCountChange(count)}
             >
               {count}
@@ -777,6 +829,12 @@ function CreateRoomRoleConfig({
           ))}
         </div>
         <p className="create-role-summary">{rule.goodCount} {t('Good')} / {rule.evilCount} {t('Evil')}</p>
+        {aiCount > 0 && (
+          <div className="ai-fill-note">
+            <strong>{humanPlayerCount} {t('humans')} + {aiCount} {t('AI')}</strong>
+            <span>{t('AI will fill empty seats and auto-ready/vote/play mission cards.')}</span>
+          </div>
+        )}
       </div>
 
       <div>
@@ -2893,7 +2951,7 @@ function RoomView({
   const currentTeamSize = missionState ? getTeamSize(snapshot.players.length, missionState.roundIndex) : 0;
   const [assassinationTargetId, setAssassinationTargetId] = useState('');
   const readyCount = snapshot.players.filter((player) => player.isReady).length;
-  const canStart = Boolean(currentPlayer?.isHost) && canStartGame(snapshot.players);
+  const canStart = Boolean(currentPlayer?.isHost) && canStartGame(snapshot.players, snapshot.room.settings);
   const isFinished = snapshot.room.status === 'finished' || missionState?.phase === 'finished';
   const showJoinPanel = !started;
   const joinLinkPath = buildJoinUrl(window.location.href, snapshot.room.code);
@@ -3045,10 +3103,10 @@ function RoomView({
           <ol className="players">
             {snapshot.players.map((player) => (
               <li key={player.id} className={player.id === currentPlayer?.id ? 'me' : ''}>
-                <span>{player.displayName}</span>
-                <small>{player.isHost ? t('Host') : `${t('Seat')} ${player.seatIndex + 1}`}</small>
+                <span>{player.displayName} {player.isAi && <em className="ai-player-badge">{t('AI')}</em>}</span>
+                <small>{player.isHost ? t('Host') : player.isAi ? t('AI seat') : `${t('Seat')} ${player.seatIndex + 1}`}</small>
                 <strong>{player.isReady ? t('Ready') : t('Waiting')}</strong>
-                {currentPlayer?.isHost && !player.isHost && !isDemoMode && (
+                {currentPlayer?.isHost && !player.isHost && !player.isAi && !isDemoMode && (
                   <>
                     <button type="button" onClick={() => onTransferHost(player.id)} disabled={busy}>{t('Make Host')}</button>
                     {!started && <button type="button" className="small-danger" onClick={() => onRemovePlayer(player.id)} disabled={busy}>{t('Remove')}</button>}
@@ -3089,7 +3147,11 @@ function RoomView({
 }
 
 function getRoomPlayerNames(players: RoomPlayer[], playerIds: string[] = []): string[] {
-  return playerIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id);
+  return playerIds.map((id) => {
+    const player = players.find((candidate) => candidate.id === id);
+    if (!player) return id;
+    return player.isAi ? `${player.displayName} (AI)` : player.displayName;
+  });
 }
 
 function MissionPanel({
@@ -3398,6 +3460,13 @@ function cloneRoomSnapshot(snapshot: RoomSnapshot): RoomSnapshot {
 
 function clearEntryStepFromUrl() {
   window.history.replaceState({ step: 'home' }, '', buildStepUrl(window.location.href, 'home'));
+}
+
+async function executeRoomAiAction(roomId: string, action: RoomAiAction): Promise<RoomSnapshot> {
+  if (action.type === 'proposeTeam') return proposeMissionTeam(roomId, action.leaderPlayerId, action.selectedTeamIds);
+  if (action.type === 'submitTeamVote') return submitTeamVote(roomId, action.playerId, action.vote);
+  if (action.type === 'submitMissionCard') return submitMissionCard(roomId, action.playerId, action.card);
+  return submitAssassination(roomId, action.assassinPlayerId, action.targetPlayerId);
 }
 
 const root = createRoot(document.getElementById('root')!);

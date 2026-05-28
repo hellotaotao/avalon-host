@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { assignRoles } from '../domain/avalon';
 import {
+  applyMissionStateToSnapshot,
   assertDeletedRows,
+  buildAiPlayers,
   buildCreateRoomSettings,
   canStartGame,
   createHostDemoRoom,
@@ -18,6 +20,7 @@ import {
   resetRoomToLobbySnapshot,
   normalizeRoomCode,
   removePlayerFromSnapshot,
+  readyForNextGameInSnapshot,
   startDemoSnapshot,
   validateHostCanStart,
   type RoomSnapshot,
@@ -88,15 +91,39 @@ describe('room service rules', () => {
 
   it('builds saved create-room settings from planned player count and role options', () => {
     expect(buildCreateRoomSettings({
+      humanPlayerCount: 5,
       plannedPlayerCount: 7,
       roleOptions: { includePercival: true, includeMorgana: false, includeMordred: true, includeOberon: false },
     })).toEqual({
+      humanPlayerCount: 5,
       plannedPlayerCount: 7,
       includePercival: true,
       includeMorgana: false,
       includeMordred: true,
       includeOberon: false,
     });
+  });
+
+  it('splits human count from table size and creates ready AI fill seats', () => {
+    const settings = buildCreateRoomSettings({
+      humanPlayerCount: 2,
+      plannedPlayerCount: 5,
+      roleOptions: { includePercival: true, includeMorgana: true },
+    });
+    const aiPlayers = buildAiPlayers('r1', settings, 1, () => `ai-${Math.random()}`);
+
+    expect(settings).toMatchObject({ humanPlayerCount: 2, plannedPlayerCount: 5 });
+    expect(aiPlayers).toHaveLength(3);
+    expect(aiPlayers.every((player) => player.isAi && player.isReady)).toBe(true);
+  });
+
+  it('validates start against configured table size when AI fills part of the room', () => {
+    const players = [
+      ...makePlayers(1, [0]),
+      ...makePlayers(3).map((player, index) => ({ ...player, id: `ai${index + 1}`, seatIndex: index + 1, isHost: false, isAi: true })),
+    ];
+
+    expect(getStartValidation(players, { humanPlayerCount: 2, plannedPlayerCount: 5 })).toBe('Need 1 more ready player to start.');
   });
 
   it('starts with the room settings role configuration', () => {
@@ -165,10 +192,12 @@ describe('room service rules', () => {
     snapshot.room.status = 'mission';
     snapshot.room.settings.missionState = { phase: 'mission', roundIndex: 1, proposalIndex: 0, leaderPlayerId: 'p1', selectedTeamIds: ['p1', 'p2'], missionResults: [] };
     snapshot.players[0].role = 'Merlin';
+    snapshot.players[2].isAi = true;
     resetRoomToLobbySnapshot(snapshot, 'p1');
     expect(snapshot.room.status).toBe('lobby');
     expect(snapshot.room.settings.missionState).toBeUndefined();
-    expect(snapshot.players.every((player) => !player.isReady && !player.role)).toBe(true);
+    expect(snapshot.players.find((player) => player.isAi)?.isReady).toBe(true);
+    expect(snapshot.players.filter((player) => !player.isAi).every((player) => !player.isReady && !player.role)).toBe(true);
   });
 
   it('does not allow non-host players to abandon a game', () => {
@@ -205,6 +234,7 @@ describe('room service rules', () => {
     snapshot.room.updatedAt = new Date('2026-01-01T00:00:00Z').toISOString();
     snapshot.room.settings.missionState = { phase: 'mission', roundIndex: 1, proposalIndex: 0, leaderPlayerId: 'p1', selectedTeamIds: ['p1', 'p2'], missionResults: [] };
     snapshot.players[1].role = 'Assassin';
+    snapshot.players[3].isAi = true;
 
     expect(isRoomStaleForExit(snapshot, Date.parse('2026-01-01T00:05:00Z'))).toBe(true);
     leavePlayerFromSnapshot(snapshot, 'p3', { allowStaleActiveRoom: true });
@@ -212,7 +242,8 @@ describe('room service rules', () => {
     expect(snapshot.room.status).toBe('lobby');
     expect(snapshot.room.settings.missionState).toBeUndefined();
     expect(snapshot.players.map((player) => player.id)).toEqual(['p1', 'p2', 'p4', 'p5']);
-    expect(snapshot.players.every((player) => !player.isReady && !player.role)).toBe(true);
+    expect(snapshot.players.find((player) => player.isAi)?.isReady).toBe(true);
+    expect(snapshot.players.filter((player) => !player.isAi).every((player) => !player.isReady && !player.role)).toBe(true);
   });
 
   it('allows players to leave after a game finishes', () => {
@@ -220,6 +251,35 @@ describe('room service rules', () => {
     snapshot.room.status = 'finished';
     leavePlayerFromSnapshot(snapshot, 'p3');
     expect(snapshot.players.map((player) => player.id)).toEqual(['p1', 'p2', 'p4', 'p5']);
+  });
+
+  it('counts AI players as ready when a finished game resets for play again', () => {
+    const snapshot = makeSnapshot(5);
+    const roles = ['Merlin', 'Assassin', 'Loyal Servant', 'Loyal Servant', 'Loyal Servant'] as const;
+    snapshot.players = snapshot.players.map((player, index) => ({
+      ...player,
+      isAi: index >= 2,
+      role: roles[index],
+    }));
+    applyMissionStateToSnapshot(snapshot, {
+      phase: 'finished',
+      roundIndex: 2,
+      leaderPlayerId: 'p1',
+      selectedTeamIds: [],
+      proposalIndex: 0,
+      missionResults: [],
+      winner: 'evil',
+    });
+
+    expect(snapshot.room.settings.nextGameReadyPlayerIds).toEqual(['p3', 'p4', 'p5']);
+
+    readyForNextGameInSnapshot(snapshot, 'p1');
+    expect(snapshot.room.status).toBe('finished');
+    readyForNextGameInSnapshot(snapshot, 'p2');
+
+    expect(snapshot.room.status).toBe('lobby');
+    expect(snapshot.players.filter((player) => player.isAi).every((player) => player.isReady)).toBe(true);
+    expect(snapshot.players.every((player) => !player.role)).toBe(true);
   });
 
   it('finds an existing same-device player for rejoin', () => {

@@ -142,7 +142,7 @@ test('lobby room controls are scoped to host and guests', async ({ browser }) =>
 
 test('create-room shows default roles and custom role config affects assignment', async ({ browser }) => {
   const room = await createLobbyRoom(browser, 7, async (host) => {
-    await expect(host.getByLabel(/Planned player count/i).getByRole('button', { name: '7' })).toHaveClass(/selected/);
+    await expect(host.getByLabel(/Table size/i).getByRole('button', { name: '7' })).toHaveClass(/selected/);
     await expect(host.getByText('Good roles')).toBeVisible();
     await expect(host.locator('.create-role-list').filter({ hasText: 'Good roles' }).getByText('Percival')).toBeVisible();
     await expect(host.locator('.create-role-list').filter({ hasText: 'Evil roles' }).getByText('Morgana')).toBeVisible();
@@ -169,6 +169,58 @@ test('create-room shows default roles and custom role config affects assignment'
     expect(roles).not.toContain('Morgana');
   } finally {
     await room.context.close();
+  }
+});
+
+test('create-room teaches AI fill and a two-human five-seat room progresses with AI actions', async ({ browser }) => {
+  const context = await browser.newContext();
+  const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const host = await context.newPage();
+  const guest = await context.newPage();
+  const players: PlayerSession[] = [
+    { index: 0, name: 'E2E Human 1', page: host },
+    { index: 1, name: 'E2E Human 2', page: guest },
+  ];
+
+  try {
+    await host.goto(`/?devSession=${runId}-p1`);
+    await host.getByRole('button', { name: /Host the round/i }).click();
+    await expect(host.getByLabel(/Human player count/i).getByRole('button', { name: '5' })).toHaveClass(/selected/);
+    await expect(host.getByLabel(/Table size/i).getByRole('button', { name: '5' })).toHaveClass(/selected/);
+    await host.getByLabel(/Your nickname/i).fill(players[0].name);
+    await host.getByLabel(/Human player count/i).getByRole('button', { name: '2' }).click();
+    await expect(host.getByText(/2 humans \+ 3 AI/i)).toBeVisible();
+    await expect(host.getByText(/AI will fill empty seats and auto-ready\/vote\/play mission cards/i)).toBeVisible();
+    await host.getByRole('button', { name: /^Create Room$/i }).click();
+
+    await expect(host.getByRole('heading', { name: /Current Room/i })).toBeVisible();
+    await expect(host.locator('.players li').filter({ hasText: /AI Seat 1/i }).getByText(/^AI$/)).toBeVisible();
+    const roomCode = (await host.locator('.room-code-copy strong').innerText()).trim();
+
+    await guest.goto(`/?devSession=${runId}-p2&step=join&code=${roomCode}`);
+    await guest.getByLabel(/Your nickname/i).fill(players[1].name);
+    await guest.getByRole('button', { name: /^Join Room$/i }).click();
+    await expect(guest.getByRole('heading', { name: /Current Room/i })).toBeVisible();
+
+    for (const player of players) {
+      const readyButton = player.page.getByRole('button', { name: /^Set Ready$/i });
+      if (await readyButton.isVisible()) await readyButton.click();
+    }
+
+    await expect(host.getByRole('button', { name: /^Start Game$/i })).toBeEnabled();
+    await host.getByRole('button', { name: /^Start Game$/i }).click();
+    await expect(host.getByText(/Table Quest/i)).toBeVisible();
+    await expect(guest.getByText(/Table Quest/i)).toBeVisible();
+
+    await proposeTeam(players, players);
+    await submitVotes(players, () => 'approve');
+    await expect(host.getByText('Mission card', { exact: true }).first().or(host.getByText('Mission', { exact: true }).first())).toBeVisible();
+    await submitMissionCards(players, () => 'success');
+
+    await expect(host.getByText(/Good won/i).or(host.getByText(/Evil won/i))).toBeVisible();
+    await expect(host.getByText('Quest 2 of 5')).toBeVisible();
+  } finally {
+    await context.close();
   }
 });
 
@@ -238,7 +290,8 @@ async function createLobbyRoom(browser: Browser, playerCount: number, configureH
   await host.goto(`/?devSession=${runId}-p1`);
   await host.getByRole('button', { name: /Host the round/i }).click();
   await host.getByLabel(/Your nickname/i).fill(players[0].name);
-  await host.getByLabel(/Planned player count/i).getByRole('button', { name: String(playerCount) }).click();
+  await host.getByLabel(/Human player count/i).getByRole('button', { name: String(playerCount) }).click();
+  await host.getByLabel(/Table size/i).getByRole('button', { name: String(playerCount) }).click();
   await configureHost?.(host);
   await host.getByRole('button', { name: /^Create Room$/i }).click();
   await expect(host.getByRole('heading', { name: /Current Room/i })).toBeVisible();

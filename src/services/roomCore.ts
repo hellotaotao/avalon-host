@@ -20,6 +20,7 @@ export type RoomStatus = 'setup' | 'lobby' | 'locked' | 'reveal' | 'proposal' | 
 
 export interface RoomSettings extends AssignmentOptions {
   plannedPlayerCount?: number;
+  humanPlayerCount?: number;
   createdInDemoMode?: boolean;
   missionState?: MissionState;
   gameHistory?: RoomGameHistoryEntry[];
@@ -60,6 +61,7 @@ export interface RoomPlayer {
   isReady: boolean;
   role?: Role;
   deviceToken?: string;
+  isAi?: boolean;
 }
 
 export interface RoomSnapshot {
@@ -69,6 +71,7 @@ export interface RoomSnapshot {
 
 export interface CreateRoomInput {
   displayName: string;
+  humanPlayerCount?: number;
   plannedPlayerCount?: number;
   roleOptions?: RolePresetOptions;
   /** @deprecated Formal rooms now use recommended role presets by player count. */
@@ -107,25 +110,31 @@ export function normalizeRoomCode(code: string): string {
   return code.replace(/\D/g, '').slice(0, 5);
 }
 
-export function getStartValidation(players: RoomPlayer[]): string | undefined {
+export function getStartValidation(players: RoomPlayer[], settings?: RoomSettings): string | undefined {
+  return getStartValidationForSettings(players, settings);
+}
+
+export function getStartValidationForSettings(players: RoomPlayer[], settings?: RoomSettings): string | undefined {
   const startableCount = getStartablePlayers(players).length;
-  if (startableCount < 5) {
-    const neededCount = 5 - startableCount;
+  const requiredCount = settings?.plannedPlayerCount ?? 5;
+  if (startableCount < requiredCount) {
+    const neededCount = requiredCount - startableCount;
     return `Need ${neededCount} more ready player${neededCount === 1 ? '' : 's'} to start.`;
   }
   if (startableCount > 10) return 'Avalon Lite supports at most 10 players.';
+  if (settings?.plannedPlayerCount && startableCount > settings.plannedPlayerCount) return `This room is set for ${settings.plannedPlayerCount} players.`;
   return undefined;
 }
 
-export function canStartGame(players: RoomPlayer[]): boolean {
-  return !getStartValidation(players);
+export function canStartGame(players: RoomPlayer[], settings?: RoomSettings): boolean {
+  return !getStartValidationForSettings(players, settings);
 }
 
 export function validateHostCanStart(snapshot: RoomSnapshot, hostPlayerId: string): string | undefined {
   const player = snapshot.players.find((item) => item.id === hostPlayerId);
   if (!player) return 'Player not found.';
   if (!player.isHost) return 'Only the host can start the game.';
-  return getStartValidation(snapshot.players);
+  return getStartValidationForSettings(snapshot.players, snapshot.room.settings);
 }
 
 export function getStartablePlayers(players: RoomPlayer[]): RoomPlayer[] {
@@ -160,10 +169,9 @@ export function createJoinDemoRoom(displayName: string): { snapshot: RoomSnapsho
   return { snapshot: makeDemoSnapshot(roomId, DEMO_JOIN_ROOM_CODE, players), currentPlayerId };
 }
 
-export function buildCreateRoomSettings(input: Pick<CreateRoomInput, 'plannedPlayerCount' | 'roleOptions' | 'includePercivalMorgana'>): RoomSettings {
-  const plannedPlayerCount: number = playerCountRange.includes(input.plannedPlayerCount as (typeof playerCountRange)[number])
-    ? input.plannedPlayerCount!
-    : playerCountRange[0];
+export function buildCreateRoomSettings(input: Pick<CreateRoomInput, 'humanPlayerCount' | 'plannedPlayerCount' | 'roleOptions' | 'includePercivalMorgana'>): RoomSettings {
+  const humanPlayerCount = sanitizeHumanPlayerCount(input.humanPlayerCount);
+  const plannedPlayerCount = sanitizePlannedPlayerCount(input.plannedPlayerCount, humanPlayerCount);
   const roleOptions = sanitizeRoomRoleOptions(plannedPlayerCount, input.roleOptions ?? {
     ...getRecommendedRolePresetOptions(plannedPlayerCount),
     ...(typeof input.includePercivalMorgana === 'boolean'
@@ -171,13 +179,31 @@ export function buildCreateRoomSettings(input: Pick<CreateRoomInput, 'plannedPla
       : {}),
   });
   return {
+    humanPlayerCount,
     plannedPlayerCount,
     ...roleOptions,
   };
 }
 
+export function getAiFillCount(settings: RoomSettings): number {
+  return Math.max(0, (settings.plannedPlayerCount ?? 5) - (settings.humanPlayerCount ?? settings.plannedPlayerCount ?? 5));
+}
+
+export function buildAiPlayers(roomId: string, settings: RoomSettings, startSeatIndex: number, idFactory: () => string = () => crypto.randomUUID()): RoomPlayer[] {
+  return Array.from({ length: getAiFillCount(settings) }, (_, index) => ({
+    id: idFactory(),
+    roomId,
+    displayName: `AI Seat ${index + 1}`,
+    seatIndex: startSeatIndex + index,
+    isHost: false,
+    isReady: true,
+    isAi: true,
+    deviceToken: `ai:${roomId}:${index + 1}`,
+  }));
+}
+
 export function startDemoSnapshot(snapshot: RoomSnapshot, hostPlayerId?: string): StartResult {
-  const reason = hostPlayerId ? validateHostCanStart(snapshot, hostPlayerId) : getStartValidation(snapshot.players);
+  const reason = hostPlayerId ? validateHostCanStart(snapshot, hostPlayerId) : getStartValidation(snapshot.players, snapshot.room.settings);
   if (reason) return { ok: false, reason, snapshot };
   const players = getStartablePlayers(snapshot.players);
   const assigned = assignRoles(
@@ -228,7 +254,7 @@ export function applyMissionStateToSnapshot(snapshot: RoomSnapshot, missionState
       ...(snapshot.room.settings.gameHistory ?? []),
       buildGameHistoryEntry(snapshot, missionState, endedAt),
     ];
-    settings.nextGameReadyPlayerIds = [];
+    settings.nextGameReadyPlayerIds = snapshot.players.filter((player) => player.isAi).map((player) => player.id);
   }
   snapshot.room = {
     ...snapshot.room,
@@ -244,7 +270,11 @@ export function readyForNextGameInSnapshot(snapshot: RoomSnapshot, playerId: str
     throw new Error('The game is not finished yet.');
   }
 
-  const nextGameReadyPlayerIds = Array.from(new Set([...(snapshot.room.settings.nextGameReadyPlayerIds ?? []), playerId]));
+  const nextGameReadyPlayerIds = Array.from(new Set([
+    ...snapshot.players.filter((player) => player.isAi).map((player) => player.id),
+    ...(snapshot.room.settings.nextGameReadyPlayerIds ?? []),
+    playerId,
+  ]));
   const allPlayersReady = snapshot.players.every((player) => nextGameReadyPlayerIds.includes(player.id));
   if (!allPlayersReady) {
     snapshot.room.settings = {
@@ -352,7 +382,7 @@ function resetAbandonedRoomAfterLeave(snapshot: RoomSnapshot) {
   snapshot.players = snapshot.players.map((player, index) => ({
     ...player,
     seatIndex: index,
-    isReady: false,
+    isReady: Boolean(player.isAi),
     role: undefined,
   }));
 }
@@ -379,7 +409,7 @@ export function resetRoomToLobbySnapshot(snapshot: RoomSnapshot, hostPlayerId: s
   snapshot.players = snapshot.players.map((player, index) => ({
     ...player,
     seatIndex: index,
-    isReady: false,
+    isReady: Boolean(player.isAi),
     role: undefined,
   }));
   return snapshot;
@@ -426,6 +456,7 @@ export function mapPlayer(row: Record<string, unknown>): RoomPlayer {
     isReady: row.is_ready as boolean,
     role: row.role as Role | undefined,
     deviceToken: row.device_token_hash as string | undefined,
+    isAi: Boolean(row.is_ai),
   };
 }
 
@@ -471,4 +502,15 @@ function makeDemoPlayer(roomId: string, id: string, displayName: string, seatInd
     isReady: true,
     deviceToken: id,
   };
+}
+
+function sanitizeHumanPlayerCount(value: number | undefined): number {
+  if (Number.isInteger(value) && value! >= 2 && value! <= 10) return value!;
+  return 5;
+}
+
+function sanitizePlannedPlayerCount(value: number | undefined, humanPlayerCount: number): number {
+  const candidate = playerCountRange.includes(value as (typeof playerCountRange)[number]) ? value! : Math.max(5, humanPlayerCount);
+  const clamped = Math.max(5, Math.min(10, candidate));
+  return Math.max(clamped, humanPlayerCount) as (typeof playerCountRange)[number];
 }

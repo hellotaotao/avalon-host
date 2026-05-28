@@ -563,6 +563,27 @@ label {
   font-weight: 900;
 }
 
+.ai-fill-note {
+  display: grid;
+  gap: 0.2rem;
+  margin-top: 0.55rem;
+  border: 1px solid #7f9a54;
+  border-radius: 8px;
+  background: #eef6dc;
+  color: #2f421f;
+  padding: 0.65rem;
+}
+
+.ai-fill-note strong {
+  font-weight: 900;
+}
+
+.ai-fill-note span {
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .create-role-sides {
   display: grid;
   gap: 0.75rem;
@@ -1361,6 +1382,20 @@ label {
   min-width: 0;
   overflow-wrap: anywhere;
   font-weight: 900;
+}
+
+.ai-player-badge {
+  display: inline-flex;
+  margin-left: 0.35rem;
+  border: 1px solid #5f7443;
+  border-radius: 999px;
+  background: #e0edc9;
+  color: #2f421f;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 900;
+  vertical-align: middle;
 }
 
 .players small {

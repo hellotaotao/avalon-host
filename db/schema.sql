@@ -21,11 +21,14 @@ create table if not exists players (
   seat_index integer not null,
   is_host boolean not null default false,
   is_ready boolean not null default false,
+  is_ai boolean not null default false,
   role text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (room_id, seat_index)
 );
+
+alter table players add column if not exists is_ai boolean not null default false;
 
 create index if not exists rooms_cleanup_idx on rooms(status, updated_at);
 create index if not exists players_room_id_idx on players(room_id);

@@ -11,6 +11,7 @@ import { isDevSessionActive } from '../sessionKeys';
 import {
   applyMissionStateToSnapshot,
   buildCreateRoomSettings,
+  buildAiPlayers,
   findPlayerByDeviceToken,
   findPlayerByDisplayName,
   generateRoomCode,
@@ -34,6 +35,7 @@ import {
 export {
   applyMissionStateToSnapshot,
   assertDeletedRows,
+  buildAiPlayers,
   buildCreateRoomSettings,
   canStartGame,
   createHostDemoRoom,
@@ -46,6 +48,7 @@ export {
   getPrivateRoleInfo,
   getStartablePlayers,
   getStartValidation,
+  getStartValidationForSettings,
   leavePlayerFromSnapshot,
   LOCAL_ROOMS_STORAGE_KEY,
   normalizeRoomCode,
@@ -194,7 +197,7 @@ const localRepository: RoomRepository = {
       isReady: false,
       deviceToken: input.deviceToken,
     };
-    const snapshot = { room, players: [player] };
+    const snapshot = { room, players: [player, ...buildAiPlayers(room.id, room.settings, 1)] };
     data.rooms.push(snapshot);
     writeRooms(data, snapshot.room.id);
     return { snapshot, currentPlayerId: player.id };
@@ -212,14 +215,15 @@ const localRepository: RoomRepository = {
       return { snapshot, currentPlayerId: sameDevicePlayer.id };
     }
     if (snapshot.room.status !== 'lobby') throw new Error('This game has already started. Only original players can re-enter from the same device.');
-    const existingPlayer = findPlayerByDisplayName(snapshot.players, displayName);
+    const existingPlayer = findPlayerByDisplayName(snapshot.players.filter((player) => !player.isAi), displayName);
     if (existingPlayer) {
       if (existingPlayer.displayName !== displayName) existingPlayer.displayName = displayName;
       existingPlayer.deviceToken = input.deviceToken;
       writeRooms(data, snapshot.room.id);
       return { snapshot, currentPlayerId: existingPlayer.id };
     }
-    if (snapshot.players.length >= 10) throw new Error('This room already has 10 players.');
+    const capacity = snapshot.room.settings.plannedPlayerCount ?? 10;
+    if (snapshot.players.length >= capacity) throw new Error('This room is already full.');
     const player = {
       id: crypto.randomUUID(),
       roomId: snapshot.room.id,
