@@ -87,6 +87,8 @@ function App() {
   const [currentPlayerId, setCurrentPlayerId] = useState(localStorage.getItem(getSessionStorageKeys().currentPlayerId) ?? '');
   const [deviceToken] = useState(() => getOrCreateDeviceToken());
   const [hostName, setHostName] = useState('');
+  const [plannedPlayerCount, setPlannedPlayerCount] = useState<(typeof playerCountRange)[number]>(5);
+  const [hostRoleOptions, setHostRoleOptions] = useState<RolePresetOptions>(() => getRecommendedRolePresetOptions(5));
   const [joinName, setJoinName] = useState('');
   const [joinCode, setJoinCode] = useState(() => parseJoinCodeFromUrl(window.location.href));
   const [message, setMessage] = useState('');
@@ -178,7 +180,12 @@ function App() {
     setBusy(true);
     setMessage('');
     try {
-      const result = await createRoom({ displayName: hostName, deviceToken });
+      const result = await createRoom({
+        displayName: hostName,
+        plannedPlayerCount,
+        roleOptions: hostRoleOptions,
+        deviceToken,
+      });
       saveSessionBinding(result.snapshot.room.id, result.currentPlayerId);
       setCurrentPlayerId(result.currentPlayerId);
       setSnapshot(result.snapshot);
@@ -189,6 +196,15 @@ function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function handlePlannedPlayerCount(nextPlayerCount: (typeof playerCountRange)[number]) {
+    setPlannedPlayerCount(nextPlayerCount);
+    setHostRoleOptions(getRecommendedRolePresetOptions(nextPlayerCount));
+  }
+
+  function handleHostRoleToggle(key: keyof RolePresetOptions) {
+    setHostRoleOptions((current) => sanitizeRoleOptions(plannedPlayerCount, { ...current, [key]: !current[key] }));
   }
 
   async function handleJoinRoom(event: React.FormEvent) {
@@ -629,7 +645,12 @@ function App() {
               {t('Your nickname')}
               <input value={hostName} onChange={(event) => setHostName(event.target.value)} maxLength={24} autoFocus />
             </label>
-            <p className="hint">{t('Roles use the recommended Avalon setup by player count: 5–6 include Percival + Morgana; 7+ also adds Mordred.')}</p>
+            <CreateRoomRoleConfig
+              playerCount={plannedPlayerCount}
+              roleOptions={hostRoleOptions}
+              onPlayerCountChange={handlePlannedPlayerCount}
+              onToggleRole={handleHostRoleToggle}
+            />
             <button type="submit" className="primary" disabled={busy}>{busy ? t('Creating...') : t('Create Room')}</button>
           </form>
         </section>
@@ -709,6 +730,92 @@ function App() {
     setScreen(nextScreen);
     setMessage('');
   }
+}
+
+function CreateRoomRoleConfig({
+  playerCount,
+  roleOptions,
+  onPlayerCountChange,
+  onToggleRole,
+}: {
+  playerCount: (typeof playerCountRange)[number];
+  roleOptions: RolePresetOptions;
+  onPlayerCountChange: (playerCount: (typeof playerCountRange)[number]) => void;
+  onToggleRole: (key: keyof RolePresetOptions) => void;
+}) {
+  const { t, language } = useI18n();
+  const rule = getPlayerCountRule(playerCount);
+  const preset = buildRolePreset(playerCount, roleOptions);
+  const goodRoles = preset.roles.filter((role) => roleAllegiance(role) === 'good');
+  const evilRoles = preset.roles.filter((role) => roleAllegiance(role) === 'evil');
+
+  return (
+    <section className="create-role-config" aria-label={t('Role configuration')}>
+      <div>
+        <h3>{t('Planned players')}</h3>
+        <div className="segmented" aria-label={t('Planned player count')}>
+          {playerCountRange.map((count) => (
+            <button
+              key={count}
+              type="button"
+              className={count === playerCount ? 'selected' : ''}
+              onClick={() => onPlayerCountChange(count)}
+            >
+              {count}
+            </button>
+          ))}
+        </div>
+        <p className="create-role-summary">{rule.goodCount} {t('Good')} / {rule.evilCount} {t('Evil')}</p>
+      </div>
+
+      <div>
+        <h3>{t('Role setup')}</h3>
+        <p className="hint">{t('Recommended defaults update when player count changes. Adjust special roles before creating the room.')}</p>
+        <div className="create-role-sides">
+          <RoleList title={t('Good roles')} roles={goodRoles} language={language} />
+          <RoleList title={t('Evil roles')} roles={evilRoles} language={language} />
+        </div>
+      </div>
+
+      <div>
+        <h3>{t('Special roles')}</h3>
+        <div className="role-option-chips" aria-label={t('Special roles')}>
+          {optionalRoleControls.map((control) => {
+            const checked = Boolean(roleOptions[control.key]);
+            const disabled = !checked && !canEnableRoleOption(playerCount, roleOptions, control.key);
+            return (
+              <button
+                key={control.key}
+                type="button"
+                className={`role-option-chip ${checked ? 'selected' : ''}`}
+                aria-pressed={checked}
+                disabled={disabled}
+                onClick={() => onToggleRole(control.key)}
+              >
+                <span>{formatRole(control.role, language)}</span>
+                <small>{t(control.note)}</small>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RoleList({ title, roles, language }: { title: string; roles: Role[]; language: ReturnType<typeof useI18n>['language'] }) {
+  return (
+    <div className="create-role-list">
+      <span>{title}</span>
+      <div>
+        {summarizeRoleEntries(roles).map((item) => (
+          <span key={item.role} className={`role-chip ${roleAllegiance(item.role)}`}>
+            {formatRoleCount(item.role, item.count, language)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 type DemoController = 'human' | 'ai';
@@ -2439,13 +2546,18 @@ function canEnableRoleOption(playerCount: number, roleOptions: RolePresetOptions
 }
 
 function summarizeRoles(roles: Role[], language: ReturnType<typeof useI18n>['language'] = 'en'): string {
+  return summarizeRoleEntries(roles)
+    .map((item) => formatRoleCount(item.role, item.count, language))
+    .join(', ');
+}
+
+function summarizeRoleEntries(roles: Role[]): Array<{ role: Role; count: number }> {
   const counts = roles.reduce<Record<string, number>>((summary, role) => {
     summary[role] = (summary[role] ?? 0) + 1;
     return summary;
   }, {});
   return Object.entries(counts)
-    .map(([role, count]) => formatRoleCount(role as Role, count, language))
-    .join(', ');
+    .map(([role, count]) => ({ role: role as Role, count }));
 }
 
 function formatRoleCount(role: Role, count: number, language: ReturnType<typeof useI18n>['language']): string {

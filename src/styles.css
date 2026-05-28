@@ -505,6 +505,71 @@ label {
   margin-top: 0.75rem;
 }
 
+.create-role-config {
+  display: grid;
+  gap: 1rem;
+}
+
+.create-role-config h3 {
+  margin: 0 0 0.55rem;
+  color: #3a2010;
+}
+
+.create-role-summary {
+  margin-top: 0.55rem;
+  color: #4a2a14;
+  font-weight: 900;
+}
+
+.create-role-sides {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.create-role-list {
+  display: grid;
+  gap: 0.45rem;
+  border: 1px solid #c59a4d;
+  border-radius: 8px;
+  background: #fff4d3;
+  padding: 0.65rem;
+}
+
+.create-role-list > span {
+  color: #4a2a14;
+  font-weight: 900;
+}
+
+.create-role-list div,
+.role-option-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.role-option-chip {
+  display: grid;
+  gap: 0.15rem;
+  min-height: 48px;
+  border-color: #b07a36;
+  background: #fff0c4;
+  text-align: left;
+}
+
+.role-option-chip.selected {
+  border-color: #58783d;
+  background: #d9e7ca;
+  color: #26351f;
+}
+
+.role-option-chip small {
+  max-width: 15rem;
+  color: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
 .role-toggle {
   align-items: flex-start;
   border: 1px solid #b07a36;

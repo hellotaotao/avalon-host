@@ -127,6 +127,38 @@ test('lobby room controls are scoped to host and guests', async ({ browser }) =>
   }
 });
 
+test('create-room shows default roles and custom role config affects assignment', async ({ browser }) => {
+  const room = await createLobbyRoom(browser, 7, async (host) => {
+    await expect(host.getByLabel(/Planned player count/i).getByRole('button', { name: '7' })).toHaveClass(/selected/);
+    await expect(host.getByText('Good roles')).toBeVisible();
+    await expect(host.locator('.create-role-list').filter({ hasText: 'Good roles' }).getByText('Percival')).toBeVisible();
+    await expect(host.locator('.create-role-list').filter({ hasText: 'Evil roles' }).getByText('Morgana')).toBeVisible();
+    await expect(host.locator('.create-role-list').filter({ hasText: 'Evil roles' }).getByText('Mordred')).toBeVisible();
+
+    await host.getByRole('button', { name: /^Morgana/i }).click();
+    await expect(host.locator('.create-role-list').filter({ hasText: 'Evil roles' }).getByText('Morgana')).toHaveCount(0);
+  });
+
+  try {
+    const { host, players } = room;
+    for (const player of players) {
+      const readyButton = player.page.getByRole('button', { name: /^Set Ready$/i });
+      if (await readyButton.isVisible()) await readyButton.click();
+    }
+
+    await expect(host.getByRole('button', { name: /^Start Game$/i })).toBeEnabled();
+    await host.getByRole('button', { name: /^Start Game$/i }).click();
+    await revealRoles(players);
+
+    const roles = players.map((player) => player.role);
+    expect(roles).toContain('Percival');
+    expect(roles).toContain('Mordred');
+    expect(roles).not.toContain('Morgana');
+  } finally {
+    await room.context.close();
+  }
+});
+
 test('mission cards enforce Good cannot fail and Evil can fail in the live UI', async ({ browser }) => {
   await withStartedRoom(browser, 5, async ({ players }) => {
     await revealRoles(players);
@@ -180,7 +212,7 @@ async function createStartedRoom(browser: Browser, playerCount: number): Promise
   return room;
 }
 
-async function createLobbyRoom(browser: Browser, playerCount: number): Promise<StartedRoom> {
+async function createLobbyRoom(browser: Browser, playerCount: number, configureHost?: (host: Page) => Promise<void>): Promise<StartedRoom> {
   const context = await browser.newContext();
   const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const players: PlayerSession[] = [];
@@ -193,6 +225,8 @@ async function createLobbyRoom(browser: Browser, playerCount: number): Promise<S
   await host.goto(`/?devSession=${runId}-p1`);
   await host.getByRole('button', { name: /Host the round/i }).click();
   await host.getByLabel(/Your nickname/i).fill(players[0].name);
+  await host.getByLabel(/Planned player count/i).getByRole('button', { name: String(playerCount) }).click();
+  await configureHost?.(host);
   await host.getByRole('button', { name: /^Create Room$/i }).click();
   await expect(host.getByRole('heading', { name: /Current Room/i })).toBeVisible();
   const roomCode = (await host.locator('.room-code-copy strong').innerText()).trim();

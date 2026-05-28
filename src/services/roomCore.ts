@@ -1,4 +1,14 @@
-import { assignRoles, getVisibilityInfo, type AssignmentOptions, type Player as AvalonPlayer, type Role } from '../domain/avalon.js';
+import {
+  assignRoles,
+  buildRolePreset,
+  getRecommendedRolePresetOptions,
+  getVisibilityInfo,
+  playerCountRange,
+  type AssignmentOptions,
+  type Player as AvalonPlayer,
+  type Role,
+  type RolePresetOptions,
+} from '../domain/avalon.js';
 import {
   createInitialMissionState,
   type MissionState,
@@ -7,6 +17,7 @@ import {
 export type RoomStatus = 'setup' | 'lobby' | 'locked' | 'reveal' | 'proposal' | 'vote' | 'mission' | 'assassin' | 'finished';
 
 export interface RoomSettings extends AssignmentOptions {
+  plannedPlayerCount?: number;
   createdInDemoMode?: boolean;
   missionState?: MissionState;
 }
@@ -38,6 +49,8 @@ export interface RoomSnapshot {
 
 export interface CreateRoomInput {
   displayName: string;
+  plannedPlayerCount?: number;
+  roleOptions?: RolePresetOptions;
   /** @deprecated Formal rooms now use recommended role presets by player count. */
   includePercivalMorgana?: boolean;
   deviceToken: string;
@@ -127,6 +140,22 @@ export function createJoinDemoRoom(displayName: string): { snapshot: RoomSnapsho
   return { snapshot: makeDemoSnapshot(roomId, DEMO_JOIN_ROOM_CODE, players), currentPlayerId };
 }
 
+export function buildCreateRoomSettings(input: Pick<CreateRoomInput, 'plannedPlayerCount' | 'roleOptions' | 'includePercivalMorgana'>): RoomSettings {
+  const plannedPlayerCount: number = playerCountRange.includes(input.plannedPlayerCount as (typeof playerCountRange)[number])
+    ? input.plannedPlayerCount!
+    : playerCountRange[0];
+  const roleOptions = sanitizeRoomRoleOptions(plannedPlayerCount, input.roleOptions ?? {
+    ...getRecommendedRolePresetOptions(plannedPlayerCount),
+    ...(typeof input.includePercivalMorgana === 'boolean'
+      ? { includePercival: input.includePercivalMorgana, includeMorgana: input.includePercivalMorgana }
+      : {}),
+  });
+  return {
+    plannedPlayerCount,
+    ...roleOptions,
+  };
+}
+
 export function startDemoSnapshot(snapshot: RoomSnapshot, hostPlayerId?: string): StartResult {
   const reason = hostPlayerId ? validateHostCanStart(snapshot, hostPlayerId) : getStartValidation(snapshot.players);
   if (reason) return { ok: false, reason, snapshot };
@@ -154,6 +183,20 @@ export function startDemoSnapshot(snapshot: RoomSnapshot, hostPlayerId?: string)
       })),
     },
   };
+}
+
+function sanitizeRoomRoleOptions(playerCount: number, roleOptions: RolePresetOptions): RolePresetOptions {
+  const controls: Array<keyof RolePresetOptions> = ['includePercival', 'includeMorgana', 'includeMordred', 'includeOberon'];
+  return controls.reduce<RolePresetOptions>((next, key) => {
+    if (!roleOptions[key]) return { ...next, [key]: false };
+    const candidate = { ...next, [key]: true };
+    try {
+      buildRolePreset(playerCount, candidate);
+      return candidate;
+    } catch {
+      return { ...next, [key]: false };
+    }
+  }, {});
 }
 
 export function assertDeletedRows(rows: unknown[] | null | undefined, message: string) {

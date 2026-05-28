@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { assignRoles } from '../domain/avalon';
 import {
   assertDeletedRows,
+  buildCreateRoomSettings,
   canStartGame,
   createHostDemoRoom,
   createJoinDemoRoom,
@@ -83,6 +84,38 @@ describe('room service rules', () => {
     expect(assigned).toHaveLength(7);
     expect(assigned.map((player) => player.role)).toContain('Percival');
     expect(assigned.map((player) => player.role)).toContain('Morgana');
+  });
+
+  it('builds saved create-room settings from planned player count and role options', () => {
+    expect(buildCreateRoomSettings({
+      plannedPlayerCount: 7,
+      roleOptions: { includePercival: true, includeMorgana: false, includeMordred: true, includeOberon: false },
+    })).toEqual({
+      plannedPlayerCount: 7,
+      includePercival: true,
+      includeMorgana: false,
+      includeMordred: true,
+      includeOberon: false,
+    });
+  });
+
+  it('starts with the room settings role configuration', () => {
+    const snapshot = makeSnapshot(7);
+    snapshot.room.settings = {
+      plannedPlayerCount: 7,
+      includePercival: true,
+      includeMorgana: false,
+      includeMordred: true,
+      includeOberon: false,
+    };
+
+    const started = startDemoSnapshot(snapshot, 'p1');
+    const roles = started.snapshot?.players.map((player) => player.role);
+
+    expect(started.ok).toBe(true);
+    expect(roles).toContain('Percival');
+    expect(roles).toContain('Mordred');
+    expect(roles).not.toContain('Morgana');
   });
 
   it('does not allow non-host players to remove others', () => {

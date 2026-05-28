@@ -51,6 +51,20 @@ describe('Avalon Lite rules', () => {
     expect(roles.filter((role) => roleAllegiance(role) === 'evil')).toHaveLength(3);
   });
 
+  it('honors explicit custom role options when assigning roles', () => {
+    const assigned = assignRoles(makePlayers(7), {
+      includePercival: true,
+      includeMorgana: false,
+      includeMordred: true,
+      includeOberon: false,
+    }, 'custom-roles');
+    const roles = assigned.map((player) => player.role);
+    expect(roles).toContain('Percival');
+    expect(roles).toContain('Mordred');
+    expect(roles).not.toContain('Morgana');
+    expect(roles.filter((role) => role === 'Minion')).toHaveLength(1);
+  });
+
   it('assigns every player exactly one required role set', () => {
     const players = makePlayers(6);
     const assigned = assignRoles(players, {}, 'seed-a');

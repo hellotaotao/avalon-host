@@ -9,11 +9,9 @@ export interface Player {
   role?: Role;
 }
 
-export interface AssignmentOptions {
+export interface AssignmentOptions extends RolePresetOptions {
   /** @deprecated Formal rooms now use recommended role presets by player count. */
   includePercivalMorgana?: boolean;
-  includeMordred?: boolean;
-  includeOberon?: boolean;
 }
 
 export interface RolePresetOptions {
@@ -75,11 +73,7 @@ export const goodCountByPlayers: Record<number, number> = {
 };
 
 export function getRoleDistribution(playerCount: number, options: AssignmentOptions = {}): Role[] {
-  return buildRolePreset(playerCount, {
-    ...getRecommendedRolePresetOptions(playerCount),
-    includeMordred: getRecommendedRolePresetOptions(playerCount).includeMordred || options.includeMordred,
-    includeOberon: options.includeOberon,
-  }).roles;
+  return buildRolePreset(playerCount, resolveRolePresetOptions(playerCount, options)).roles;
 }
 
 export function getRecommendedRolePresetOptions(playerCount: number): RolePresetOptions {
@@ -90,6 +84,33 @@ export function getRecommendedRolePresetOptions(playerCount: number): RolePreset
 export function assignRoles(players: Player[], options: AssignmentOptions = {}, seed = 'avalon-host'): Player[] {
   const roles = shuffle(getRoleDistribution(players.length, options), seed);
   return players.map((player, index) => ({ ...player, role: roles[index] }));
+}
+
+export function resolveRolePresetOptions(playerCount: number, options: AssignmentOptions = {}): RolePresetOptions {
+  const hasExplicitPreset = (
+    'includePercival' in options ||
+    'includeMorgana' in options ||
+    'includeMordred' in options ||
+    'includeOberon' in options
+  );
+
+  if (hasExplicitPreset) {
+    return {
+      includePercival: Boolean(options.includePercival),
+      includeMorgana: Boolean(options.includeMorgana),
+      includeMordred: Boolean(options.includeMordred),
+      includeOberon: Boolean(options.includeOberon),
+    };
+  }
+
+  const recommended = getRecommendedRolePresetOptions(playerCount);
+  if (typeof options.includePercivalMorgana === 'boolean') {
+    recommended.includePercival = options.includePercivalMorgana;
+    recommended.includeMorgana = options.includePercivalMorgana;
+  }
+  if (typeof options.includeMordred === 'boolean') recommended.includeMordred = options.includeMordred;
+  if (typeof options.includeOberon === 'boolean') recommended.includeOberon = options.includeOberon;
+  return recommended;
 }
 
 export function roleAllegiance(role: Role): Allegiance {

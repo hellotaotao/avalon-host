@@ -11,6 +11,7 @@ import {
 import type { MissionCard, Vote } from '../src/domain/avalon.js';
 import {
   assertDeletedRows,
+  buildCreateRoomSettings,
   findPlayerByDisplayName,
   generateRoomCode,
   isRoomStaleForExit,
@@ -117,7 +118,7 @@ async function createRoom(input: CreateRoomInput) {
 
   const existingRooms = await sql`select code from rooms`;
   const code = generateRoomCode(existingRooms.map((room) => String(room.code)));
-  const settings: RoomSettings = {};
+  const settings: RoomSettings = buildCreateRoomSettings(input);
   const [roomRow] = await sql`
     insert into rooms (code, status, game_type, settings)
     values (${code}, 'lobby', 'avalon_lite', ${JSON.stringify(settings)}::jsonb)

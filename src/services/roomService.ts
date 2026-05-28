@@ -9,6 +9,7 @@ import {
 import type { MissionCard, Vote } from '../domain/avalon';
 import { isDevSessionActive } from '../sessionKeys';
 import {
+  buildCreateRoomSettings,
   findPlayerByDeviceToken,
   findPlayerByDisplayName,
   generateRoomCode,
@@ -30,6 +31,7 @@ import {
 
 export {
   assertDeletedRows,
+  buildCreateRoomSettings,
   canStartGame,
   createHostDemoRoom,
   createJoinDemoRoom,
@@ -169,7 +171,7 @@ const localRepository: RoomRepository = {
       code,
       status: 'lobby',
       gameType: 'avalon_lite',
-      settings: {},
+      settings: buildCreateRoomSettings(input),
       updatedAt: new Date().toISOString(),
     };
     const player = {
