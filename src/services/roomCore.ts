@@ -4,6 +4,8 @@ import {
   getRecommendedRolePresetOptions,
   getVisibilityInfo,
   playerCountRange,
+  roleAllegiance,
+  type Allegiance,
   type AssignmentOptions,
   type Player as AvalonPlayer,
   type Role,
@@ -20,6 +22,24 @@ export interface RoomSettings extends AssignmentOptions {
   plannedPlayerCount?: number;
   createdInDemoMode?: boolean;
   missionState?: MissionState;
+  gameHistory?: RoomGameHistoryEntry[];
+  nextGameReadyPlayerIds?: string[];
+}
+
+export interface RoomGamePlayerResult {
+  playerId: string;
+  displayName: string;
+  allegiance: Allegiance;
+  role: Role;
+  won: boolean;
+}
+
+export interface RoomGameHistoryEntry {
+  gameNumber: number;
+  winner: Allegiance;
+  endedAt: string;
+  endReason: 'assassination_hit' | 'assassination_miss' | 'three_failed_quests' | 'three_successful_quests';
+  playerResults: RoomGamePlayerResult[];
 }
 
 export interface Room {
@@ -174,6 +194,7 @@ export function startDemoSnapshot(snapshot: RoomSnapshot, hostPlayerId?: string)
         status: 'reveal',
         settings: {
           ...snapshot.room.settings,
+          nextGameReadyPlayerIds: undefined,
           missionState: createInitialMissionState(players.map((player) => player.id)),
         },
       },
@@ -197,6 +218,83 @@ function sanitizeRoomRoleOptions(playerCount: number, roleOptions: RolePresetOpt
       return { ...next, [key]: false };
     }
   }, {});
+}
+
+export function applyMissionStateToSnapshot(snapshot: RoomSnapshot, missionState: MissionState, endedAt = new Date().toISOString()): RoomSnapshot {
+  const wasAlreadyFinished = snapshot.room.settings.missionState?.phase === 'finished';
+  const settings: RoomSettings = { ...snapshot.room.settings, missionState };
+  if (missionState.phase === 'finished' && missionState.winner && !wasAlreadyFinished) {
+    settings.gameHistory = [
+      ...(snapshot.room.settings.gameHistory ?? []),
+      buildGameHistoryEntry(snapshot, missionState, endedAt),
+    ];
+    settings.nextGameReadyPlayerIds = [];
+  }
+  snapshot.room = {
+    ...snapshot.room,
+    status: missionState.phase,
+    settings,
+  };
+  return snapshot;
+}
+
+export function readyForNextGameInSnapshot(snapshot: RoomSnapshot, playerId: string): RoomSnapshot {
+  requirePlayer(snapshot, playerId);
+  if (snapshot.room.status !== 'finished' && snapshot.room.settings.missionState?.phase !== 'finished') {
+    throw new Error('The game is not finished yet.');
+  }
+
+  const nextGameReadyPlayerIds = Array.from(new Set([...(snapshot.room.settings.nextGameReadyPlayerIds ?? []), playerId]));
+  const allPlayersReady = snapshot.players.every((player) => nextGameReadyPlayerIds.includes(player.id));
+  if (!allPlayersReady) {
+    snapshot.room.settings = {
+      ...snapshot.room.settings,
+      nextGameReadyPlayerIds,
+    };
+    return snapshot;
+  }
+
+  const { missionState: _missionState, nextGameReadyPlayerIds: _nextGameReadyPlayerIds, ...settings } = snapshot.room.settings;
+  snapshot.room = {
+    ...snapshot.room,
+    status: 'lobby',
+    settings,
+  };
+  snapshot.players = snapshot.players.map((player, index) => ({
+    ...player,
+    seatIndex: index,
+    isReady: true,
+    role: undefined,
+  }));
+  return snapshot;
+}
+
+function buildGameHistoryEntry(snapshot: RoomSnapshot, missionState: MissionState, endedAt: string): RoomGameHistoryEntry {
+  if (!missionState.winner) throw new Error('Finished game is missing a winner.');
+  return {
+    gameNumber: (snapshot.room.settings.gameHistory?.length ?? 0) + 1,
+    winner: missionState.winner,
+    endedAt,
+    endReason: getGameEndReason(missionState),
+    playerResults: snapshot.players.map((player) => {
+      if (!player.role) throw new Error('Finished game has a player without a role.');
+      const allegiance = roleAllegiance(player.role);
+      return {
+        playerId: player.id,
+        displayName: player.displayName,
+        allegiance,
+        role: player.role,
+        won: allegiance === missionState.winner,
+      };
+    }),
+  };
+}
+
+function getGameEndReason(missionState: MissionState): RoomGameHistoryEntry['endReason'] {
+  if (missionState.assassination?.hitMerlin) return 'assassination_hit';
+  if (missionState.assassination) return 'assassination_miss';
+  if (missionState.winner === 'evil') return 'three_failed_quests';
+  return 'three_successful_quests';
 }
 
 export function assertDeletedRows(rows: unknown[] | null | undefined, message: string) {
@@ -245,7 +343,7 @@ export function isRoomStaleForExit(snapshot: RoomSnapshot, nowMs = Date.now()): 
 }
 
 function resetAbandonedRoomAfterLeave(snapshot: RoomSnapshot) {
-  const { missionState: _missionState, ...settings } = snapshot.room.settings;
+  const { missionState: _missionState, nextGameReadyPlayerIds: _nextGameReadyPlayerIds, ...settings } = snapshot.room.settings;
   snapshot.room = {
     ...snapshot.room,
     status: 'lobby',
@@ -272,7 +370,7 @@ export function transferHostInSnapshot(snapshot: RoomSnapshot, hostPlayerId: str
 export function resetRoomToLobbySnapshot(snapshot: RoomSnapshot, hostPlayerId: string): RoomSnapshot {
   const host = requirePlayer(snapshot, hostPlayerId);
   if (!host.isHost) throw new Error('Only the host can reset the game.');
-  const { missionState: _missionState, ...settings } = snapshot.room.settings;
+  const { missionState: _missionState, nextGameReadyPlayerIds: _nextGameReadyPlayerIds, ...settings } = snapshot.room.settings;
   snapshot.room = {
     ...snapshot.room,
     status: 'lobby',

@@ -1508,6 +1508,116 @@ label {
   color: #62247a;
 }
 
+.result-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgba(26, 16, 10, 0.72);
+  padding: 1rem;
+}
+
+.result-modal {
+  display: grid;
+  gap: 0.9rem;
+  width: min(100%, 520px);
+  border: 2px solid #e7bd63;
+  border-radius: 8px;
+  background:
+    linear-gradient(145deg, rgba(255, 248, 221, 0.98), rgba(236, 210, 147, 0.98)),
+    #f6e3ad;
+  color: #321a0c;
+  padding: clamp(1rem, 5vw, 1.5rem);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42), inset 0 0 0 2px rgba(255, 246, 210, 0.65);
+}
+
+.result-modal.won {
+  border-color: #9fc36d;
+}
+
+.result-modal.lost {
+  border-color: #d77a65;
+}
+
+.result-modal h2 {
+  margin: 0;
+  color: #5a2517;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.8rem, 8vw, 2.8rem);
+  line-height: 1;
+}
+
+.result-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.result-summary-grid div {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid #c28f3f;
+  border-radius: 8px;
+  background: #fff2ca;
+  padding: 0.7rem;
+}
+
+.result-summary-grid span,
+.history-count,
+.game-history-list small {
+  color: #7a341d;
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.result-summary-grid strong {
+  min-width: 0;
+  color: #321a0c;
+  font-size: 1rem;
+}
+
+.room-history-panel {
+  grid-column: 1 / -1;
+}
+
+.history-count {
+  border: 1px solid #d3b15f;
+  border-radius: 999px;
+  background: #fff2ca;
+  padding: 0.35rem 0.6rem;
+}
+
+.game-history-list {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.game-history-list li {
+  display: grid;
+  gap: 0.35rem;
+  border-left: 5px solid #7b8e54;
+  background: #fff8df;
+  padding: 0.75rem;
+}
+
+.game-history-list li div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.game-history-list p {
+  margin: 0;
+  color: #4b2a13;
+  font-weight: 900;
+}
+
 .assassination-targets {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

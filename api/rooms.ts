@@ -10,6 +10,7 @@ import {
 } from '../src/domain/missionFlow.js';
 import type { MissionCard, Vote } from '../src/domain/avalon.js';
 import {
+  applyMissionStateToSnapshot,
   assertDeletedRows,
   buildCreateRoomSettings,
   findPlayerByDisplayName,
@@ -20,6 +21,7 @@ import {
   mapRoom,
   normalizeRoomCode,
   removePlayerFromSnapshot,
+  readyForNextGameInSnapshot,
   startDemoSnapshot,
   transferHostInSnapshot,
   resetRoomToLobbySnapshot,
@@ -92,6 +94,8 @@ async function dispatch(body: RequestBody) {
       return submitMissionCard(readString(body.roomId, 'roomId'), readString(body.playerId, 'playerId'), readMissionCard(body.card));
     case 'submitAssassination':
       return submitAssassination(readString(body.roomId, 'roomId'), readString(body.assassinPlayerId, 'assassinPlayerId'), readString(body.targetPlayerId, 'targetPlayerId'));
+    case 'readyForNextGame':
+      return readyForNextGame(readString(body.roomId, 'roomId'), readString(body.playerId, 'playerId'));
     case 'removePlayer':
       return removePlayer(readString(body.roomId, 'roomId'), readString(body.hostPlayerId, 'hostPlayerId'), readString(body.targetPlayerId, 'targetPlayerId'));
     case 'transferHost':
@@ -272,6 +276,28 @@ async function submitAssassination(roomId: string, assassinPlayerId: string, tar
   return persistMissionState(roomId, snapshot, nextMissionState);
 }
 
+async function readyForNextGame(roomId: string, playerId: string) {
+  const snapshot = await fetchSnapshot(roomId);
+  readyForNextGameInSnapshot(snapshot, playerId);
+  const sql = getSql();
+  await sql`
+    update rooms
+    set status = ${snapshot.room.status}, settings = ${JSON.stringify(snapshot.room.settings)}::jsonb
+    where id = ${roomId}
+  `;
+  for (const player of snapshot.players) {
+    await sql`
+      update players
+      set seat_index = ${player.seatIndex},
+          is_host = ${player.isHost},
+          is_ready = ${player.isReady},
+          role = ${player.role ?? null}
+      where id = ${player.id} and room_id = ${roomId}
+    `;
+  }
+  return fetchSnapshot(roomId);
+}
+
 async function removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string) {
   const snapshot = await fetchSnapshot(roomId);
   removePlayerFromSnapshot(snapshot, hostPlayerId, targetPlayerId);
@@ -366,10 +392,10 @@ async function getRoomByCode(code: string) {
 }
 
 async function persistMissionState(roomId: string, snapshot: RoomSnapshot, missionState: MissionState) {
-  const settings = { ...snapshot.room.settings, missionState };
+  applyMissionStateToSnapshot(snapshot, missionState);
   await getSql()`
     update rooms
-    set settings = ${JSON.stringify(settings)}::jsonb, status = ${missionState.phase}
+    set settings = ${JSON.stringify(snapshot.room.settings)}::jsonb, status = ${snapshot.room.status}
     where id = ${roomId}
   `;
   return fetchSnapshot(roomId);

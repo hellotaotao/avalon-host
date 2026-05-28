@@ -38,6 +38,7 @@ import {
 } from './aiAvalon';
 import { buildJoinUrl, buildStepUrl, parseEntryStep, parseJoinCodeFromUrl, type EntryScreen } from './navigationState';
 import {
+  applyMissionStateToSnapshot,
   canStartGame,
   createRoom,
   getRoomById,
@@ -50,6 +51,8 @@ import {
   dissolveRoom,
   normalizeRoomCode,
   proposeMissionTeam,
+  readyForNextGame,
+  readyForNextGameInSnapshot,
   removePlayer,
   setReady,
   startGame,
@@ -290,14 +293,7 @@ function App() {
 
   async function handleMissionStateChange(nextMissionState: MissionState) {
     if (!snapshot || !currentPlayer) return;
-    const nextSnapshot = {
-      ...snapshot,
-      room: {
-        ...snapshot.room,
-        status: nextMissionState.phase,
-        settings: { ...snapshot.room.settings, missionState: nextMissionState },
-      },
-    };
+    const nextSnapshot = applyMissionStateToSnapshot(cloneRoomSnapshot(snapshot), nextMissionState);
     if (isDemoMode) {
       setSnapshot(nextSnapshot);
       return;
@@ -380,14 +376,7 @@ function App() {
         const playerIds = snapshot.players.map((player) => player.id);
         const currentMissionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
         const nextMissionState = resolveAssassination(currentMissionState, snapshot.players.map(toRoomAvalonPlayer), currentPlayer.id, targetPlayerId);
-        setSnapshot({
-          ...snapshot,
-          room: {
-            ...snapshot.room,
-            status: nextMissionState.phase,
-            settings: { ...snapshot.room.settings, missionState: nextMissionState },
-          },
-        });
+        await handleMissionStateChange(nextMissionState);
       } catch (error) {
         setMessage(error instanceof Error ? error.message : t('Could not submit assassination.'));
       }
@@ -397,6 +386,27 @@ function App() {
       setSnapshot(await submitAssassination(snapshot.room.id, currentPlayer.id, targetPlayerId));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t('Could not submit assassination.'));
+    }
+  }
+
+  async function handleReadyForNextGame() {
+    if (!snapshot || !currentPlayer || busy) return;
+    if (isDemoMode) {
+      try {
+        setSnapshot(readyForNextGameInSnapshot(cloneRoomSnapshot(snapshot), currentPlayer.id));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t('Could not ready for next game.'));
+      }
+      return;
+    }
+    setBusy(true);
+    setMessage('');
+    try {
+      setSnapshot(await readyForNextGame(snapshot.room.id, currentPlayer.id));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t('Could not ready for next game.'));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -709,6 +719,7 @@ function App() {
           onSubmitTeamVote={handleSubmitTeamVote}
           onSubmitMissionCard={handleSubmitMissionCard}
           onAssassination={handleAssassination}
+          onReadyForNextGame={handleReadyForNextGame}
           isDemoMode={isDemoMode}
           busy={busy}
         />
@@ -2733,6 +2744,105 @@ function AssassinationResultBanner({ missionState, players }: { missionState: Mi
   );
 }
 
+function GameResultModal({
+  missionState,
+  currentPlayer,
+  playerResult,
+  readyCount,
+  playerCount,
+  alreadyReady,
+  busy,
+  onReadyForNextGame,
+}: {
+  missionState: MissionState;
+  currentPlayer: RoomPlayer;
+  playerResult?: { allegiance: Allegiance; role: Role; won: boolean };
+  readyCount: number;
+  playerCount: number;
+  alreadyReady: boolean;
+  busy: boolean;
+  onReadyForNextGame: () => void;
+}) {
+  const { t, language } = useI18n();
+  const winner = missionState.winner;
+  const won = playerResult?.won ?? Boolean(winner && currentPlayer.role && roleAllegiance(currentPlayer.role) === winner);
+  return (
+    <div className="result-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="game-result-title">
+      <section className={`result-modal ${won ? 'won' : 'lost'}`}>
+        <p className="eyebrow">{won ? t('Victory') : t('Defeat')}</p>
+        <h2 id="game-result-title">{won ? t('You won this game') : t('You lost this game')}</h2>
+        <div className="result-summary-grid">
+          <div>
+            <span>{t('Winner')}</span>
+            <strong>{winner ? formatAllegiance(winner, language) : t('Unknown')}</strong>
+          </div>
+          <div>
+            <span>{t('Your side')}</span>
+            <strong>{playerResult ? formatAllegiance(playerResult.allegiance, language) : t('Unknown')}</strong>
+          </div>
+          <div>
+            <span>{t('Your role')}</span>
+            <strong>{playerResult ? formatRole(playerResult.role, language) : t('Role hidden')}</strong>
+          </div>
+        </div>
+        <p className="hint">
+          {alreadyReady
+            ? `${t('Waiting for everyone to play again.')} ${readyCount}/${playerCount}`
+            : t('Stay in this room and ready up for another game.')}
+        </p>
+        <button type="button" className="primary" disabled={busy || alreadyReady} onClick={onReadyForNextGame}>
+          {alreadyReady ? t('Ready for next game') : t('Play Again')}
+        </button>
+      </section>
+    </div>
+  );
+}
+
+function RoomHistoryPanel({ snapshot, currentPlayerId }: { snapshot: RoomSnapshot; currentPlayerId?: string }) {
+  const { t, language } = useI18n();
+  const history = snapshot.room.settings.gameHistory ?? [];
+  if (history.length === 0) return null;
+  return (
+    <section className="panel room-history-panel" aria-labelledby="room-history-title">
+      <div className="panel-header">
+        <h2 id="room-history-title">{t('Room history')}</h2>
+        <span className="history-count">{history.length} {t('games')}</span>
+      </div>
+      <ol className="game-history-list">
+        {history.map((entry) => {
+          const playerResult = entry.playerResults.find((result) => result.playerId === currentPlayerId);
+          return (
+            <li key={entry.gameNumber}>
+              <div>
+                <strong>{t('Game')} {entry.gameNumber}: {formatAllegiance(entry.winner, language)} {t('won')}</strong>
+                <small>{t(getEndReasonLabel(entry.endReason))}</small>
+              </div>
+              {playerResult && (
+                <p>
+                  {t('You were')} {formatAllegiance(playerResult.allegiance, language)}
+                  {' · '}
+                  {formatRole(playerResult.role, language)}
+                  {' · '}
+                  {playerResult.won ? t('Victory') : t('Defeat')}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+function getEndReasonLabel(reason: string) {
+  return {
+    assassination_hit: 'Assassin found Merlin',
+    assassination_miss: 'Assassin missed Merlin',
+    three_failed_quests: 'Three failed quests',
+    three_successful_quests: 'Three successful quests',
+  }[reason] ?? 'Game finished';
+}
+
 function RoomView({
   snapshot,
   currentPlayer,
@@ -2751,6 +2861,7 @@ function RoomView({
   onSubmitTeamVote,
   onSubmitMissionCard,
   onAssassination,
+  onReadyForNextGame,
   isDemoMode,
   busy,
 }: {
@@ -2771,6 +2882,7 @@ function RoomView({
   onSubmitTeamVote: (vote: Vote) => void;
   onSubmitMissionCard: (card: MissionCard) => void;
   onAssassination: (targetPlayerId: string) => void;
+  onReadyForNextGame: () => void;
   isDemoMode: boolean;
   busy: boolean;
 }) {
@@ -2788,6 +2900,10 @@ function RoomView({
   const joinLink = `${window.location.origin}${joinLinkPath}`;
   const assassinationTargets = snapshot.players.filter((player) => player.id !== currentPlayer?.id);
   const [liveSelectedTeamIds, setLiveSelectedTeamIds] = useState<string[]>([]);
+  const latestGame = snapshot.room.settings.gameHistory?.at(-1);
+  const currentPlayerResult = latestGame?.playerResults.find((result) => result.playerId === currentPlayer?.id);
+  const nextGameReadyPlayerIds = snapshot.room.settings.nextGameReadyPlayerIds ?? [];
+  const currentPlayerReadyForNextGame = Boolean(currentPlayer && nextGameReadyPlayerIds.includes(currentPlayer.id));
 
   useEffect(() => {
     setAssassinationTargetId('');
@@ -2803,6 +2919,18 @@ function RoomView({
 
   return (
     <section className="room-grid">
+      {missionState?.phase === 'finished' && currentPlayer && (
+        <GameResultModal
+          missionState={missionState}
+          currentPlayer={currentPlayer}
+          playerResult={currentPlayerResult}
+          readyCount={nextGameReadyPlayerIds.length}
+          playerCount={snapshot.players.length}
+          alreadyReady={currentPlayerReadyForNextGame}
+          busy={busy}
+          onReadyForNextGame={onReadyForNextGame}
+        />
+      )}
       {missionState?.phase === 'assassin' && (
         <AssassinPhaseBanner />
       )}
@@ -2842,6 +2970,8 @@ function RoomView({
           </div>
         </div>
       )}
+
+      <RoomHistoryPanel snapshot={snapshot} currentPlayerId={currentPlayer?.id} />
 
       <section className="panel">
         <div className="panel-header">
@@ -3254,6 +3384,16 @@ function clearSessionBinding() {
   const sessionKeys = getSessionStorageKeys();
   localStorage.removeItem(sessionKeys.currentRoomId);
   localStorage.removeItem(sessionKeys.currentPlayerId);
+}
+
+function cloneRoomSnapshot(snapshot: RoomSnapshot): RoomSnapshot {
+  return {
+    room: {
+      ...snapshot.room,
+      settings: { ...snapshot.room.settings },
+    },
+    players: snapshot.players.map((player) => ({ ...player })),
+  };
 }
 
 function clearEntryStepFromUrl() {

@@ -5,6 +5,7 @@ import {
   joinRoom,
   LOCAL_ROOMS_STORAGE_KEY,
   proposeMissionTeam,
+  readyForNextGame,
   setReady,
   startGame,
   submitAssassination,
@@ -54,6 +55,38 @@ describe('room workflow integration', () => {
       winner: 'evil',
     });
     expect(snapshot.room.settings.missionState?.missionResults).toHaveLength(3);
+    expect(snapshot.room.settings.gameHistory?.at(-1)).toMatchObject({
+      gameNumber: 1,
+      winner: 'evil',
+      endReason: 'three_failed_quests',
+    });
+  });
+
+  it('records game results and returns the same room to lobby after everyone requests another game', async () => {
+    let snapshot = await playThreeSuccessfulMissions();
+    const assassin = snapshot.players.find((player) => player.role === 'Assassin');
+    const merlin = snapshot.players.find((player) => player.role === 'Merlin');
+    expect(assassin).toBeTruthy();
+    expect(merlin).toBeTruthy();
+
+    snapshot = await submitAssassination(snapshot.room.id, assassin!.id, merlin!.id);
+    expect(snapshot.room.status).toBe('finished');
+    expect(snapshot.room.settings.gameHistory).toHaveLength(1);
+    const merlinResult = snapshot.room.settings.gameHistory?.[0].playerResults.find((result) => result.playerId === merlin!.id);
+    expect(merlinResult).toMatchObject({ role: 'Merlin', allegiance: 'good', won: false });
+
+    for (let index = 0; index < snapshot.players.length - 1; index += 1) {
+      snapshot = await readyForNextGame(snapshot.room.id, snapshot.players[index].id);
+      expect(snapshot.room.status).toBe('finished');
+      expect(snapshot.room.settings.nextGameReadyPlayerIds).toContain(snapshot.players[index].id);
+    }
+
+    snapshot = await readyForNextGame(snapshot.room.id, snapshot.players.at(-1)!.id);
+    expect(snapshot.room.status).toBe('lobby');
+    expect(snapshot.room.settings.missionState).toBeUndefined();
+    expect(snapshot.room.settings.nextGameReadyPlayerIds).toBeUndefined();
+    expect(snapshot.room.settings.gameHistory).toHaveLength(1);
+    expect(snapshot.players.every((player) => player.isReady && !player.role)).toBe(true);
   });
 
   it('enters assassin phase after three good mission wins, then evil wins if Merlin is hit', async () => {

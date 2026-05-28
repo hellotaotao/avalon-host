@@ -46,6 +46,19 @@ test('five-player Good reaches three successful quests, Assassin hits Merlin, an
 
     await expect(host.getByRole('heading', { name: /Evil Wins/i })).toBeVisible();
     await expect(host.getByText(/The target was Merlin/i)).toBeVisible();
+    await expect(assassin.page.getByRole('dialog').getByRole('heading', { name: /You won this game/i })).toBeVisible();
+    await expect(merlin.page.getByRole('dialog').getByRole('heading', { name: /You lost this game/i })).toBeVisible();
+    await expect(merlin.page.getByRole('dialog').getByText(/Your role/i)).toBeVisible();
+
+    for (const player of players) {
+      await player.page.getByRole('button', { name: /^Play Again$/i }).click();
+    }
+
+    await expect(host.getByRole('heading', { name: /Current Room/i })).toBeVisible();
+    await expect(host.getByRole('button', { name: /^Start Game$/i })).toBeEnabled();
+    await expect(host.getByRole('heading', { name: /Room history/i })).toBeVisible();
+    await expect(host.getByText(/Game 1: Evil won/i)).toBeVisible();
+    await expect(merlin.page.getByText(/You were Good · Merlin · Defeat/i)).toBeVisible();
   });
 });
 
