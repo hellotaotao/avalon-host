@@ -28,11 +28,13 @@ const statements = [
     seat_index integer not null,
     is_host boolean not null default false,
     is_ready boolean not null default false,
+    is_ai boolean not null default false,
     role text,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
     unique (room_id, seat_index)
   )`,
+  'alter table players add column if not exists is_ai boolean not null default false',
   'create index if not exists players_room_id_idx on players(room_id)',
   'create index if not exists players_room_device_token_idx on players(room_id, device_token_hash)',
   `create or replace function set_updated_at()

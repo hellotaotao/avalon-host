@@ -50,6 +50,7 @@ type VercelResponse = {
 type RequestBody = Record<string, unknown> & { action?: string };
 
 let sqlClient: ReturnType<typeof neon> | undefined;
+let requiredSchemaPromise: Promise<void> | undefined;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('content-type', 'application/json');
@@ -65,12 +66,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const body = parseBody(req.body);
+    await ensureRequiredSchema();
     const result = await dispatch(body);
     res.status(200).json(result ?? null);
   } catch (error) {
     const statusCode = error instanceof HttpError ? error.statusCode : 500;
     res.status(statusCode).json({ error: error instanceof Error ? error.message : 'Request failed.' });
   }
+}
+
+function ensureRequiredSchema() {
+  requiredSchemaPromise ??= getSql()`
+    alter table players add column if not exists is_ai boolean not null default false
+  `.then(() => undefined);
+  return requiredSchemaPromise;
 }
 
 async function dispatch(body: RequestBody) {
