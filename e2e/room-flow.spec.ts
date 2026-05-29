@@ -140,6 +140,18 @@ test('lobby room controls are scoped to host and guests', async ({ browser }) =>
   }
 });
 
+test('private reveal cards keep peek content visually available under the slide cover', async ({ browser }) => {
+  await withStartedRoom(browser, 5, async ({ players }) => {
+    const roleFace = players[0].page.locator('.live-player-phone .phone-role .role-face');
+    const nightInfoFace = players[0].page.locator('.live-player-phone .phone-night-info .night-info-face');
+
+    await expect(players[0].page.getByRole('button', { name: /Reveal .* hidden role/i })).toBeVisible();
+    await expect(players[0].page.getByRole('button', { name: /Reveal .* hidden night information/i })).toBeVisible();
+    await expect(roleFace).toHaveCSS('visibility', 'visible');
+    await expect(nightInfoFace).toHaveCSS('visibility', 'visible');
+  });
+});
+
 test('create-room shows default roles and custom role config affects assignment', async ({ browser }) => {
   const room = await createLobbyRoom(browser, 7, async (host) => {
     await expect(host.getByLabel(/Table size/i).getByRole('button', { name: '7' })).toHaveClass(/selected/);

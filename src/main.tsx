@@ -2067,7 +2067,7 @@ function PeekRevealCard({
 
   return (
     <div className={`${className} ${revealed ? revealedClassName : coveredClassName}`} ref={cardRef}>
-      <div className={`${faceClassName} ${revealed ? '' : 'peek-face-hidden'}`} aria-hidden={!revealed}>
+      <div className={faceClassName} aria-hidden={!revealed}>
         {children}
       </div>
       {!revealed && (

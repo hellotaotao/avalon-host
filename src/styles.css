@@ -955,10 +955,6 @@ label {
   padding-right: 0.2rem;
 }
 
-.peek-face-hidden {
-  visibility: hidden;
-}
-
 .role-face strong {
   font-family: Georgia, "Times New Roman", serif;
   font-size: 1.45rem;
