@@ -3034,18 +3034,20 @@ function RoomView({
       <section className="panel">
         <div className="panel-header">
           <h2>{started ? t('Private Reveal') : t('Current Room')}</h2>
-          {currentPlayer && (
-            <button type="button" className="secondary-control room-leave" onClick={onLeave} disabled={busy}>
-              {started && !isFinished ? t('Exit Table') : t('Leave Room')}
-            </button>
-          )}
-        </div>
-        {currentPlayer?.isHost && (
-          <div className="share-actions host-room-actions">
-            {started && <button type="button" onClick={onResetRoomToLobby} disabled={busy}>{t('Abandon Game')}</button>}
-            <button type="button" className="small-danger dissolve-room" onClick={onDissolveRoom} disabled={busy}>{t('Dissolve Room')}</button>
+          <div className="room-header-actions">
+            {currentPlayer?.isHost && started && (
+              <button type="button" className="secondary-control" onClick={onResetRoomToLobby} disabled={busy}>{t('Abandon Game')}</button>
+            )}
+            {currentPlayer && (
+              <button type="button" className="secondary-control room-leave" onClick={onLeave} disabled={busy}>
+                {started && !isFinished ? t('Exit Table') : t('Leave Room')}
+              </button>
+            )}
+            {currentPlayer?.isHost && (
+              <button type="button" className="small-danger dissolve-room" onClick={onDissolveRoom} disabled={busy}>{t('Dissolve Room')}</button>
+            )}
           </div>
-        )}
+        </div>
 
         {currentPlayer && !started && (
           <>
@@ -3101,19 +3103,27 @@ function RoomView({
           <h2>{t('Players')}</h2>
           <p className="hint">{readyCount}/{snapshot.players.length} {t('ready. Minimum 5 ready players.')}</p>
           <ol className="players">
-            {snapshot.players.map((player) => (
-              <li key={player.id} className={player.id === currentPlayer?.id ? 'me' : ''}>
-                <span>{player.displayName} {player.isAi && <em className="ai-player-badge">{t('AI')}</em>}</span>
-                <small>{player.isHost ? t('Host') : player.isAi ? t('AI seat') : `${t('Seat')} ${player.seatIndex + 1}`}</small>
-                <strong>{player.isReady ? t('Ready') : t('Waiting')}</strong>
-                {currentPlayer?.isHost && !player.isHost && !player.isAi && !isDemoMode && (
-                  <>
-                    <button type="button" onClick={() => onTransferHost(player.id)} disabled={busy}>{t('Make Host')}</button>
-                    {!started && <button type="button" className="small-danger" onClick={() => onRemovePlayer(player.id)} disabled={busy}>{t('Remove')}</button>}
-                  </>
-                )}
-              </li>
-            ))}
+            {snapshot.players.map((player) => {
+              const showHostControls = Boolean(currentPlayer?.isHost && !player.isHost && !player.isAi && !isDemoMode);
+
+              return (
+                <li key={player.id} className={player.id === currentPlayer?.id ? 'me' : ''}>
+                  <div className="player-identity">
+                    <span>{player.displayName} {player.isAi && <em className="ai-player-badge">{t('AI')}</em>}</span>
+                    <small>{player.isHost ? t('Host') : player.isAi ? t('AI seat') : `${t('Seat')} ${player.seatIndex + 1}`}</small>
+                  </div>
+                  <div className="player-row-meta">
+                    <strong>{player.isReady ? t('Ready') : t('Waiting')}</strong>
+                  </div>
+                  {showHostControls && (
+                    <div className="player-host-controls">
+                      <button type="button" className="secondary-control" onClick={() => onTransferHost(player.id)} disabled={busy}>{t('Make Host')}</button>
+                      {!started && <button type="button" className="small-danger" onClick={() => onRemovePlayer(player.id)} disabled={busy}>{t('Remove')}</button>}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ol>
           {currentPlayer?.isHost ? (
             <button type="button"
