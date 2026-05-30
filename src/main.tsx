@@ -598,7 +598,11 @@ function App() {
   }
 
   return (
-    <main className={`shell ${screen === 'demo' || screen === 'demoJoin' ? 'demo-shell' : ''}`}>
+    <main className={[
+      'shell',
+      screen === 'demo' || screen === 'demoJoin' ? 'demo-shell' : '',
+      screen === 'room' ? 'room-shell' : '',
+    ].filter(Boolean).join(' ')}>
       <header className="hero">
         <div className="hero-top"><p className="eyebrow">{t('Avalon Host')}</p><LanguageSwitcher /></div>
         <h1>{screen === 'room' ? getRoomHeroTitle(snapshot, t) : t('Gather the Knights of Avalon')}</h1>
@@ -1950,9 +1954,9 @@ function RoleRevealCard({
       onReveal={onReveal}
       onHide={onHide}
       revealLabel={`Reveal ${playerName}'s hidden role`}
-      coverTitle="Role hidden"
-      coverHint="Slide to peek"
-      hideLabel="Hide role"
+      coverTitle={t('Role hidden')}
+      coverHint={t('Slide to peek')}
+      hideLabel={t('Hide role')}
     >
       <strong>{formatRole(role, language)}</strong>
       <span>{formatAllegiance(allegiance, language)}</span>
@@ -1982,9 +1986,9 @@ function NightInfoRevealCard({
       onReveal={onReveal}
       onHide={onHide}
       revealLabel={`Reveal ${playerName}'s hidden night information`}
-      coverTitle="Night info hidden"
-      coverHint="Slide to peek"
-      hideLabel="Hide night info"
+      coverTitle={t('Night info hidden')}
+      coverHint={t('Slide to peek')}
+      hideLabel={t('Hide night info')}
     >
       <span>{t('Night info')}</span>
       {privateInfo.sees.length ? (
@@ -2962,6 +2966,7 @@ function RoomView({
   const currentPlayerResult = latestGame?.playerResults.find((result) => result.playerId === currentPlayer?.id);
   const nextGameReadyPlayerIds = snapshot.room.settings.nextGameReadyPlayerIds ?? [];
   const currentPlayerReadyForNextGame = Boolean(currentPlayer && nextGameReadyPlayerIds.includes(currentPlayer.id));
+  const startValidationCopy = formatStartValidation(startValidation, t);
 
   useEffect(() => {
     setAssassinationTargetId('');
@@ -2976,7 +2981,11 @@ function RoomView({
   }
 
   return (
-    <section className="room-grid">
+    <section className={[
+      'room-grid',
+      started ? 'started-room-grid' : 'lobby-room-grid',
+      currentPlayer?.isHost ? 'has-host-authority' : 'guest-room-grid',
+    ].join(' ')}>
       {missionState?.phase === 'finished' && currentPlayer && (
         <GameResultModal
           missionState={missionState}
@@ -3031,20 +3040,14 @@ function RoomView({
 
       <RoomHistoryPanel snapshot={snapshot} currentPlayerId={currentPlayer?.id} />
 
-      <section className="panel">
+      <section className={`panel private-room-panel ${started ? 'started' : 'lobby'}`}>
         <div className="panel-header">
           <h2>{started ? t('Private Reveal') : t('Current Room')}</h2>
           <div className="room-header-actions">
-            {currentPlayer?.isHost && started && (
-              <button type="button" className="secondary-control" onClick={onResetRoomToLobby} disabled={busy}>{t('Abandon Game')}</button>
-            )}
             {currentPlayer && (
               <button type="button" className="secondary-control room-leave" onClick={onLeave} disabled={busy}>
                 {started && !isFinished ? t('Exit Table') : t('Leave Room')}
               </button>
-            )}
-            {currentPlayer?.isHost && (
-              <button type="button" className="small-danger dissolve-room" onClick={onDissolveRoom} disabled={busy}>{t('Dissolve Room')}</button>
             )}
           </div>
         </div>
@@ -3068,7 +3071,7 @@ function RoomView({
               <span>
                 {canStart
                   ? t('Starting now will leave unready players out of this game.')
-                  : startValidation}
+                  : startValidationCopy}
               </span>
             </div>
           </>
@@ -3098,14 +3101,27 @@ function RoomView({
         )}
       </section>
 
+      <HostAuthorityPanel
+        players={snapshot.players}
+        currentPlayer={currentPlayer}
+        started={started}
+        canStart={canStart}
+        startValidation={startValidation}
+        isDemoMode={isDemoMode}
+        busy={busy}
+        onStart={onStart}
+        onResetRoomToLobby={onResetRoomToLobby}
+        onDissolveRoom={onDissolveRoom}
+        onRemovePlayer={onRemovePlayer}
+        onTransferHost={onTransferHost}
+      />
+
       {!started && (
-        <section className="panel">
+        <section className="panel players-panel">
           <h2>{t('Players')}</h2>
           <p className="hint">{readyCount}/{snapshot.players.length} {t('ready. Minimum 5 ready players.')}</p>
           <ol className="players">
             {snapshot.players.map((player) => {
-              const showHostControls = Boolean(currentPlayer?.isHost && !player.isHost && !player.isAi && !isDemoMode);
-
               return (
                 <li key={player.id} className={player.id === currentPlayer?.id ? 'me' : ''}>
                   <div className="player-identity">
@@ -3115,29 +3131,11 @@ function RoomView({
                   <div className="player-row-meta">
                     <strong>{player.isReady ? t('Ready') : t('Waiting')}</strong>
                   </div>
-                  {showHostControls && (
-                    <div className="player-host-controls">
-                      <button type="button" className="secondary-control" onClick={() => onTransferHost(player.id)} disabled={busy}>{t('Make Host')}</button>
-                      {!started && <button type="button" className="small-danger" onClick={() => onRemovePlayer(player.id)} disabled={busy}>{t('Remove')}</button>}
-                    </div>
-                  )}
                 </li>
               );
             })}
           </ol>
-          {currentPlayer?.isHost ? (
-            <button type="button"
-              className="primary"
-              disabled={!canStart || busy}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onStart();
-              }}
-            >
-              {canStart ? t('Start Game') : startValidation}
-            </button>
-          ) : (
+          {!currentPlayer?.isHost && (
             <p className="hint">{t('Waiting for the host to start the game.')}</p>
           )}
         </section>
@@ -3154,6 +3152,109 @@ function RoomView({
       )}
     </section>
   );
+}
+
+function HostAuthorityPanel({
+  players,
+  currentPlayer,
+  started,
+  canStart,
+  startValidation,
+  isDemoMode,
+  busy,
+  onStart,
+  onResetRoomToLobby,
+  onDissolveRoom,
+  onRemovePlayer,
+  onTransferHost,
+}: {
+  players: RoomPlayer[];
+  currentPlayer?: RoomPlayer;
+  started: boolean;
+  canStart: boolean;
+  startValidation?: string;
+  isDemoMode: boolean;
+  busy: boolean;
+  onStart: () => void;
+  onResetRoomToLobby: () => void;
+  onDissolveRoom: () => void;
+  onRemovePlayer: (targetPlayerId: string) => void;
+  onTransferHost: (targetPlayerId: string) => void;
+}) {
+  const { t } = useI18n();
+  if (!currentPlayer?.isHost) return null;
+
+  const manageablePlayers = players.filter((player) => !player.isHost && !player.isAi && !isDemoMode);
+  const startValidationCopy = formatStartValidation(startValidation, t);
+
+  return (
+    <section className="panel host-authority-panel" aria-labelledby="host-authority-title">
+      <div className="host-authority-heading">
+        <p className="eyebrow">{t('Room owner')}</p>
+        <h2 id="host-authority-title">{t('Host permissions')}</h2>
+        <p>{t('You are the room host on this device.')}</p>
+      </div>
+
+      {!started && (
+        <div className="host-action-group">
+          <h3>{t('Start this game')}</h3>
+          <p>{canStart ? t('Ready players can start.') : startValidationCopy}</p>
+          <button
+            type="button"
+            className="primary"
+            disabled={!canStart || busy}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onStart();
+            }}
+          >
+            {canStart ? t('Start Game') : startValidationCopy}
+          </button>
+        </div>
+      )}
+
+      {started && (
+        <div className="host-action-group">
+          <h3>{t('Current game')}</h3>
+          <p>{t('Use this only when this round should be cancelled for everyone.')}</p>
+          <button type="button" className="secondary-control" onClick={onResetRoomToLobby} disabled={busy}>{t('Abandon Game')}</button>
+        </div>
+      )}
+
+      {manageablePlayers.length > 0 && (
+        <div className="host-action-group">
+          <h3>{t('Manage players')}</h3>
+          <div className="host-player-actions">
+            {manageablePlayers.map((player) => (
+              <div key={player.id} className="host-player-action-row">
+                <span>{player.displayName}</span>
+                <div>
+                  <button type="button" className="secondary-control" onClick={() => onTransferHost(player.id)} disabled={busy}>{t('Make Host')}</button>
+                  <button type="button" className="small-danger" onClick={() => onRemovePlayer(player.id)} disabled={busy}>{t('Remove')}</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="host-action-group danger-zone">
+        <h3>{t('Room controls')}</h3>
+        <p>{t('Dissolve the room only when the table is done or created by mistake.')}</p>
+        <button type="button" className="small-danger dissolve-room" onClick={onDissolveRoom} disabled={busy}>{t('Dissolve Room')}</button>
+      </div>
+    </section>
+  );
+}
+
+function formatStartValidation(message: string | undefined, t: (text: string) => string): string | undefined {
+  if (!message) return undefined;
+  const neededMatch = message.match(/^Need (\d+) more ready players? to start\.$/);
+  if (neededMatch) return `${neededMatch[1]} ${t('more ready players needed to start.')}`;
+  const plannedCountMatch = message.match(/^This room is set for (\d+) players\.$/);
+  if (plannedCountMatch) return `${t('This room is set for')} ${plannedCountMatch[1]} ${t('players.')}`;
+  return t(message);
 }
 
 function getRoomPlayerNames(players: RoomPlayer[], playerIds: string[] = []): string[] {

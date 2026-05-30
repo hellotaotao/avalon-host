@@ -87,6 +87,10 @@ label {
   width: min(1260px, 100%);
 }
 
+.room-shell {
+  width: min(1180px, 100%);
+}
+
 .hero {
   display: grid;
   gap: 0.85rem;
@@ -1220,6 +1224,72 @@ label {
   background: #fff8df;
 }
 
+.private-room-panel.started {
+  align-content: start;
+}
+
+.host-authority-panel {
+  gap: 0.85rem;
+}
+
+.host-authority-heading {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.host-authority-heading p:last-child,
+.host-action-group p {
+  margin: 0;
+  color: #4b2e18;
+  line-height: 1.35;
+  font-weight: 800;
+}
+
+.host-action-group {
+  display: grid;
+  gap: 0.55rem;
+  border: 1px solid #ad7a36;
+  border-radius: 8px;
+  background: #fff2ca;
+  padding: 0.75rem;
+}
+
+.host-action-group.danger-zone {
+  border-color: #a64a39;
+  background: #ffe1c9;
+}
+
+.host-action-group button {
+  justify-self: start;
+}
+
+.host-player-actions {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.host-player-action-row {
+  display: grid;
+  gap: 0.5rem;
+  border: 1px solid #d3b15f;
+  border-radius: 8px;
+  background: #fff8df;
+  padding: 0.55rem;
+}
+
+.host-player-action-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #321a0c;
+  font-weight: 900;
+}
+
+.host-player-action-row div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 .dissolve-room {
   min-height: 38px;
   border-color: #8f2119;
@@ -2297,11 +2367,12 @@ label {
 
   .room-grid {
     grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
-    align-items: stretch;
+    align-items: start;
   }
 
   .room-code,
-  .room-grid > .panel:first-of-type {
+  .private-room-panel,
+  .host-authority-panel {
     min-height: 100%;
   }
 
@@ -2322,8 +2393,26 @@ label {
     grid-template-columns: repeat(3, 1fr);
   }
 
-  .room-grid .panel:last-child {
+  .room-history-panel,
+  .players-panel,
+  .mission-panel {
     grid-column: 1 / -1;
+  }
+
+  .lobby-room-grid.has-host-authority .host-authority-panel {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .lobby-room-grid.has-host-authority .private-room-panel {
+    grid-column: 1 / -1;
+    min-height: 0;
+  }
+
+  .started-room-grid.guest-room-grid .private-room-panel,
+  .lobby-room-grid.guest-room-grid .private-room-panel {
+    grid-column: 1 / -1;
+    min-height: 0;
   }
 }
 
