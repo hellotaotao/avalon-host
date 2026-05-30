@@ -906,8 +906,6 @@ interface DemoPlayer {
   displayName: string;
   seatIndex: number;
   role: Role;
-  revealRole: boolean;
-  revealNightInfo: boolean;
   controller: DemoController;
   persona?: string;
   memory?: AgentMemory;
@@ -1131,24 +1129,6 @@ function DemoSimulator() {
     setDemo((current) => resolveDemoAssassination(current, targetPlayerId));
   }
 
-  function toggleRoleReveal(playerId: string) {
-    setDemo((current) => ({
-      ...current,
-      players: current.players.map((player) => (
-        player.id === playerId ? { ...player, revealRole: !player.revealRole } : player
-      )),
-    }));
-  }
-
-  function toggleNightInfoReveal(playerId: string) {
-    setDemo((current) => ({
-      ...current,
-      players: current.players.map((player) => (
-        player.id === playerId ? { ...player, revealNightInfo: !player.revealNightInfo } : player
-      )),
-    }));
-  }
-
   return (
     <div className="demo-simulator">
       <div className="demo-heading">
@@ -1349,8 +1329,6 @@ function DemoSimulator() {
             phase={demo.phase}
             selectedTeamIds={demo.selectedTeamIds}
             teamSize={teamSize}
-            onToggleRoleReveal={toggleRoleReveal}
-            onToggleNightInfoReveal={toggleNightInfoReveal}
             onToggleTeamPlayer={toggleTeamPlayer}
             onVote={vote}
             onPlayMissionCard={playMissionCard}
@@ -1374,8 +1352,6 @@ function DemoPhone({
   phase,
   selectedTeamIds,
   teamSize,
-  onToggleRoleReveal,
-  onToggleNightInfoReveal,
   onToggleTeamPlayer,
   onVote,
   onPlayMissionCard,
@@ -1392,8 +1368,6 @@ function DemoPhone({
   phase: DemoState['phase'];
   selectedTeamIds: string[];
   teamSize: number;
-  onToggleRoleReveal: (playerId: string) => void;
-  onToggleNightInfoReveal: (playerId: string) => void;
   onToggleTeamPlayer: (playerId: string) => void;
   onVote: (playerId: string, vote: Vote) => void;
   onPlayMissionCard: (playerId: string, card: MissionCard) => void;
@@ -1422,8 +1396,6 @@ function DemoPhone({
       selectedTeamIds={selectedTeamIds}
       winner={winner}
       result={phase === 'result' ? lastMission : undefined}
-      roleReveal={{ revealed: player.revealRole, onToggle: onToggleRoleReveal }}
-      nightInfoReveal={{ revealed: player.revealNightInfo, onToggle: onToggleNightInfoReveal }}
       agentView={tableMode === 'ai' ? getAgentViewSummary(player, privateInfo) : undefined}
       action={getDemoPhoneAction({
         player,
@@ -1459,11 +1431,6 @@ interface PlayerPhonePerson {
 
 type PlayerPhoneMode = 'demo' | 'live';
 type PlayerPhoneResult = DemoMissionResult | MissionResultState;
-
-interface PlayerPhoneRevealControl {
-  revealed?: boolean;
-  onToggle?: (playerId: string) => void;
-}
 
 type PlayerPhoneAction =
   | {
@@ -1523,8 +1490,6 @@ function PlayerPhone({
   selectedTeamIds = [],
   winner,
   result,
-  roleReveal,
-  nightInfoReveal,
   agentView,
   action,
 }: {
@@ -1535,8 +1500,6 @@ function PlayerPhone({
   selectedTeamIds?: string[];
   winner?: Allegiance;
   result?: PlayerPhoneResult;
-  roleReveal?: PlayerPhoneRevealControl;
-  nightInfoReveal?: PlayerPhoneRevealControl;
   agentView?: React.ReactNode;
   action?: PlayerPhoneAction;
 }) {
@@ -1548,32 +1511,6 @@ function PlayerPhone({
     winner && player.role ? (roleAllegiance(player.role) === winner ? 'phone-winner' : 'phone-loser') : '',
     result ? `mission-${result.outcome}-phone` : '',
   ].filter(Boolean).join(' ');
-  const [rolePeekOpen, setRolePeekOpen] = useState(false);
-  const [nightInfoPeekOpen, setNightInfoPeekOpen] = useState(false);
-  const roleRevealed = roleReveal?.revealed ?? rolePeekOpen;
-  const nightInfoRevealed = nightInfoReveal?.revealed ?? nightInfoPeekOpen;
-
-  useEffect(() => {
-    if (mode !== 'live') return;
-    setRolePeekOpen(false);
-    setNightInfoPeekOpen(false);
-  }, [mode, player.id, player.role]);
-
-  function setRoleRevealed(nextRevealed: boolean) {
-    if (roleReveal?.onToggle) {
-      if (roleRevealed !== nextRevealed) roleReveal.onToggle(player.id);
-      return;
-    }
-    setRolePeekOpen(nextRevealed);
-  }
-
-  function setNightInfoRevealed(nextRevealed: boolean) {
-    if (nightInfoReveal?.onToggle) {
-      if (nightInfoRevealed !== nextRevealed) nightInfoReveal.onToggle(player.id);
-      return;
-    }
-    setNightInfoPeekOpen(nextRevealed);
-  }
 
   return (
     <article className={`player-phone ${mode === 'demo' ? 'demo-phone' : 'live-player-phone'} ${isLeader ? 'leader-phone' : ''} ${outcomeClass}`}>
@@ -1583,21 +1520,10 @@ function PlayerPhone({
         {onTeam && <span className="phone-team-pill">{t('Mission team')}</span>}
       </div>
       {player.role && (
-        <RoleRevealCard
+        <PrivateSwipeReveal
           playerName={player.displayName}
           role={player.role}
-          revealed={roleRevealed}
-          onReveal={() => setRoleRevealed(true)}
-          onHide={() => setRoleRevealed(false)}
-        />
-      )}
-      {privateInfo && (
-        <NightInfoRevealCard
-          playerName={player.displayName}
           privateInfo={privateInfo}
-          revealed={nightInfoRevealed}
-          onReveal={() => setNightInfoRevealed(true)}
-          onHide={() => setNightInfoRevealed(false)}
         />
       )}
       {agentView}
@@ -1928,171 +1854,114 @@ function MissionResultReveal({ result }: { result: PlayerPhoneResult }) {
   );
 }
 
-function RoleRevealCard({
+type PrivateRevealSide = 'left' | 'right';
+
+function PrivateSwipeReveal({
   playerName,
   role,
-  revealed,
-  onReveal,
-  onHide,
+  privateInfo,
 }: {
   playerName: string;
   role: Role;
-  revealed: boolean;
-  onReveal: () => void;
-  onHide: () => void;
+  privateInfo?: VisibilityInfo;
 }) {
   const { t, language } = useI18n();
   const allegiance = roleAllegiance(role);
-
-  return (
-    <PeekRevealCard
-      className="phone-role"
-      revealedClassName={`revealed ${allegiance}`}
-      coveredClassName="covered"
-      faceClassName="role-face"
-      revealed={revealed}
-      onReveal={onReveal}
-      onHide={onHide}
-      revealLabel={`Reveal ${playerName}'s hidden role`}
-      coverTitle={t('Role hidden')}
-      coverHint={t('Slide to peek')}
-      hideLabel={t('Hide role')}
-    >
-      <strong>{formatRole(role, language)}</strong>
-      <span>{formatAllegiance(allegiance, language)}</span>
-    </PeekRevealCard>
-  );
-}
-
-function NightInfoRevealCard({
-  playerName,
-  privateInfo,
-  revealed,
-  onReveal,
-  onHide,
-}: {
-  playerName: string;
-  privateInfo: VisibilityInfo;
-  revealed: boolean;
-  onReveal: () => void;
-  onHide: () => void;
-}) {
-  const { t, language } = useI18n();
-  return (
-    <PeekRevealCard
-      className="phone-info phone-night-info"
-      faceClassName="night-info-face"
-      revealed={revealed}
-      onReveal={onReveal}
-      onHide={onHide}
-      revealLabel={`Reveal ${playerName}'s hidden night information`}
-      coverTitle={t('Night info hidden')}
-      coverHint={t('Slide to peek')}
-      hideLabel={t('Hide night info')}
-    >
-      <span>{t('Night info')}</span>
-      {privateInfo.sees.length ? (
-        <ul>{privateInfo.sees.map((item) => <li key={item.playerId}>{item.name}: {formatHint(item.hint, language)}</li>)}</ul>
-      ) : (
-        <p>{t('No extra information.')}</p>
-      )}
-    </PeekRevealCard>
-  );
-}
-
-function PeekRevealCard({
-  children,
-  className,
-  revealedClassName = 'revealed',
-  coveredClassName = 'covered',
-  faceClassName,
-  revealed,
-  onReveal,
-  onHide,
-  revealLabel,
-  coverTitle,
-  coverHint,
-  hideLabel,
-}: {
-  children: React.ReactNode;
-  className: string;
-  revealedClassName?: string;
-  coveredClassName?: string;
-  faceClassName: string;
-  revealed: boolean;
-  onReveal: () => void;
-  onHide: () => void;
-  revealLabel: string;
-  coverTitle: string;
-  coverHint: string;
-  hideLabel: string;
-}) {
-  const cardRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
   const dragStartX = useRef<number | undefined>(undefined);
-  const dragged = useRef(false);
-  const [coverOffset, setCoverOffset] = useState(revealed ? 100 : 0);
+  const [activeSide, setActiveSide] = useState<PrivateRevealSide | undefined>();
+  const [dragPercent, setDragPercent] = useState(0);
 
-  useEffect(() => {
-    setCoverOffset(revealed ? 100 : 0);
-  }, [revealed]);
+  function reveal(side: PrivateRevealSide) {
+    setActiveSide(side);
+    setDragPercent(side === 'left' ? 100 : -100);
+  }
 
-  function handlePointerDown(event: React.PointerEvent<HTMLButtonElement>) {
-    if (revealed) return;
+  function resetReveal() {
+    dragStartX.current = undefined;
+    setActiveSide(undefined);
+    setDragPercent(0);
+  }
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     dragStartX.current = event.clientX;
-    dragged.current = false;
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
-  function handlePointerMove(event: React.PointerEvent<HTMLButtonElement>) {
-    if (dragStartX.current === undefined || revealed) return;
-    const width = Math.max(1, cardRef.current?.clientWidth ?? 1);
-    const nextOffset = Math.min(100, Math.max(0, ((event.clientX - dragStartX.current) / width) * 100));
-    dragged.current = dragged.current || nextOffset > 4;
-    setCoverOffset(nextOffset);
-  }
-
-  function handlePointerUp() {
-    if (dragStartX.current === undefined || revealed) return;
-    dragStartX.current = undefined;
-    if (coverOffset >= 58) {
-      onReveal();
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (dragStartX.current === undefined) return;
+    const width = Math.max(1, trackRef.current?.clientWidth ?? 1);
+    const nextPercent = Math.max(-100, Math.min(100, ((event.clientX - dragStartX.current) / width) * 115));
+    setDragPercent(nextPercent);
+    if (Math.abs(nextPercent) < 8) {
+      setActiveSide(undefined);
       return;
     }
-    setCoverOffset(0);
+    setActiveSide(nextPercent > 0 ? 'left' : 'right');
   }
 
-  function handleCoverClick() {
-    if (dragged.current) {
-      dragged.current = false;
-      return;
-    }
-    onReveal();
+  function handleButtonKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, side: PrivateRevealSide) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    reveal(side);
   }
 
   return (
-    <div className={`${className} ${revealed ? revealedClassName : coveredClassName}`} ref={cardRef}>
-      <div className={faceClassName} aria-hidden={!revealed}>
-        {children}
+    <div
+      className={`phone-private-swipe ${activeSide ? `reveal-${activeSide}` : 'reveal-hidden'}`}
+      ref={trackRef}
+      role="group"
+      aria-label={`Reveal hidden role and night information for ${playerName}`}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={resetReveal}
+      onPointerCancel={resetReveal}
+    >
+      <div className={`private-swipe-panel private-swipe-left phone-role revealed ${allegiance}`} aria-hidden={activeSide !== 'left'}>
+        <span className="private-swipe-label">{t('Identity')}</span>
+        <div className="role-face">
+          <strong>{formatRole(role, language)}</strong>
+          <span>{formatAllegiance(allegiance, language)}</span>
+        </div>
       </div>
-      {!revealed && (
-        <button
-          type="button"
-          className="peek-cover"
-          style={{ transform: `translateX(${coverOffset}%)` }}
-          onClick={handleCoverClick}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          aria-label={revealLabel}
-        >
-          <strong>{coverTitle}</strong>
-          <span>{coverHint}</span>
-        </button>
-      )}
-      {revealed && (
-        <button type="button" className="peek-hide-button" onClick={onHide}>{hideLabel}</button>
-      )}
+
+      <div className="private-swipe-panel private-swipe-right phone-info phone-night-info" aria-hidden={activeSide !== 'right'}>
+        <span>{t('Night info')}</span>
+        <div className="night-info-face">
+          {privateInfo?.sees.length ? (
+            <ul>{privateInfo.sees.map((item) => <li key={item.playerId}>{item.name}: {formatHint(item.hint, language)}</li>)}</ul>
+          ) : (
+            <p>{t('No extra information.')}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="private-swipe-neutral" style={{ transform: `translateX(${dragPercent * 0.62}%)` }}>
+        <span>{t('Swipe left or right to peek')}</span>
+        <div className="private-swipe-actions">
+          <button
+            type="button"
+            onPointerDown={() => reveal('left')}
+            onPointerUp={resetReveal}
+            onPointerCancel={resetReveal}
+            onKeyDown={(event) => handleButtonKeyDown(event, 'left')}
+            onKeyUp={resetReveal}
+            aria-label={`Reveal ${playerName}'s hidden role`}
+          >
+            {t('Identity')}
+          </button>
+          <button
+            type="button"
+            onPointerDown={() => reveal('right')}
+            onPointerUp={resetReveal}
+            onPointerCancel={resetReveal}
+            onKeyDown={(event) => handleButtonKeyDown(event, 'right')}
+            onKeyUp={resetReveal}
+            aria-label={`Reveal ${playerName}'s hidden night information`}
+          >
+            {t('Night info')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2579,8 +2448,6 @@ function createDemoState(
         displayName: controller === 'ai' ? `${player.name} AI` : player.name,
         seatIndex: index,
         role: player.role ?? 'Loyal Servant',
-        revealRole: false,
-        revealNightInfo: false,
         controller,
         persona: controller === 'ai' ? aiPersonas[(index - humanCount + aiPersonas.length) % aiPersonas.length] : undefined,
         memory: controller === 'ai' ? createAgentMemory(basePlayers.map((candidate) => candidate.id), player.id) : undefined,

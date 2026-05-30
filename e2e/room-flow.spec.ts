@@ -140,15 +140,39 @@ test('lobby room controls are scoped to host and guests', async ({ browser }) =>
   }
 });
 
-test('private reveal cards keep peek content visually available under the slide cover', async ({ browser }) => {
+test('private reveal swipe area shows each side only while held or dragged', async ({ browser }) => {
   await withStartedRoom(browser, 5, async ({ players }) => {
+    const swipeArea = players[0].page.locator('.live-player-phone .phone-private-swipe');
     const roleFace = players[0].page.locator('.live-player-phone .phone-role .role-face');
     const nightInfoFace = players[0].page.locator('.live-player-phone .phone-night-info .night-info-face');
+    const rolePanel = players[0].page.locator('.live-player-phone .private-swipe-left');
+    const nightInfoPanel = players[0].page.locator('.live-player-phone .private-swipe-right');
 
+    await expect(swipeArea).toHaveCount(1);
     await expect(players[0].page.getByRole('button', { name: /Reveal .* hidden role/i })).toBeVisible();
     await expect(players[0].page.getByRole('button', { name: /Reveal .* hidden night information/i })).toBeVisible();
     await expect(roleFace).toHaveCSS('visibility', 'visible');
     await expect(nightInfoFace).toHaveCSS('visibility', 'visible');
+    await expect(rolePanel).toHaveCSS('opacity', '0');
+    await expect(nightInfoPanel).toHaveCSS('opacity', '0');
+
+    const box = await swipeArea.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) return;
+
+    await players[0].page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await players[0].page.mouse.down();
+    await players[0].page.mouse.move(box.x + box.width * 0.88, box.y + box.height / 2, { steps: 5 });
+    await expect(rolePanel).toHaveCSS('opacity', '1');
+    await players[0].page.mouse.up();
+    await expect(rolePanel).toHaveCSS('opacity', '0');
+
+    await players[0].page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await players[0].page.mouse.down();
+    await players[0].page.mouse.move(box.x + box.width * 0.12, box.y + box.height / 2, { steps: 5 });
+    await expect(nightInfoPanel).toHaveCSS('opacity', '1');
+    await players[0].page.mouse.up();
+    await expect(nightInfoPanel).toHaveCSS('opacity', '0');
   });
 });
 

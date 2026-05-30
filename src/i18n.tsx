@@ -183,6 +183,8 @@ const zh: Record<string, string> = {
   'Night info hidden': '夜间信息已隐藏',
   'Hide night info': '隐藏夜间信息',
   'Reveal hidden night information for': '查看夜间信息：',
+  'Identity': '身份',
+  'Swipe left or right to peek': '左右滑动查看',
   'Night info': '夜间信息',
   'No extra information.': '没有额外信息。',
   'Mandatory endgame': '强制终局',
