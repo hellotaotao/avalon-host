@@ -1870,34 +1870,42 @@ function PrivateSwipeReveal({
   const trackRef = useRef<HTMLDivElement>(null);
   const dragStartX = useRef<number | undefined>(undefined);
   const [activeSide, setActiveSide] = useState<PrivateRevealSide | undefined>();
-  const [dragPercent, setDragPercent] = useState(0);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+
+  function maxRevealOffset() {
+    return Math.max(96, (trackRef.current?.clientWidth ?? 112) - 18);
+  }
 
   function reveal(side: PrivateRevealSide) {
+    const maxOffset = maxRevealOffset();
     setActiveSide(side);
-    setDragPercent(side === 'left' ? 100 : -100);
+    setDragOffset(side === 'left' ? maxOffset : -maxOffset);
   }
 
   function resetReveal() {
     dragStartX.current = undefined;
+    setIsDragging(false);
     setActiveSide(undefined);
-    setDragPercent(0);
+    setDragOffset(0);
   }
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     dragStartX.current = event.clientX;
+    setIsDragging(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
     if (dragStartX.current === undefined) return;
-    const width = Math.max(1, trackRef.current?.clientWidth ?? 1);
-    const nextPercent = Math.max(-100, Math.min(100, ((event.clientX - dragStartX.current) / width) * 115));
-    setDragPercent(nextPercent);
-    if (Math.abs(nextPercent) < 8) {
+    const maxOffset = maxRevealOffset();
+    const nextOffset = Math.max(-maxOffset, Math.min(maxOffset, event.clientX - dragStartX.current));
+    setDragOffset(nextOffset);
+    if (Math.abs(nextOffset) < 8) {
       setActiveSide(undefined);
       return;
     }
-    setActiveSide(nextPercent > 0 ? 'left' : 'right');
+    setActiveSide(nextOffset > 0 ? 'left' : 'right');
   }
 
   function handleButtonKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, side: PrivateRevealSide) {
@@ -1905,9 +1913,11 @@ function PrivateSwipeReveal({
     reveal(side);
   }
 
+  const swipeStyle = { '--swipe-x': `${dragOffset}px` } as React.CSSProperties;
+
   return (
     <div
-      className={`phone-private-swipe ${activeSide ? `reveal-${activeSide}` : 'reveal-hidden'}`}
+      className={`phone-private-swipe ${activeSide ? `reveal-${activeSide}` : 'reveal-hidden'} ${isDragging ? 'dragging' : ''}`}
       ref={trackRef}
       role="group"
       aria-label={`Reveal hidden role and night information for ${playerName}`}
@@ -1924,42 +1934,44 @@ function PrivateSwipeReveal({
         </div>
       </div>
 
-      <div className="private-swipe-panel private-swipe-right phone-info phone-night-info" aria-hidden={activeSide !== 'right'}>
-        <span>{t('Night info')}</span>
-        <div className="night-info-face">
-          {privateInfo?.sees.length ? (
-            <ul>{privateInfo.sees.map((item) => <li key={item.playerId}>{item.name}: {formatHint(item.hint, language)}</li>)}</ul>
-          ) : (
-            <p>{t('No extra information.')}</p>
-          )}
+      <div className="private-swipe-slider" style={swipeStyle}>
+        <div className="private-swipe-neutral">
+          <span>{t('Swipe left or right to peek')}</span>
+          <div className="private-swipe-actions">
+            <button
+              type="button"
+              onPointerDown={() => reveal('left')}
+              onPointerUp={resetReveal}
+              onPointerCancel={resetReveal}
+              onKeyDown={(event) => handleButtonKeyDown(event, 'left')}
+              onKeyUp={resetReveal}
+              aria-label={`Reveal ${playerName}'s hidden role`}
+            >
+              {t('Identity')}
+            </button>
+            <button
+              type="button"
+              onPointerDown={() => reveal('right')}
+              onPointerUp={resetReveal}
+              onPointerCancel={resetReveal}
+              onKeyDown={(event) => handleButtonKeyDown(event, 'right')}
+              onKeyUp={resetReveal}
+              aria-label={`Reveal ${playerName}'s hidden night information`}
+            >
+              {t('Night info')}
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div className="private-swipe-neutral" style={{ transform: `translateX(${dragPercent * 0.62}%)` }}>
-        <span>{t('Swipe left or right to peek')}</span>
-        <div className="private-swipe-actions">
-          <button
-            type="button"
-            onPointerDown={() => reveal('left')}
-            onPointerUp={resetReveal}
-            onPointerCancel={resetReveal}
-            onKeyDown={(event) => handleButtonKeyDown(event, 'left')}
-            onKeyUp={resetReveal}
-            aria-label={`Reveal ${playerName}'s hidden role`}
-          >
-            {t('Identity')}
-          </button>
-          <button
-            type="button"
-            onPointerDown={() => reveal('right')}
-            onPointerUp={resetReveal}
-            onPointerCancel={resetReveal}
-            onKeyDown={(event) => handleButtonKeyDown(event, 'right')}
-            onKeyUp={resetReveal}
-            aria-label={`Reveal ${playerName}'s hidden night information`}
-          >
-            {t('Night info')}
-          </button>
+        <div className="private-swipe-panel private-swipe-right phone-info phone-night-info" aria-hidden={activeSide !== 'right'}>
+          <span>{t('Night info')}</span>
+          <div className="night-info-face">
+            {privateInfo?.sees.length ? (
+              <ul>{privateInfo.sees.map((item) => <li key={item.playerId}>{item.name}: {formatHint(item.hint, language)}</li>)}</ul>
+            ) : (
+              <p>{t('No extra information.')}</p>
+            )}
+          </div>
         </div>
       </div>
     </div>

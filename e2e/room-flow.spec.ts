@@ -147,32 +147,55 @@ test('private reveal swipe area shows each side only while held or dragged', asy
     const nightInfoFace = players[0].page.locator('.live-player-phone .phone-night-info .night-info-face');
     const rolePanel = players[0].page.locator('.live-player-phone .private-swipe-left');
     const nightInfoPanel = players[0].page.locator('.live-player-phone .private-swipe-right');
+    const slider = players[0].page.locator('.live-player-phone .private-swipe-slider');
+    const neutralCover = players[0].page.locator('.live-player-phone .private-swipe-neutral');
 
     await expect(swipeArea).toHaveCount(1);
     await expect(players[0].page.getByRole('button', { name: /Reveal .* hidden role/i })).toBeVisible();
     await expect(players[0].page.getByRole('button', { name: /Reveal .* hidden night information/i })).toBeVisible();
     await expect(roleFace).toHaveCSS('visibility', 'visible');
     await expect(nightInfoFace).toHaveCSS('visibility', 'visible');
-    await expect(rolePanel).toHaveCSS('opacity', '0');
-    await expect(nightInfoPanel).toHaveCSS('opacity', '0');
+    await expect(rolePanel).toHaveCSS('opacity', '1');
+    await expect(nightInfoPanel).toHaveCSS('opacity', '1');
+    await expect(neutralCover).toHaveCSS('opacity', '1');
 
     const box = await swipeArea.boundingBox();
+    const initialRoleBox = await rolePanel.boundingBox();
+    const initialNightInfoBox = await nightInfoPanel.boundingBox();
+    const initialSliderBox = await slider.boundingBox();
     expect(box).not.toBeNull();
-    if (!box) return;
+    expect(initialRoleBox).not.toBeNull();
+    expect(initialNightInfoBox).not.toBeNull();
+    expect(initialSliderBox).not.toBeNull();
+    if (!box || !initialRoleBox || !initialNightInfoBox || !initialSliderBox) return;
 
     await players[0].page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await players[0].page.mouse.down();
     await players[0].page.mouse.move(box.x + box.width * 0.88, box.y + box.height / 2, { steps: 5 });
-    await expect(rolePanel).toHaveCSS('opacity', '1');
+    const rightDraggedRoleBox = await rolePanel.boundingBox();
+    const rightDraggedSliderBox = await slider.boundingBox();
+    expect(rightDraggedRoleBox).not.toBeNull();
+    expect(rightDraggedSliderBox).not.toBeNull();
+    if (!rightDraggedRoleBox || !rightDraggedSliderBox) return;
+    expect(Math.abs(rightDraggedRoleBox.x - initialRoleBox.x)).toBeLessThan(1);
+    expect(rightDraggedSliderBox.x).toBeGreaterThan(initialSliderBox.x + 40);
+    await expect(neutralCover).toHaveCSS('opacity', '1');
     await players[0].page.mouse.up();
-    await expect(rolePanel).toHaveCSS('opacity', '0');
+    await expect(slider).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
 
     await players[0].page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await players[0].page.mouse.down();
     await players[0].page.mouse.move(box.x + box.width * 0.12, box.y + box.height / 2, { steps: 5 });
-    await expect(nightInfoPanel).toHaveCSS('opacity', '1');
+    const leftDraggedNightInfoBox = await nightInfoPanel.boundingBox();
+    const leftDraggedSliderBox = await slider.boundingBox();
+    expect(leftDraggedNightInfoBox).not.toBeNull();
+    expect(leftDraggedSliderBox).not.toBeNull();
+    if (!leftDraggedNightInfoBox || !leftDraggedSliderBox) return;
+    expect(leftDraggedNightInfoBox.x).toBeLessThan(initialNightInfoBox.x - 40);
+    expect(leftDraggedSliderBox.x).toBeLessThan(initialSliderBox.x - 40);
+    await expect(neutralCover).toHaveCSS('opacity', '1');
     await players[0].page.mouse.up();
-    await expect(nightInfoPanel).toHaveCSS('opacity', '0');
+    await expect(slider).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
   });
 });
 
