@@ -2568,20 +2568,14 @@ function getRoomHeroTitle(snapshot: RoomSnapshot | undefined, t: (text: string) 
   if (!snapshot) return t('Round Table Lobby');
   const missionState = snapshot.room.settings.missionState;
   if (snapshot.room.status === 'lobby' || snapshot.room.status === 'setup') return t('Round Table Lobby');
-  if (snapshot.room.status === 'reveal') return t('The Merlin Reveal');
-  if (!missionState) return t('Table Quest');
-  if (missionState.phase === 'proposal') return t('Choosing crew');
-  if (missionState.phase === 'vote') return t('Council vote');
-  if (missionState.phase === 'mission') return t('Quest underway');
-  if (missionState.phase === 'assassin') return t('Assassin endgame');
-  return missionState.winner === 'evil' ? t('Evil victory') : t('Good victory');
+  return missionState?.phase === 'finished' ? t('Game result') : t('Game Progress');
 }
 
 function getRoomHeroCopy(snapshot: RoomSnapshot | undefined, t: (text: string) => string): string {
   if (!snapshot) return t('Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.');
   const missionState = snapshot.room.settings.missionState;
   if (snapshot.room.status === 'lobby' || snapshot.room.status === 'setup') return t('Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.');
-  if (snapshot.room.status === 'reveal') return t('Each player can privately reveal their role and night information before the first quest.');
+  if (snapshot.room.status === 'reveal') return t('Check your private identity first; the shared board below keeps the table moving through teams, votes, quests, and results.');
   if (!missionState) return t('The shared board tracks proposals, votes, mission cards, and quest results.');
   if (missionState.phase === 'proposal') return t('The current captain picks a crew, then every player votes on that proposal.');
   if (missionState.phase === 'vote') return t('Every player votes, including the captain who proposed the crew.');
@@ -2938,7 +2932,7 @@ function RoomView({
 
       <section className={`panel private-room-panel ${started ? 'started' : 'lobby'}`}>
         <div className="panel-header">
-          <h2>{started ? t('Private Reveal') : t('Current Room')}</h2>
+          <h2>{started ? t('Your Player Area') : t('Current Room')}</h2>
           <div className="room-header-actions">
             {currentPlayer && (
               <button type="button" className="secondary-control room-leave" onClick={onLeave} disabled={busy}>

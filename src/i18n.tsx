@@ -7,10 +7,13 @@ const LANGUAGE_STORAGE_KEY = 'avalon-host-language';
 const zh: Record<string, string> = {
   'Avalon Host': '阿瓦隆主持',
   'The Merlin Reveal': '身份确认',
+  'Game Progress': '本局进度',
+  'Your Player Area': '你的操作区',
   'Round Table Lobby': '房间大厅',
   'Gather the Knights of Avalon': '开一局阿瓦隆',
   'Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.': '创建房间，让玩家入座准备，然后在各自手机上查看秘密身份。',
   'Each player can privately reveal their role and night information before the first quest.': '每位玩家可在第一轮任务前私下查看身份和夜晚信息。',
+  'Check your private identity first; the shared board below keeps the table moving through teams, votes, quests, and results.': '先查看自己的身份与夜晚信息；下面的公共棋盘会继续推进组队、投票、任务和结果。',
   'The shared board tracks proposals, votes, mission cards, and quest results.': '公共面板会记录组队、投票、任务票和任务结果。',
   'The current captain picks a crew, then every player votes on that proposal.': '当前队长选择任务队伍，然后所有玩家进行组队投票。',
   'Every player votes, including the captain who proposed the crew.': '所有玩家都要投票，包括刚刚组队的队长。',

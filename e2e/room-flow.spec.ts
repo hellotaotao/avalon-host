@@ -330,6 +330,8 @@ async function createStartedRoom(browser: Browser, playerCount: number): Promise
   await host.getByRole('button', { name: /^Start Game$/i }).click();
 
   for (const player of players) {
+    await expect(player.page.getByRole('heading', { name: /Game Progress/i })).toBeVisible();
+    await expect(player.page.getByRole('heading', { name: /Your Player Area/i })).toBeVisible();
     await expect(player.page.getByText(/Table Quest/i)).toBeVisible();
   }
 
