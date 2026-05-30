@@ -21,6 +21,12 @@ test('live UI creates a room, joins five players, starts, proposes, votes, and s
       await expect(page.getByText(/Table Quest/i)).toBeVisible();
     }
 
+    await expect(host.locator('.mission-panel-heading .phase-badge')).toHaveCSS('border-top-width', '0px');
+    await expect(host.locator('.mission-panel-heading .phase-badge')).toHaveCSS('box-shadow', 'none');
+    await expect(host.locator('.mission-section-heading').filter({ hasText: 'First side to three wins' }).locator('span')).toHaveCSS('border-top-width', '0px');
+    await expect(host.locator('.mission-section-heading').filter({ hasText: 'Admin override' }).locator('span')).toHaveCSS('border-top-width', '0px');
+    await expect(host.locator('.team-roster-heading').filter({ hasText: 'Proposed crew' }).locator('span')).toHaveCSS('border-top-width', '0px');
+
     const team = players.slice(0, 2);
     await proposeTeam(players, team);
     await submitVotes(players, () => 'approve');

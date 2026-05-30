@@ -1954,36 +1954,73 @@ label {
   font-size: 1.7rem;
 }
 
-.phase-badge,
+.phase-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  justify-self: end;
+  width: auto;
+  max-width: min(48vw, 22rem);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #ffe9aa;
+  padding: 0;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.2;
+  text-align: right;
+}
+
+.phase-badge::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 999px;
+  background: #d1a34e;
+  box-shadow: 0 0 0 2px rgba(209, 163, 78, 0.18);
+}
+
 .mission-section-heading span,
 .team-roster-heading strong {
   justify-self: end;
   width: auto;
   max-width: min(48vw, 22rem);
-  border: 1px solid rgba(240, 199, 107, 0.68);
-  border-radius: 999px;
-  background: rgba(255, 240, 189, 0.14);
-  color: #ffe9aa;
-  padding: 0.35rem 0.6rem;
+  color: #f2ddae;
   font-size: 0.78rem;
   font-weight: 900;
-  text-align: center;
+  line-height: 1.2;
+  text-align: right;
 }
 
 .phase-badge.phase-vote {
-  border-color: #d7b1ee;
   color: #f1ddff;
 }
 
+.phase-badge.phase-vote::before {
+  background: #d7b1ee;
+  box-shadow: 0 0 0 2px rgba(215, 177, 238, 0.18);
+}
+
 .phase-badge.phase-mission {
-  border-color: #9fc36d;
   color: #d9e7ca;
+}
+
+.phase-badge.phase-mission::before {
+  background: #9fc36d;
+  box-shadow: 0 0 0 2px rgba(159, 195, 109, 0.18);
 }
 
 .phase-badge.phase-assassin,
 .phase-badge.phase-finished {
-  border-color: #d77a65;
   color: #ffd3c6;
+}
+
+.phase-badge.phase-assassin::before,
+.phase-badge.phase-finished::before {
+  background: #d77a65;
+  box-shadow: 0 0 0 2px rgba(215, 122, 101, 0.18);
 }
 
 .mission-board-section,
