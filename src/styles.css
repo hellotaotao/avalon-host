@@ -2340,10 +2340,78 @@ label {
 
 .mission-admin {
   border-style: dashed;
-  border-color: rgba(216, 173, 88, 0.7);
+  border-color: rgba(216, 173, 88, 0.36);
+  background:
+    linear-gradient(180deg, rgba(255, 248, 221, 0.04), rgba(17, 18, 16, 0.08)),
+    rgba(17, 18, 16, 0.14);
+  padding: 0.62rem 0.7rem;
+}
+
+.mission-admin[open] {
+  border-color: rgba(216, 173, 88, 0.58);
   background:
     linear-gradient(180deg, rgba(255, 248, 221, 0.08), rgba(17, 18, 16, 0.1)),
-    rgba(17, 18, 16, 0.22);
+    rgba(17, 18, 16, 0.2);
+  padding: 0.78rem;
+}
+
+.mission-admin summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+  color: #cdbb8d;
+  cursor: pointer;
+  list-style: none;
+}
+
+.mission-admin summary::-webkit-details-marker {
+  display: none;
+}
+
+.mission-admin summary span {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+}
+
+.mission-admin summary strong {
+  color: #e5cc88;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.mission-admin summary strong::before {
+  content: "+ ";
+  color: #b99d62;
+  font-weight: 1000;
+}
+
+.mission-admin[open] summary strong::before {
+  content: "- ";
+}
+
+.mission-admin summary small {
+  color: #bfae86;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.mission-admin summary em {
+  justify-self: end;
+  color: #a99368;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.15;
+  text-align: right;
+}
+
+.mission-admin[open] summary {
+  border-bottom: 1px solid rgba(216, 173, 88, 0.28);
+  padding-bottom: 0.65rem;
+  color: #f2ddae;
 }
 
 .mission-admin .mission-step p {

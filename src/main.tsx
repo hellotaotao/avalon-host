@@ -3355,11 +3355,14 @@ function MissionPanel({
       {flowError && <p className="notice">{flowError}</p>}
 
       {canEdit ? (
-        <section className="mission-admin">
-          <div className="mission-section-heading">
-            <h3>{t('Host Backup')}</h3>
-            <span>{t('Admin override')}</span>
-          </div>
+        <details className="mission-admin">
+          <summary>
+            <span>
+              <strong>{t('Recovery controls')}</strong>
+              <small>{t('Only open this if a player phone cannot submit a required action.')}</small>
+            </span>
+            <em>{t('Host-only fallback')}</em>
+          </summary>
           {missionState.phase === 'proposal' && (
             <div className="mission-step">
               <p>{t('Use only if the captain phone cannot submit.')} {t('Quest')} {missionState.roundIndex + 1} {t('needs exactly')} {currentTeamSize} {t('crew members.')} </p>
@@ -3401,7 +3404,7 @@ function MissionPanel({
               </div>
             </div>
           )}
-        </section>
+        </details>
       ) : (
         missionState.phase !== 'finished' && <p className="hint">{t('Use your private phone area for any action assigned to you.')}</p>
       )}
