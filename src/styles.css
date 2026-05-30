@@ -2094,7 +2094,9 @@ label {
 .mission-admin {
   border-style: dashed;
   border-color: rgba(216, 173, 88, 0.7);
-  background: rgba(17, 18, 16, 0.22);
+  background:
+    linear-gradient(180deg, rgba(255, 248, 221, 0.08), rgba(17, 18, 16, 0.1)),
+    rgba(17, 18, 16, 0.22);
 }
 
 .mission-admin .mission-step p {
@@ -2104,6 +2106,33 @@ label {
 
 .team-picker {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mission-admin .team-picker {
+  gap: 0.55rem;
+}
+
+.mission-admin .check {
+  min-width: 0;
+  border: 1px solid rgba(240, 199, 107, 0.66);
+  border-radius: 8px;
+  background: rgba(255, 240, 189, 0.94);
+  color: #321a0c;
+  padding: 0.55rem 0.65rem;
+  font-weight: 900;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.mission-admin .check:focus-within {
+  border-color: #f6d47c;
+  box-shadow: 0 0 0 3px rgba(246, 212, 124, 0.24), inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
+.mission-admin .check input {
+  flex: 0 0 auto;
+  accent-color: #c88929;
 }
 
 .assassin-warning-card {
