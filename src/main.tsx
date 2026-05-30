@@ -1524,8 +1524,10 @@ function PlayerPhone({
   return (
     <article className={`player-phone ${mode === 'demo' ? 'demo-phone' : 'live-player-phone'} ${isLeader ? 'leader-phone' : ''} ${outcomeClass}`}>
       <div className="phone-top">
-        <strong>{player.displayName}</strong>
-        <small>{t('Seat')} {player.seatIndex + 1} · {publicRole}</small>
+        <div className="phone-player-row">
+          <strong>{player.displayName}</strong>
+          <small>{t('Seat')} {player.seatIndex + 1} · {publicRole}</small>
+        </div>
         {onTeam && <span className="phone-team-pill">{t('Mission team')}</span>}
       </div>
       {player.role && (

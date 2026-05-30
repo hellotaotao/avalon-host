@@ -888,6 +888,13 @@ label {
   color: #fff7de;
 }
 
+.phone-player-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .phone-action span,
 .phone-info span {
   color: #b98533;
@@ -898,14 +905,21 @@ label {
 }
 
 .phone-top strong {
+  flex: 1;
+  min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 1.35rem;
-  line-height: 1.05;
+  font-size: 1.9rem;
+  line-height: 1;
 }
 
 .phone-top small {
+  flex: 0 0 auto;
   color: #f0dca9;
+  font-size: 0.86rem;
   font-weight: 800;
+  line-height: 1.15;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .phone-team-pill {
