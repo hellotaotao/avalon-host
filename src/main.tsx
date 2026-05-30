@@ -1220,11 +1220,31 @@ function DemoSimulator() {
           <span>{t('Quest')}: {demo.roundIndex + 1} {t('needs')} {teamSize}</span>
           <span>{t('Score')}: {t('Good')} {goodScore} / {t('Evil')} {evilScore}</span>
         </div>
-        {demo.lastVote && <p className="hint">Last vote: {demo.lastVote.approveCount} approve, {demo.lastVote.rejectCount} reject. Team {demo.lastVote.passed ? 'approved' : 'rejected'}.</p>}
-        {demo.lastMission && <p className="notice">Quest {demo.lastMission.roundIndex + 1} {demo.lastMission.outcome === 'success' ? 'succeeded' : 'failed'} with {demo.lastMission.failCount} fail card(s).</p>}
-        {demo.phase === 'assassin' && <p className="notice">Good completed three quests. The Assassin now chooses one Merlin target; only after that guess is resolved is the winner final.</p>}
+        {demo.lastVote && (
+          <p className="hint">
+            {t('Last vote')}: {demo.lastVote.approveCount} {t('approve')}, {demo.lastVote.rejectCount} {t('reject')}.
+            {' '}
+            {t('Team')} {t(demo.lastVote.passed ? 'approved' : 'rejected')}.
+          </p>
+        )}
+        {demo.lastMission && (
+          <p className="notice">
+            {formatQuestLabel(demo.lastMission.roundIndex, language)} {t(demo.lastMission.outcome === 'success' ? 'succeeded' : 'failed')};
+            {' '}
+            {demo.lastMission.failCount} {t('fail card')}.
+          </p>
+        )}
+        {demo.phase === 'assassin' && <p className="notice">{t('Good completed three quests. The Assassin is choosing Merlin.')}</p>}
         {demo.phase === 'finished' && winner && (
-          <p className="notice">{winner === 'good' ? 'Good wins: the Assassin missed Merlin.' : demo.assassination?.hitMerlin ? 'Evil wins: the Assassin found Merlin.' : 'Evil wins.'} Reset the table to try another setup.</p>
+          <p className="notice">
+            {winner === 'good'
+              ? t('Good wins: the Assassin missed Merlin.')
+              : demo.assassination?.hitMerlin
+                ? t('Evil wins: the Assassin found Merlin.')
+                : t('Evil wins.')}
+            {' '}
+            {t('Reset the table to try another setup.')}
+          </p>
         )}
         {demo.phase === 'setup' && (
           <div className="mission-step">
@@ -1233,17 +1253,29 @@ function DemoSimulator() {
         )}
         {demo.phase === 'proposal' && (
           <div className="mission-step">
-            <p>{demo.players[demo.leaderIndex]?.displayName} is choosing exactly {teamSize} players. Selected: {selectedPlayers.length ? selectedPlayers.join(', ') : 'none'}.</p>
+            <p>
+              {demo.players[demo.leaderIndex]?.displayName} {t('is choosing')} {teamSize} {t('players')}.
+              {' '}
+              {t('Selected')}: {selectedPlayers.length ? selectedPlayers.join(', ') : t('None')}.
+            </p>
           </div>
         )}
         {demo.phase === 'vote' && (
           <div className="mission-step">
-            <p>Everyone votes on {selectedPlayers.join(', ')}. Votes in: {votedCount}/{demo.playerCount}; the table advances when every phone has voted.</p>
+            <p>
+              {t('Everyone votes on')} {selectedPlayers.join(', ')}.
+              {' '}
+              {t('Votes in')}: {votedCount}/{demo.playerCount}; {t('The table advances when every player has voted.')}
+            </p>
           </div>
         )}
         {demo.phase === 'mission' && (
           <div className="mission-step">
-            <p>Mission team plays cards anonymously. Cards in: {missionCards.length}/{demo.selectedTeamIds.length}; the quest resolves when the team is done.</p>
+            <p>
+              {t('Mission team plays cards anonymously.')} {t('Cards in')}: {missionCards.length}/{demo.selectedTeamIds.length};
+              {' '}
+              {t('The quest resolves when the team is done.')}
+            </p>
           </div>
         )}
         {demo.phase === 'result' && !winner && (
@@ -1253,12 +1285,16 @@ function DemoSimulator() {
         )}
         {demo.phase === 'assassin' && (
           <div className="mission-step">
-            <p>Good has three successful quests. Assassin chooses one player as Merlin: hit Merlin and Evil wins; miss and Good wins.</p>
+            <p>{t('Good has three successful quests. Assassin chooses one player as Merlin: hit Merlin and Evil wins; miss and Good wins.')}</p>
           </div>
         )}
         {demo.phase === 'finished' && demo.assassination && (
           <div className="mission-step">
-            <p>Assassin targeted {demo.assassination.targetName}. {demo.assassination.hitMerlin ? 'That was Merlin.' : 'That was not Merlin.'}</p>
+            <p>
+              {t('Assassin targeted')} {demo.assassination.targetName}.
+              {' '}
+              {demo.assassination.hitMerlin ? t('That was Merlin.') : t('That was not Merlin.')}
+            </p>
           </div>
         )}
       </section>
@@ -1369,7 +1405,7 @@ function DemoPhone({
       selectedTeamIds={selectedTeamIds}
       winner={winner}
       result={phase === 'result' ? lastMission : undefined}
-      agentView={tableMode === 'ai' ? getAgentViewSummary(player, privateInfo) : undefined}
+      agentView={tableMode === 'ai' ? getAgentViewSummary(player, privateInfo, t, language) : undefined}
       action={getDemoPhoneAction({
         player,
         players,
@@ -1772,7 +1808,7 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
               ? action.missionCardSubmitted
                 ? `${t('Card submitted.')} ${t('Cards in')}: ${action.submittedCardCount ?? 0}/${action.selectedTeamCount}.`
                 : t('Waiting for your mission card.')
-              : `${action.selectedTeamCount} players are on the mission. Wait for their cards.`}
+              : `${action.selectedTeamCount} ${t('players are on the mission. Wait for their cards.')}`}
           </p>
         )}
       </div>
@@ -1785,7 +1821,7 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
         <span>{t('Assassin phase')}</span>
         {action.onAssassinate ? (
           <>
-            <p>Good completed three quests. Choose Merlin: hit Merlin and Evil wins; miss and Good wins.</p>
+            <p>{t('Good completed three quests. Choose Merlin: hit Merlin and Evil wins; miss and Good wins.')}</p>
             <div className="choice-row">
               {action.candidates.map((candidate) => (
                 <button key={candidate.id} type="button" onClick={() => action.onAssassinate?.(candidate.id)}>{candidate.displayName}</button>
@@ -1793,7 +1829,7 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
             </div>
           </>
         ) : (
-          <p>{action.isAssassin ? 'Waiting for the AI Assassin to choose Merlin.' : t('Good completed three quests. The Assassin is choosing Merlin.')}</p>
+          <p>{action.isAssassin ? t('Waiting for the AI Assassin to choose Merlin.') : t('Good completed three quests. The Assassin is choosing Merlin.')}</p>
         )}
       </div>
     );
@@ -1805,7 +1841,11 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
       <span>{action.winner || isFinished ? t('Game result') : t('Quest result')}</span>
       {action.result && <MissionResultReveal result={action.result} />}
       {action.kind === 'finished' && action.assassination && (
-        <p>Assassin targeted {action.assassination.targetName}. {action.assassination.hitMerlin ? 'Merlin was found.' : 'Merlin survived.'}</p>
+        <p>
+          {t('Assassin targeted')} {action.assassination.targetName}.
+          {' '}
+          {action.assassination.hitMerlin ? t('Merlin was found.') : t('Merlin survived.')}
+        </p>
       )}
       {action.winner ? (
         <p>{action.playerWon ? t('Victory') : t('Defeat')} · {action.winner === 'good' ? t('Good wins') : t('Evil wins')}</p>
@@ -1817,12 +1857,13 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
 }
 
 function MissionResultReveal({ result }: { result: PlayerPhoneResult }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const succeeded = result.outcome === 'success';
+  const failCardLabel = language === 'zh' ? t('fail card') : `${t('fail card')}${result.failCount === 1 ? '' : 's'}`;
   return (
     <div className={`mission-result-reveal ${succeeded ? 'success' : 'fail'}`} aria-live="polite">
       <strong>{succeeded ? t('Quest Success') : t('Quest Failed')}</strong>
-      <small>{result.failCount} {t('fail card')}{result.failCount === 1 ? '' : 's'} · {result.requiredFails} {t('needed to fail')}</small>
+      <small>{result.failCount} {failCardLabel} · {result.requiredFails} {t('needed to fail')}</small>
     </div>
   );
 }
@@ -1887,13 +1928,16 @@ function PrivateSwipeReveal({
   }
 
   const swipeStyle = { '--swipe-x': `${dragOffset}px` } as React.CSSProperties;
+  const roleRevealLabel = language === 'zh' ? `${t('Reveal hidden role for')}${playerName}` : `Reveal ${playerName}'s hidden role`;
+  const nightRevealLabel = language === 'zh' ? `${t('Reveal hidden night information for')}${playerName}` : `Reveal ${playerName}'s hidden night information`;
+  const fullRevealLabel = language === 'zh' ? `${roleRevealLabel} / ${nightRevealLabel}` : `Reveal hidden role and night information for ${playerName}`;
 
   return (
     <div
       className={`phone-private-swipe ${activeSide ? `reveal-${activeSide}` : 'reveal-hidden'} ${isDragging ? 'dragging' : ''}`}
       ref={trackRef}
       role="group"
-      aria-label={`Reveal hidden role and night information for ${playerName}`}
+      aria-label={fullRevealLabel}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={resetReveal}
@@ -1918,7 +1962,7 @@ function PrivateSwipeReveal({
               onPointerCancel={resetReveal}
               onKeyDown={(event) => handleButtonKeyDown(event, 'left')}
               onKeyUp={resetReveal}
-              aria-label={`Reveal ${playerName}'s hidden role`}
+              aria-label={roleRevealLabel}
             >
               {t('Identity')}
             </button>
@@ -1929,7 +1973,7 @@ function PrivateSwipeReveal({
               onPointerCancel={resetReveal}
               onKeyDown={(event) => handleButtonKeyDown(event, 'right')}
               onKeyUp={resetReveal}
-              aria-label={`Reveal ${playerName}'s hidden night information`}
+              aria-label={nightRevealLabel}
             >
               {t('Night info')}
             </button>
@@ -2393,18 +2437,18 @@ function deterministicShuffle<T>(items: T[], seed: string): T[] {
   return copy;
 }
 
-function getAgentViewSummary(player: DemoPlayer, privateInfo: VisibilityInfo): React.ReactNode {
-  if (player.controller !== 'ai') return <div className="agent-card human-card"><span>Human seat</span><p>You make this player's decisions.</p></div>;
+function getAgentViewSummary(player: DemoPlayer, privateInfo: VisibilityInfo, t: (text: string) => string, language: ReturnType<typeof useI18n>['language']): React.ReactNode {
+  if (player.controller !== 'ai') return <div className="agent-card human-card"><span>{t('Human seat')}</span><p>{t("You make this player's decisions.")}</p></div>;
   const suspicionEntries = Object.entries(player.memory?.suspicion ?? {})
     .sort(([, left], [, right]) => right - left)
     .slice(0, 2);
   return (
     <div className="agent-card">
-      <span>AI Agent · {player.persona}</span>
-      <p><strong>Visible info:</strong> {privateInfo.sees.length ? privateInfo.sees.map((item) => `${item.name} (${item.hint})`).join(', ') : 'No private identity info.'}</p>
-      {player.lastPublicSpeech && <p><strong>Public:</strong> “{player.lastPublicSpeech}”</p>}
-      {player.lastReasoningSummary && <p><strong>Reasoning summary:</strong> {player.lastReasoningSummary}</p>}
-      {suspicionEntries.length > 0 && <p><strong>Memory:</strong> {suspicionEntries.map(([id, score]) => `${id.replace('demo-player-', 'P')} ${score > 0 ? '+' : ''}${score}`).join(', ')}</p>}
+      <span>{t('AI Agent')} · {player.persona}</span>
+      <p><strong>{t('Visible info')}:</strong> {privateInfo.sees.length ? privateInfo.sees.map((item) => `${item.name} (${formatHint(item.hint, language)})`).join(', ') : t('No private identity info.')}</p>
+      {player.lastPublicSpeech && <p><strong>{t('Public')}:</strong> "{player.lastPublicSpeech}"</p>}
+      {player.lastReasoningSummary && <p><strong>{t('Reasoning summary')}:</strong> {player.lastReasoningSummary}</p>}
+      {suspicionEntries.length > 0 && <p><strong>{t('Memory')}:</strong> {suspicionEntries.map(([id, score]) => `${id.replace('demo-player-', 'P')} ${score > 0 ? '+' : ''}${score}`).join(', ')}</p>}
     </div>
   );
 }
@@ -2491,7 +2535,7 @@ function formatRoleCount(role: Role, count: number, language: ReturnType<typeof 
 }
 
 function formatQuestLabel(roundIndex: number, language: ReturnType<typeof useI18n>['language']): string {
-  return language === 'zh' ? `任务 ${roundIndex + 1}` : `Q${roundIndex + 1}`;
+  return language === 'zh' ? `第 ${roundIndex + 1} 轮任务` : `Q${roundIndex + 1}`;
 }
 
 function formatFailThresholdLabel(threshold: number, language: ReturnType<typeof useI18n>['language']): string {
@@ -3299,13 +3343,17 @@ function MissionPanel({
           </div>
         )}
         {missionState.teamVote && missionState.phase !== 'vote' && missionState.phase !== 'mission' && (
-          <p className="hint">Last proposal: {missionState.teamVote.approveCount} approve, {missionState.teamVote.rejectCount} reject. Crew {missionState.teamVote.passed ? 'approved' : 'rejected'}.</p>
+          <p className="hint">
+            {t('Last proposal')}: {missionState.teamVote.approveCount} {t('approve')}, {missionState.teamVote.rejectCount} {t('reject')}.
+            {' '}
+            {t('Crew')} {t(missionState.teamVote.passed ? 'approved' : 'rejected')}.
+          </p>
         )}
         {missionState.phase === 'finished' && missionState.assassination && (
           <p className="hint">
-            Assassin target: {players.find((player) => player.id === missionState.assassination?.targetPlayerId)?.displayName ?? 'Unknown'}.
+            {t('Assassin target')}: {players.find((player) => player.id === missionState.assassination?.targetPlayerId)?.displayName ?? t('Unknown')}.
             {' '}
-            {missionState.assassination.hitMerlin ? 'Merlin was found.' : 'Merlin survived.'}
+            {missionState.assassination.hitMerlin ? t('Merlin was found.') : t('Merlin survived.')}
           </p>
         )}
       </section>
