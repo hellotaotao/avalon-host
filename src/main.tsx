@@ -2535,11 +2535,11 @@ function formatRoleCount(role: Role, count: number, language: ReturnType<typeof 
 }
 
 function formatQuestLabel(roundIndex: number, language: ReturnType<typeof useI18n>['language']): string {
-  return language === 'zh' ? `第 ${roundIndex + 1} 轮任务` : `Q${roundIndex + 1}`;
+  return language === 'zh' ? `第${roundIndex + 1}轮任务` : `Q${roundIndex + 1}`;
 }
 
 function formatFailThresholdLabel(threshold: number, language: ReturnType<typeof useI18n>['language']): string {
-  return language === 'zh' ? ` · ${threshold} 张失败牌才失败` : ` / ${threshold} fails`;
+  return language === 'zh' ? ` · ${threshold} 张失败票才失败` : ` / ${threshold} fails`;
 }
 
 const publicRoleOrder: Role[] = ['Merlin', 'Percival', 'Loyal Servant', 'Assassin', 'Morgana', 'Mordred', 'Oberon', 'Minion'];
