@@ -3,7 +3,9 @@ import {
   buildAiAvalonDecisionRequest,
   formatMissionReasoningSummaryForHistory,
   normalizeAiAvalonDecision,
+  updateAiBeliefAfterMissionResult,
   validateAiAvalonDecisionAction,
+  type AiAgentMemory,
   type AiTableStateInput,
 } from './aiAvalon';
 
@@ -242,6 +244,75 @@ describe('AI Avalon request filtering and validation', () => {
     expect(JSON.stringify(request.publicPlayers)).not.toContain('\"role\"');
     expect(validateAiAvalonDecisionAction(request, { type: 'assassinate', targetPlayerId: 'p1' })).toEqual({ type: 'assassinate', targetPlayerId: 'p1' });
     expect(() => validateAiAvalonDecisionAction(request, { type: 'assassinate', targetPlayerId: 'p2' })).toThrow('not legal');
+  });
+
+  it('updates a good team member belief after a failed mission they know they did not fail', () => {
+    const memory: AiAgentMemory = { suspicion: { p2: 0, p3: 0, p4: 0, p5: 0 }, notes: [], publicClaims: [] };
+    const state: AiTableStateInput = {
+      ...baseState,
+      phase: 'result',
+      selectedTeamIds: ['p1', 'p3', 'p4'],
+      lastMission: {
+        roundIndex: 2,
+        outcome: 'fail',
+        successCount: 2,
+        failCount: 1,
+        requiredFails: 1,
+        selectedTeamIds: ['p1', 'p3', 'p4'],
+      },
+      players: [
+        { id: 'p1', displayName: 'Cai AI', seatIndex: 0, role: 'Loyal Servant', controller: 'ai', missionCard: 'success' },
+        { id: 'p2', displayName: 'Bors AI', seatIndex: 1, role: 'Merlin', controller: 'ai' },
+        { id: 'p3', displayName: 'Dagonet AI', seatIndex: 2, role: 'Loyal Servant', controller: 'ai', missionCard: 'success' },
+        { id: 'p4', displayName: 'Elaine AI', seatIndex: 3, role: 'Assassin', controller: 'ai', missionCard: 'fail' },
+        { id: 'p5', displayName: 'Gareth AI', seatIndex: 4, role: 'Minion', controller: 'ai' },
+      ],
+    };
+
+    const result = updateAiBeliefAfterMissionResult(memory, state, 'p1');
+
+    expect(result.memory.suspicion.p3).toBeGreaterThan(0);
+    expect(result.memory.suspicion.p4).toBeGreaterThan(0);
+    expect(result.memory.suspicion.p2).toBe(0);
+    expect(result.audit?.informationUsed.join(' ')).toContain("Actor's own mission card: success");
+    expect(result.audit?.deductions.join(' ')).toContain('own card cannot be the source');
+  });
+
+  it('lets Merlin infer hidden evil when a failed mission contains no visible evil', () => {
+    const memory: AiAgentMemory = { suspicion: { p2: 0, p3: 0, p4: 0, p5: 0, p6: 0, p7: 0 }, notes: [], publicClaims: [] };
+    const state: AiTableStateInput = {
+      ...baseState,
+      playerCount: 7,
+      phase: 'result',
+      selectedTeamIds: ['p2', 'p3', 'p4'],
+      lastMission: {
+        roundIndex: 1,
+        outcome: 'fail',
+        successCount: 2,
+        failCount: 1,
+        requiredFails: 1,
+        selectedTeamIds: ['p2', 'p3', 'p4'],
+      },
+      players: [
+        { id: 'p1', displayName: 'Helena AI', seatIndex: 0, role: 'Merlin', controller: 'ai' },
+        { id: 'p2', displayName: 'Arthur AI', seatIndex: 1, role: 'Loyal Servant', controller: 'ai', missionCard: 'success' },
+        { id: 'p3', displayName: 'Bors AI', seatIndex: 2, role: 'Mordred', controller: 'ai', missionCard: 'fail' },
+        { id: 'p4', displayName: 'Cai AI', seatIndex: 3, role: 'Loyal Servant', controller: 'ai', missionCard: 'success' },
+        { id: 'p5', displayName: 'Elaine AI', seatIndex: 4, role: 'Assassin', controller: 'ai' },
+        { id: 'p6', displayName: 'Gareth AI', seatIndex: 5, role: 'Morgana', controller: 'ai' },
+        { id: 'p7', displayName: 'Isolde AI', seatIndex: 6, role: 'Percival', controller: 'ai' },
+      ],
+    };
+
+    const result = updateAiBeliefAfterMissionResult(memory, state, 'p1');
+
+    expect(result.memory.suspicion.p2).toBeGreaterThan(0);
+    expect(result.memory.suspicion.p3).toBeGreaterThan(0);
+    expect(result.memory.suspicion.p4).toBeGreaterThan(0);
+    expect(result.memory.suspicion.p5).toBe(0);
+    expect(result.memory.suspicion.p6).toBe(0);
+    expect(result.audit?.deductions.join(' ')).toContain('hidden evil/Mordred');
+    expect(result.audit?.uncertainty.join(' ')).toContain('Mordred is hidden from Merlin');
   });
 
 });

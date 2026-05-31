@@ -4,6 +4,7 @@ export interface AiAgentMemory {
   suspicion: Record<string, number>;
   notes: string[];
   publicClaims: string[];
+  beliefAudit?: AiBeliefAudit[];
 }
 
 export interface AiTablePlayerInput {
@@ -34,9 +35,9 @@ export interface AiTableStateInput {
   selectedTeamIds: string[];
   players: AiTablePlayerInput[];
   tableHistory: AiTableHistoryEntryInput[];
-  missionResults: Array<{ roundIndex: number; outcome: 'success' | 'fail'; successCount: number; failCount: number; requiredFails: number }>;
+  missionResults: Array<{ roundIndex: number; outcome: 'success' | 'fail'; successCount: number; failCount: number; requiredFails: number; selectedTeamIds?: string[] }>;
   lastVote?: { approveCount: number; rejectCount: number; passed: boolean };
-  lastMission?: { roundIndex: number; outcome: 'success' | 'fail'; successCount: number; failCount: number; requiredFails: number };
+  lastMission?: { roundIndex: number; outcome: 'success' | 'fail'; successCount: number; failCount: number; requiredFails: number; selectedTeamIds?: string[] };
 }
 
 export type AiAvalonLegalAction =
@@ -99,6 +100,24 @@ export interface AiAvalonDecision {
   publicSpeech: string;
   action: AiAvalonDecisionAction;
   memoryUpdate: Partial<AiAgentMemory> & { note?: string };
+}
+
+export interface AiBeliefAudit {
+  eventType: 'decision' | 'missionResult';
+  roundIndex: number;
+  publicSpeechAvailableToAI: boolean;
+  speechSource: string;
+  informationUsed: string[];
+  deductions: string[];
+  beliefDeltas: Record<string, number>;
+  uncertainty: string[];
+  beliefBefore: Record<string, number>;
+  beliefAfter: Record<string, number>;
+}
+
+export interface AiBeliefUpdateResult {
+  memory: AiAgentMemory;
+  audit?: AiBeliefAudit;
 }
 
 export function findNextAiActor(state: AiTableStateInput): AiTablePlayerInput | undefined {
@@ -327,6 +346,124 @@ export function mergeAiAgentMemory(current: AiAgentMemory, update: AiAvalonDecis
     suspicion: { ...current.suspicion, ...(isRecord(update.suspicion) ? numericRecord(update.suspicion) : {}) },
     notes: [...current.notes.slice(-4), cleanText(update.note, fallbackNote)].slice(-5),
     publicClaims: [...current.publicClaims.slice(-4), publicSpeech].slice(-5),
+    beliefAudit: current.beliefAudit?.slice(-8) ?? [],
+  };
+}
+
+export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: AiTableStateInput, actorId: string): AiBeliefUpdateResult {
+  const actor = state.players.find((player) => player.id === actorId);
+  const mission = state.lastMission ?? state.missionResults.at(-1);
+  if (!actor || !mission) return { memory: current };
+  const teamIds = mission.selectedTeamIds?.length ? mission.selectedTeamIds : state.selectedTeamIds;
+  if (!teamIds.length) return { memory: current };
+
+  const allPlayerIds = state.players.map((player) => player.id);
+  const beliefBefore = normalizeSuspicionForPlayers(current.suspicion, allPlayerIds, actor.id);
+  const suspicion = { ...beliefBefore };
+  const visibility = getVisibilityInfo(toAvalonPlayer(actor), state.players.map(toAvalonPlayer));
+  const visibleEvilOnTeam = visibility.sees.filter((item) => item.hint === 'Evil player' && teamIds.includes(item.playerId));
+  const actorAllegiance = roleAllegiance(actor.role);
+  const actorOnTeam = teamIds.includes(actor.id);
+  const ownMissionCard = actorOnTeam
+    ? actor.missionCard ?? (actorAllegiance === 'good' ? 'success' : undefined)
+    : undefined;
+  const teamNames = teamIds.map((id) => state.players.find((player) => player.id === id)?.displayName ?? id);
+  const informationUsed = [
+    `Quest ${mission.roundIndex + 1} result: ${mission.outcome}; fail cards ${mission.failCount}/${mission.requiredFails}.`,
+    `Quest team: ${teamNames.join(', ')}.`,
+    `Actor role/allegiance: ${actor.role} / ${actorAllegiance}.`,
+    `Role-visible players on team: ${visibleEvilOnTeam.length ? visibleEvilOnTeam.map((item) => `${item.name} (${item.hint})`).join(', ') : 'none'}.`,
+  ];
+  if (ownMissionCard) informationUsed.push(`Actor's own mission card: ${ownMissionCard}.`);
+
+  const deductions: string[] = [];
+  const uncertainty = ['Successful quests do not hard-clear team members; evil can submit success.'];
+
+  if (mission.outcome === 'fail') {
+    deductions.push(`A failed mission means at least ${mission.requiredFails} fail card${mission.requiredFails === 1 ? '' : 's'} were submitted.`);
+    if (actorAllegiance === 'good') {
+      if (actorOnTeam) {
+        deductions.push('Actor is good and was on the failed mission, so their own card cannot be the source of the fail.');
+        teamIds.filter((id) => id !== actor.id).forEach((id) => {
+          suspicion[id] = clampSuspicion((suspicion[id] ?? 0) + (mission.requiredFails > 1 ? 24 : 32));
+        });
+      } else if (actor.role === 'Merlin' && !visibleEvilOnTeam.length) {
+        deductions.push('Merlin saw no visible evil on this failed mission, so hidden evil/Mordred is likely among the team.');
+        teamIds.forEach((id) => {
+          if (id !== actor.id) suspicion[id] = clampSuspicion((suspicion[id] ?? 0) + 34);
+        });
+      } else {
+        deductions.push('Actor was not on the failed mission, so all team members become more suspicious from public evidence.');
+        teamIds.forEach((id) => {
+          if (id !== actor.id) suspicion[id] = clampSuspicion((suspicion[id] ?? 0) + 18);
+        });
+      }
+      visibleEvilOnTeam.forEach((item) => {
+        suspicion[item.playerId] = clampSuspicion(Math.max(suspicion[item.playerId] ?? 0, 55));
+      });
+      if (visibleEvilOnTeam.length) deductions.push('Role vision already flags at least one team member as visible evil.');
+    } else {
+      deductions.push('Actor is evil and knows evil teammates; keep private teammate reads separate from public suspicion pressure.');
+      state.players.forEach((player) => {
+        if (player.id !== actor.id && roleAllegiance(player.role) === 'evil' && player.role !== 'Oberon') {
+          suspicion[player.id] = Math.min(suspicion[player.id] ?? 0, -35);
+        }
+      });
+      teamIds.forEach((id) => {
+        const player = state.players.find((candidate) => candidate.id === id);
+        if (player && roleAllegiance(player.role) === 'good') suspicion[id] = clampSuspicion((suspicion[id] ?? 0) + 10);
+      });
+    }
+  } else {
+    deductions.push('Mission succeeded; reduce suspicion slightly but preserve uncertainty.');
+    if (actorAllegiance === 'good') {
+      teamIds.forEach((id) => {
+        if (id !== actor.id && !visibleEvilOnTeam.some((item) => item.playerId === id)) {
+          suspicion[id] = clampSuspicion((suspicion[id] ?? 0) - 8);
+        }
+      });
+      visibleEvilOnTeam.forEach((item) => {
+        suspicion[item.playerId] = clampSuspicion(Math.max(suspicion[item.playerId] ?? 0, 35));
+      });
+    } else {
+      state.players.forEach((player) => {
+        if (player.id !== actor.id && roleAllegiance(player.role) === 'evil' && player.role !== 'Oberon') {
+          suspicion[player.id] = Math.min(suspicion[player.id] ?? 0, -35);
+        }
+      });
+    }
+  }
+
+  if (actor.role === 'Percival') {
+    uncertainty.push('Percival sees Merlin candidates only; that vision is ambiguous between Merlin and Morgana.');
+  }
+  if (actor.role === 'Merlin') {
+    uncertainty.push('Mordred is hidden from Merlin and cannot be ruled out by Merlin vision.');
+  }
+  uncertainty.push('No claim extractor is available in v1; raw public speech is not converted into structured claims.');
+
+  const beliefAfter = normalizeSuspicionForPlayers(suspicion, allPlayerIds, actor.id);
+  const audit: AiBeliefAudit = {
+    eventType: 'missionResult',
+    roundIndex: mission.roundIndex,
+    publicSpeechAvailableToAI: state.tableHistory.some((entry) => entry.kind === 'speech'),
+    speechSource: state.tableHistory.some((entry) => entry.kind === 'speech') ? 'demo text table history' : 'none',
+    informationUsed,
+    deductions,
+    beliefDeltas: computeSuspicionDeltas(beliefBefore, beliefAfter),
+    uncertainty,
+    beliefBefore,
+    beliefAfter,
+  };
+
+  return {
+    memory: {
+      suspicion: beliefAfter,
+      notes: [...current.notes.slice(-4), summarizeBeliefAudit(audit, state)].slice(-5),
+      publicClaims: [...current.publicClaims].slice(-5),
+      beliefAudit: [...(current.beliefAudit?.slice(-7) ?? []), audit],
+    },
+    audit,
   };
 }
 
@@ -346,6 +483,15 @@ function cloneMemory(memory: AiAgentMemory | undefined, playerIds: string[], sel
     suspicion: { ...memory.suspicion },
     notes: [...memory.notes],
     publicClaims: [...memory.publicClaims],
+    beliefAudit: memory.beliefAudit?.map((entry) => ({
+      ...entry,
+      informationUsed: [...entry.informationUsed],
+      deductions: [...entry.deductions],
+      beliefDeltas: { ...entry.beliefDeltas },
+      uncertainty: [...entry.uncertainty],
+      beliefBefore: { ...entry.beliefBefore },
+      beliefAfter: { ...entry.beliefAfter },
+    })),
   };
 }
 
@@ -359,6 +505,35 @@ function cleanText(value: unknown, fallback: string): string {
 
 function numericRecord(value: Record<string, unknown>): Record<string, number> {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => typeof item === 'number' && Number.isFinite(item))) as Record<string, number>;
+}
+
+function normalizeSuspicionForPlayers(suspicion: Record<string, number>, playerIds: string[], selfId: string): Record<string, number> {
+  return Object.fromEntries(
+    playerIds
+      .filter((id) => id !== selfId)
+      .map((id) => [id, clampSuspicion(typeof suspicion[id] === 'number' ? suspicion[id] : 0)]),
+  );
+}
+
+function computeSuspicionDeltas(before: Record<string, number>, after: Record<string, number>): Record<string, number> {
+  return Object.fromEntries(
+    Object.keys(after)
+      .map((id) => [id, after[id] - (before[id] ?? 0)] as const)
+      .filter(([, delta]) => delta !== 0),
+  );
+}
+
+function summarizeBeliefAudit(audit: AiBeliefAudit, state: AiTableStateInput): string {
+  const deltas = Object.entries(audit.beliefDeltas);
+  if (!deltas.length) return `Belief update after Quest ${audit.roundIndex + 1}: no suspicion changes.`;
+  const formatted = deltas
+    .map(([id, delta]) => `${state.players.find((player) => player.id === id)?.displayName ?? id} ${delta >= 0 ? '+' : ''}${delta}`)
+    .join(', ');
+  return `Belief update after Quest ${audit.roundIndex + 1}: ${formatted}.`;
+}
+
+function clampSuspicion(value: number): number {
+  return Math.max(-100, Math.min(100, Math.round(value)));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

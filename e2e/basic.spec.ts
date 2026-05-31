@@ -112,6 +112,12 @@ test('finished AI demo can copy a complete analysis log', async ({ page }) => {
   expect(copied).toContain('- Public table history:');
   expect(copied).toContain('- AI private reasoning:');
   expect(copied).toContain('Private reasoning');
+  expect(copied).toContain('Belief update');
+  expect(copied).toContain('- Belief before:');
+  expect(copied).toContain('- Belief after:');
+  expect(copied).toContain('## Structured audit events');
+  expect(copied).toContain('"schema": "avalon-demo-audit.v1"');
+  expect(copied).toContain('"publicSpeechAvailableToAI"');
 });
 
 test('demo phone result styling does not enlarge cards into neighbors', async ({ page }) => {
