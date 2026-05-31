@@ -69,7 +69,7 @@ import {
   type RoomSnapshot,
 } from './services/roomService';
 import { getSessionStorageKeys, isDevSessionActive } from './sessionKeys';
-import { I18nProvider, formatAllegiance, formatHint, formatRole, useI18n } from './i18n';
+import { I18nProvider, formatAllegiance, formatHint, formatRole, useI18n, type Language } from './i18n';
 import './styles.css';
 
 type Screen = EntryScreen | 'room';
@@ -1070,7 +1070,7 @@ function DemoSimulator() {
       setDemo((current) => applyAiDecision(current, actor.id, body.decision));
       setAiStatus(`${t('AI move from')} ${body.provider ?? 'AI'}${body.model ? ` (${body.model})` : ''}.`);
     } catch (error) {
-      setDemo(runNextAiAction);
+      setDemo((current) => runNextAiAction(current, language));
       setAiStatus(`${error instanceof Error ? error.message : t('AI failed.')} ${t('Used local heuristic fallback.')}`);
     } finally {
       setAiBusy(false);
@@ -1336,17 +1336,9 @@ function DemoSimulator() {
             </div>
           </div>
           {aiStatus && <p className="ai-status" aria-live="polite">{aiStatus}</p>}
-          <div className="ai-history">
-            {demo.tableHistory.slice(-8).map((entry) => (
-              <p key={entry.id}><strong>{entry.actorName ?? 'Table'}:</strong> {entry.text}</p>
-            ))}
-          </div>
+          <DemoHistoryLog entries={demo.tableHistory.slice(-8)} />
           {demo.aiHistory.length > 0 && (
-            <div className="ai-history ai-private-history" aria-label={t('AI private reasoning log')}>
-              {demo.aiHistory.slice(-5).map((entry) => (
-                <p key={entry.id}><strong>{entry.actorName ?? 'AI'}:</strong> {entry.text}</p>
-              ))}
-            </div>
+            <DemoHistoryLog entries={demo.aiHistory.slice(-5)} privateLog ariaLabel={t('AI private reasoning log')} />
           )}
         </section>
       )}
@@ -1373,6 +1365,27 @@ function DemoSimulator() {
           />
         ))}
       </section>
+    </div>
+  );
+}
+
+function DemoHistoryLog({ entries, privateLog = false, ariaLabel }: { entries: DemoHistoryEntry[]; privateLog?: boolean; ariaLabel?: string }) {
+  const { language } = useI18n();
+
+  return (
+    <div className={`ai-history ${privateLog ? 'ai-private-history' : ''}`} aria-label={ariaLabel}>
+      {entries.map((entry) => {
+        const display = formatDemoHistoryEntry(entry, language);
+        return (
+          <article key={entry.id} className={`ai-history-entry history-${display.tone}`}>
+            <div className="ai-history-meta">
+              <span className="ai-history-label">{display.label}</span>
+              <strong>{entry.actorName ?? display.actorFallback}</strong>
+            </div>
+            <p>{display.text}</p>
+          </article>
+        );
+      })}
     </div>
   );
 }
@@ -2135,6 +2148,99 @@ function makeHistory(demo: DemoState, actor: DemoPlayer | undefined, kind: DemoH
   };
 }
 
+type DemoHistoryTone = 'speech' | 'action' | 'reasoning' | 'result';
+
+function formatDemoHistoryEntry(entry: DemoHistoryEntry, language: Language): { label: string; text: string; tone: DemoHistoryTone; actorFallback: string } {
+  const isZh = language === 'zh';
+  const actorFallback = isZh ? '牌桌' : 'Table';
+  const rawText = stripHistoryActorPrefix(entry.text, entry.actorName);
+
+  if (entry.kind === 'speech') {
+    return { label: isZh ? '发言' : 'Speech', text: rawText, tone: 'speech', actorFallback };
+  }
+
+  if (rawText.startsWith('Mission reasoning:')) {
+    return {
+      label: isZh ? '任务推理' : 'Mission reasoning',
+      text: rawText.replace(/^Mission reasoning:\s*/, ''),
+      tone: 'reasoning',
+      actorFallback: isZh ? 'AI' : 'AI',
+    };
+  }
+
+  if (rawText.startsWith('Assassin reasoning:') || rawText.startsWith('Assassin heuristic:') || rawText.startsWith('刺客推理：')) {
+    return {
+      label: isZh ? '刺客推理' : 'Assassin reasoning',
+      text: rawText.replace(/^(Assassin reasoning:|Assassin heuristic:|刺客推理：)\s*/, ''),
+      tone: 'reasoning',
+      actorFallback: isZh ? 'AI' : 'AI',
+    };
+  }
+
+  if (entry.kind === 'proposal') {
+    const team = rawText.match(/^proposed (.+)\.$/i)?.[1] ?? rawText.match(/^.+? proposed (.+)\.$/i)?.[1];
+    return {
+      label: isZh ? '操作' : 'Action',
+      text: team ? (isZh ? `提议任务队伍：${team.replace(/, /g, '、')}` : `Proposed quest team: ${team}.`) : rawText,
+      tone: 'action',
+      actorFallback,
+    };
+  }
+
+  if (entry.kind === 'vote') {
+    const vote = rawText.match(/^voted (approve|reject)\.$/i)?.[1] ?? rawText.match(/^.+? voted (approve|reject)\.$/i)?.[1];
+    return {
+      label: isZh ? '操作' : 'Action',
+      text: vote ? (isZh ? `投票：${vote === 'approve' ? '赞成' : '反对'}` : `Voted ${vote}.`) : rawText,
+      tone: 'action',
+      actorFallback,
+    };
+  }
+
+  if (entry.kind === 'mission' && /submitted a mission card\./i.test(rawText)) {
+    return {
+      label: isZh ? '操作' : 'Action',
+      text: isZh ? '已提交任务票。' : 'Submitted a mission card.',
+      tone: 'action',
+      actorFallback,
+    };
+  }
+
+  if (entry.kind === 'assassin') {
+    const target = rawText.match(/^chose (.+) as Merlin\./i)?.[1] ?? rawText.match(/^.+? chose (.+) as Merlin\./i)?.[1];
+    const hitMerlin = /Merlin was found/i.test(rawText);
+    const merlinSurvived = /Merlin survived/i.test(rawText);
+    return {
+      label: isZh ? '操作' : 'Action',
+      text: target && (hitMerlin || merlinSurvived)
+        ? isZh
+          ? `刺杀梅林：选择 ${target}。${hitMerlin ? '刺中梅林，坏人获胜。' : '梅林存活，好人获胜。'}`
+          : `Chose ${target} as Merlin. ${hitMerlin ? 'Merlin was found; Evil wins.' : 'Merlin survived; Good wins.'}`
+        : rawText,
+      tone: 'action',
+      actorFallback,
+    };
+  }
+
+  if (entry.kind === 'result') {
+    const start = rawText.match(/^Demo roundtable started with (\d+) players and (\d+) AI fill-ins\.$/);
+    return {
+      label: isZh ? '进度' : 'Progress',
+      text: start && isZh ? `演示圆桌开始：${start[1]} 名玩家，${start[2]} 个 AI 补位。` : rawText,
+      tone: 'result',
+      actorFallback,
+    };
+  }
+
+  return { label: isZh ? '操作' : 'Action', text: rawText, tone: 'action', actorFallback };
+}
+
+function stripHistoryActorPrefix(text: string, actorName?: string): string {
+  if (!actorName) return text;
+  const prefix = `${actorName} `;
+  return text.startsWith(prefix) ? text.slice(prefix.length) : text;
+}
+
 function hasPendingAiAction(demo: DemoState): boolean {
   if (demo.mode !== 'ai') return false;
   if (demo.phase === 'proposal') return demo.players[demo.leaderIndex]?.controller === 'ai';
@@ -2144,12 +2250,12 @@ function hasPendingAiAction(demo: DemoState): boolean {
   return false;
 }
 
-function runNextAiAction(current: DemoState): DemoState {
+function runNextAiAction(current: DemoState, language: Language = 'en'): DemoState {
   if (current.mode !== 'ai' || current.phase === 'setup' || current.phase === 'result' || current.phase === 'finished' || getDemoWinner(current)) return current;
-  if (current.phase === 'proposal') return runAiProposal(current);
-  if (current.phase === 'vote') return runAiVote(current);
-  if (current.phase === 'mission') return runAiMission(current);
-  if (current.phase === 'assassin') return runAiAssassination(current);
+  if (current.phase === 'proposal') return runAiProposal(current, language);
+  if (current.phase === 'vote') return runAiVote(current, language);
+  if (current.phase === 'mission') return runAiMission(current, language);
+  if (current.phase === 'assassin') return runAiAssassination(current, language);
   return current;
 }
 
@@ -2248,13 +2354,18 @@ function rememberAgentFromDecision(player: DemoPlayer, current: DemoState, decis
   };
 }
 
-function runAiProposal(current: DemoState): DemoState {
+function runAiProposal(current: DemoState, language: Language = 'en'): DemoState {
   const leader = current.players[current.leaderIndex];
   if (!leader || leader.controller !== 'ai') return current;
   const teamSize = getTeamSize(current.playerCount, current.roundIndex);
   const teamIds = chooseAiTeam(current, leader, teamSize);
-  const publicSpeech = buildAiSpeech(current, leader, `I want to test ${teamIds.map((id) => playerName(current, id)).join(', ')}. This team gives us information without overloading one suspicious seat.`);
-  const reasoning = `As ${leader.role}, choose a team that includes self when useful, favours lower suspicion, and ${roleAllegiance(leader.role) === 'evil' ? 'keeps evil options live' : 'avoids suspicious seats'}.`;
+  const teamNames = teamIds.map((id) => playerName(current, id)).join(language === 'zh' ? '、' : ', ');
+  const publicSpeech = buildAiSpeech(current, leader, localizeDemoText(language, `I want to test ${teamNames}. This team gives us information without overloading one suspicious seat.`, `我想先试 ${teamNames}。这队能给桌面信息，也不会把压力都压在一个可疑座位上。`));
+  const reasoning = localizeDemoText(
+    language,
+    `As ${leader.role}, choose a team that includes self when useful, favours lower suspicion, and ${roleAllegiance(leader.role) === 'evil' ? 'keeps evil options live' : 'avoids suspicious seats'}.`,
+    `作为 ${formatRole(leader.role, language)}，优先选择可控且怀疑度较低的队伍；${roleAllegiance(leader.role) === 'evil' ? '同时保留坏人行动空间。' : '尽量避开可疑座位。'}`,
+  );
   const updatedLeader = rememberAgent(leader, current, reasoning, publicSpeech);
   const players = current.players.map((player) => (player.id === leader.id ? updatedLeader : { ...player, teamVote: undefined, missionCard: undefined }));
   const proposedState = {
@@ -2275,16 +2386,26 @@ function runAiProposal(current: DemoState): DemoState {
   };
 }
 
-function runAiVote(current: DemoState): DemoState {
+function runAiVote(current: DemoState, language: Language = 'en'): DemoState {
   const voter = current.players.find((player) => player.controller === 'ai' && !player.teamVote);
   if (!voter) return current;
   const vote = chooseAiVote(current, voter);
-  const selectedNames = current.selectedTeamIds.map((id) => playerName(current, id)).join(', ');
-  const publicSpeech = buildAiSpeech(current, voter, vote === 'approve' ? `I can approve ${selectedNames}; the table composition is acceptable for this quest.` : `I reject ${selectedNames}; this team does not give me enough confidence.`);
+  const selectedNames = current.selectedTeamIds.map((id) => playerName(current, id)).join(language === 'zh' ? '、' : ', ');
+  const publicSpeech = buildAiSpeech(
+    current,
+    voter,
+    vote === 'approve'
+      ? localizeDemoText(language, `I can approve ${selectedNames}; the table composition is acceptable for this quest.`, `我可以赞成 ${selectedNames}；这个任务队伍目前可以接受。`)
+      : localizeDemoText(language, `I reject ${selectedNames}; this team does not give me enough confidence.`, `我反对 ${selectedNames}；这队现在还不能让我放心。`),
+  );
   const visibleEvil = visibleEvilPlayersOnCurrentDemoTeam(current, voter);
   const reasoning = visibleEvil.length
-    ? `Vote ${vote}; role-visible info flags ${visibleEvil.map((player) => player.name).join(', ')} as evil on the current team, so avoid approving without exposing certainty.`
-    : `Vote ${vote}; team suspicion score ${scoreTeamSuspicion(current, voter, current.selectedTeamIds)}.`;
+    ? localizeDemoText(
+      language,
+      `Vote ${vote}; role-visible info flags ${visibleEvil.map((player) => player.name).join(', ')} as evil on the current team, so avoid approving without exposing certainty.`,
+      `投票${vote === 'approve' ? '赞成' : '反对'}；身份视野显示当前队伍里 ${visibleEvil.map((player) => player.name).join('、')} 是坏人，因此不能轻易赞成，也要避免公开暴露确定信息。`,
+    )
+    : localizeDemoText(language, `Vote ${vote}; team suspicion score ${scoreTeamSuspicion(current, voter, current.selectedTeamIds)}.`, `投票${vote === 'approve' ? '赞成' : '反对'}；当前队伍怀疑分为 ${scoreTeamSuspicion(current, voter, current.selectedTeamIds)}。`);
   const playersWithVote = current.players.map((player) => (
     player.id === voter.id ? { ...rememberAgent(voter, current, reasoning, publicSpeech), teamVote: vote } : player
   ));
@@ -2301,14 +2422,14 @@ function runAiVote(current: DemoState): DemoState {
   };
 }
 
-function runAiMission(current: DemoState): DemoState {
+function runAiMission(current: DemoState, language: Language = 'en'): DemoState {
   const actor = current.players.find((player) => player.controller === 'ai' && current.selectedTeamIds.includes(player.id) && !player.missionCard);
   if (!actor) return current;
   const card: MissionCard = roleAllegiance(actor.role) === 'evil' ? chooseEvilMissionCard(current, actor) : 'success';
-  const publicSpeech = buildAiSpeech(current, actor, 'Mission card submitted. We will learn from the result.');
+  const publicSpeech = buildAiSpeech(current, actor, localizeDemoText(language, 'Mission card submitted. We will learn from the result.', '任务票已提交。等结果出来再继续判断。'));
   const reasoning = roleAllegiance(actor.role) === 'evil'
-    ? 'Mission choice weighs sabotage pressure against staying hidden; early stacked evil teams may hide to avoid linking allies.'
-    : 'Good roles must submit success, so the mission choice is forced.';
+    ? localizeDemoText(language, 'Mission choice weighs sabotage pressure against staying hidden; early stacked evil teams may hide to avoid linking allies.', '任务票选择要权衡破坏任务和隐藏身份；早期坏人扎堆时可以先藏，避免把队友连在一起。')
+    : localizeDemoText(language, 'Good roles must submit success, so the mission choice is forced.', '好人必须提交成功票，所以任务票选择是固定的。');
   const playersWithCard = current.players.map((player) => (
     player.id === actor.id ? { ...rememberAgent(actor, current, reasoning, publicSpeech), missionCard: card } : player
   ));
@@ -2327,12 +2448,12 @@ function runAiMission(current: DemoState): DemoState {
   };
 }
 
-function runAiAssassination(current: DemoState): DemoState {
+function runAiAssassination(current: DemoState, language: Language = 'en'): DemoState {
   const assassin = current.players.find((player) => player.controller === 'ai' && player.role === 'Assassin');
   if (!assassin) return current;
   const target = chooseAiAssassinationTarget(current, assassin);
-  const publicSpeech = buildAiSpeech(current, assassin, `I choose ${target.displayName} as Merlin.`);
-  const reasoning = `Assassin heuristic: target the good player with the strongest Merlin signals from private suspicion memory and public quest history; selected ${target.displayName}.`;
+  const publicSpeech = buildAiSpeech(current, assassin, localizeDemoText(language, `I choose ${target.displayName} as Merlin.`, `我选择 ${target.displayName} 作为梅林目标。`));
+  const reasoning = localizeDemoText(language, `Assassin heuristic: target the good player with the strongest Merlin signals from private suspicion memory and public quest history; selected ${target.displayName}.`, `刺客推理：根据私有怀疑记忆和公开任务历史，选择最像梅林的好人；目标是 ${target.displayName}。`);
   const rememberedAssassin = rememberAgent(assassin, current, reasoning, publicSpeech);
   const withMemory = { ...current, players: current.players.map((player) => (player.id === assassin.id ? rememberedAssassin : player)) };
   const resolved = resolveDemoAssassination(withMemory, target.id);
@@ -2448,6 +2569,10 @@ function buildAiSpeech(_current: DemoState, player: DemoPlayer, fallback: string
   if (player.role === 'Merlin' && fallback.includes('confidence')) return fallback.replace('confidence', 'behavioural confidence');
   if (player.persona?.includes('Aggressive')) return fallback.replace('I ', 'I strongly ');
   return fallback;
+}
+
+function localizeDemoText(language: Language, en: string, zh: string): string {
+  return language === 'zh' ? zh : en;
 }
 
 function playerName(current: DemoState, playerId: string): string {

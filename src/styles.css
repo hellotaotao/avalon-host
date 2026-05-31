@@ -969,25 +969,85 @@ label {
 
 .ai-history {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.45rem;
   max-height: 180px;
   overflow: auto;
   border-top: 1px solid rgba(240, 199, 107, 0.35);
   padding-top: 0.7rem;
 }
 
-.ai-history p {
+.ai-history-entry {
+  display: grid;
+  gap: 0.22rem;
+  border-left: 3px solid rgba(240, 199, 107, 0.85);
+  border-radius: 7px;
+  background: rgba(7, 30, 20, 0.48);
+  padding: 0.45rem 0.55rem;
+}
+
+.ai-history-meta {
+  display: flex;
+  gap: 0.45rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+  color: #fff4cf;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.ai-history-label {
+  color: #f0c76b;
+  font-size: 0.68rem;
+  letter-spacing: 0;
+}
+
+.ai-history-entry p {
   margin: 0;
   color: #f2ddae;
   font-size: 0.9rem;
-  font-weight: 800;
+  font-weight: 760;
+  line-height: 1.5;
+}
+
+.history-speech {
+  border-left-color: #f0c76b;
+}
+
+.history-action {
+  border-left-color: #78d09a;
+  background: rgba(18, 50, 35, 0.68);
+}
+
+.history-action .ai-history-label,
+.history-action p {
+  color: #c8f3d2;
+}
+
+.history-reasoning {
+  border-left-color: #8ccfff;
+  background: rgba(12, 34, 48, 0.7);
+}
+
+.history-reasoning .ai-history-label,
+.history-reasoning p {
+  color: #d7ecff;
+}
+
+.history-result {
+  border-left-color: #e7a15e;
+  background: rgba(65, 37, 18, 0.56);
+}
+
+.history-result .ai-history-label,
+.history-result p {
+  color: #ffe0bd;
 }
 
 .ai-private-history {
   border-top-color: rgba(140, 208, 255, 0.35);
 }
 
-.ai-private-history p {
+.ai-private-history .ai-history-entry p {
   color: #d7ecff;
 }
 
