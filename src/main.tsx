@@ -1166,10 +1166,10 @@ function DemoSimulator() {
     <div className="demo-simulator">
       <div className="demo-heading">
         <div>
-          <p className="eyebrow">{t('Local tabletop simulator')}</p>
-          <h2>{t('Multi-phone Demo')}</h2>
+          <p className="eyebrow">{t('Not a live game')}</p>
+          <h2>{t('Demo mode')}</h2>
         </div>
-        <button type="button" onClick={() => resetWith(demo.playerCount, demo.roleOptions)}>{t('Reset table')}</button>
+        <button type="button" className="demo-reset-button" onClick={() => resetWith(demo.playerCount, demo.roleOptions)}>{t('Reset table')}</button>
       </div>
 
       {demo.phase === 'setup' ? (
