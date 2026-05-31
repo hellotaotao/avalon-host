@@ -50,3 +50,37 @@ test('pure AI demo can pause between quest rounds', async ({ page }) => {
   await expect(page.getByRole('dialog', { name: /Review this round/i })).toHaveCount(0);
   await expect(page.getByText(/Quest: 2 needs/i)).toBeVisible();
 });
+
+test('demo phone result styling does not enlarge cards into neighbors', async ({ page }) => {
+  await page.goto('/?step=demo');
+  await page.getByLabel(/Table size/i).getByRole('button', { name: '5' }).click();
+  await page.getByLabel(/Manual seats/i).getByRole('button', { name: '0' }).click();
+  await page.getByRole('button', { name: /Start demo/i }).click();
+
+  const phones = page.locator('.demo-phone-grid .player-phone');
+  await expect(phones).toHaveCount(5);
+
+  await phones.evaluateAll((nodes) => {
+    nodes.forEach((node, index) => {
+      node.classList.add('mission-fail-phone');
+      node.classList.add(index === 1 ? 'phone-loser' : 'phone-winner');
+    });
+  });
+  await page.waitForTimeout(350);
+
+  const layout = await phones.evaluateAll((nodes) => nodes.map((node) => {
+    const rect = node.getBoundingClientRect();
+    return {
+      left: rect.left,
+      right: rect.right,
+      transform: getComputedStyle(node).transform,
+    };
+  }));
+
+  for (const card of layout) {
+    expect(card.transform).toBe('none');
+  }
+  for (let index = 0; index < layout.length - 1; index += 1) {
+    expect(layout[index].right).toBeLessThanOrEqual(layout[index + 1].left);
+  }
+});

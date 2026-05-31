@@ -2904,13 +2904,16 @@ label {
 
 @keyframes phone-celebrate {
   0% {
-    transform: translateY(0) scale(1);
+    filter: brightness(1);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.28);
   }
   35% {
-    transform: translateY(-5px) scale(1.015);
+    filter: brightness(1.06);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34), 0 0 0 3px rgba(233, 188, 72, 0.34);
   }
   100% {
-    transform: translateY(0) scale(1);
+    filter: brightness(1);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.28);
   }
 }
 
@@ -2940,29 +2943,29 @@ label {
 
 @keyframes mission-success-pop {
   0% {
-    transform: scale(1);
+    filter: brightness(1);
   }
   38% {
-    transform: scale(1.018);
+    filter: brightness(1.05);
   }
   100% {
-    transform: scale(1);
+    filter: brightness(1);
   }
 }
 
 @keyframes mission-fail-pulse {
   0%,
   100% {
-    transform: translateX(0);
+    filter: brightness(1);
   }
   18% {
-    transform: translateX(-3px);
+    filter: brightness(1.03) saturate(1.08);
   }
   36% {
-    transform: translateX(3px);
+    filter: brightness(0.97) saturate(1.1);
   }
   54% {
-    transform: translateX(-2px);
+    filter: brightness(1.02) saturate(1.06);
   }
 }
 
