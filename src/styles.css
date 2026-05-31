@@ -13,6 +13,17 @@
 body {
   margin: 0;
   min-width: 320px;
+  min-height: 100vh;
+  background-color: #17120f;
+  background-image:
+    radial-gradient(circle at 52% 0%, rgba(255, 228, 154, 0.18), transparent 26rem),
+    linear-gradient(180deg, rgba(17, 12, 10, 0.42), rgba(17, 26, 20, 0.82) 48%, rgba(23, 13, 16, 0.88)),
+    url("/art/avalon-mist-hall-bg.jpg"),
+    linear-gradient(145deg, #17120f 0%, #263328 46%, #23181c 100%);
+  background-position: center top, center top, center top, center;
+  background-repeat: no-repeat;
+  background-size: cover, cover, cover, cover;
+  background-attachment: scroll, scroll, fixed, fixed;
 }
 
 body::before {
@@ -78,6 +89,7 @@ label {
 }
 
 .shell {
+  position: relative;
   width: min(820px, 100%);
   margin: 0 auto;
   padding: 1rem;
@@ -97,10 +109,20 @@ label {
 }
 
 .hero {
+  position: relative;
   display: grid;
   gap: 0.85rem;
   padding: 0.9rem 0 1.2rem;
   color: #fff7de;
+}
+
+.hero::after {
+  content: "";
+  width: min(14rem, 54vw);
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #8e4f22, #f0c76b, rgba(240, 199, 107, 0));
+  opacity: 0.8;
 }
 
 .hero h1,
@@ -188,17 +210,44 @@ label {
 }
 
 .panel {
+  position: relative;
   display: grid;
   align-content: start;
   gap: 1rem;
+  overflow: hidden;
   border: 2px solid #b98636;
   border-radius: 8px;
   background:
     linear-gradient(135deg, rgba(255, 248, 221, 0.94), rgba(235, 204, 143, 0.96)),
+    url("/art/parchment-rune-texture.jpg"),
     #f5dfad;
+  background-position: center, center;
+  background-size: auto, cover;
+  background-blend-mode: normal, soft-light, normal;
   color: #2b190d;
   padding: 1rem;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28), inset 0 0 0 2px rgba(255, 244, 204, 0.55);
+}
+
+.panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  right: -3.4rem;
+  top: -3.4rem;
+  width: 9rem;
+  height: 9rem;
+  border: 1px solid rgba(120, 72, 28, 0.28);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, transparent 0 42%, rgba(120, 72, 28, 0.16) 43% 45%, transparent 46% 100%),
+    conic-gradient(from 15deg, rgba(120, 72, 28, 0.18), transparent 16deg 44deg, rgba(120, 72, 28, 0.14) 45deg 58deg, transparent 59deg);
+  opacity: 0.72;
+  pointer-events: none;
 }
 
 .entry {
@@ -243,14 +292,41 @@ label {
 }
 
 .path-section {
+  position: relative;
+  overflow: hidden;
   border: 2px solid #c8923b;
   border-radius: 8px;
   background:
     linear-gradient(135deg, rgba(255, 246, 218, 0.96), rgba(239, 210, 148, 0.96)),
+    url("/art/parchment-rune-texture.jpg"),
     #f5dfad;
+  background-position: center, center;
+  background-size: auto, cover;
+  background-blend-mode: normal, soft-light, normal;
   color: #2b190d;
   padding: 1rem;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3), inset 0 0 0 2px rgba(255, 248, 221, 0.58);
+}
+
+.path-section > * {
+  position: relative;
+  z-index: 1;
+}
+
+.path-section::after {
+  content: "";
+  position: absolute;
+  right: -2.25rem;
+  bottom: -2.25rem;
+  width: 8.5rem;
+  height: 8.5rem;
+  border: 1px solid rgba(93, 57, 23, 0.24);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, transparent 0 39%, rgba(93, 57, 23, 0.18) 40% 42%, transparent 43%),
+    conic-gradient(from 45deg, rgba(93, 57, 23, 0.14), transparent 20deg 50deg, rgba(93, 57, 23, 0.12) 52deg 68deg, transparent 70deg);
+  opacity: 0.78;
+  pointer-events: none;
 }
 
 .path-section .eyebrow {
@@ -287,7 +363,11 @@ label {
   border-radius: 8px;
   background:
     linear-gradient(135deg, rgba(19, 28, 23, 0.72), rgba(47, 27, 28, 0.58)),
+    url("/art/avalon-mist-hall-bg.jpg"),
     #1d241f;
+  background-position: center, center;
+  background-size: auto, cover;
+  background-blend-mode: normal, soft-light, normal;
   color: #fff7de;
   padding: 0.85rem;
   box-shadow: inset 0 0 0 1px rgba(255, 248, 221, 0.06);
@@ -545,7 +625,11 @@ label {
   border-radius: 8px;
   background:
     linear-gradient(135deg, rgba(255, 248, 221, 0.94), rgba(235, 204, 143, 0.96)),
+    url("/art/parchment-rune-texture.jpg"),
     #f5dfad;
+  background-position: center, center;
+  background-size: auto, cover;
+  background-blend-mode: normal, soft-light, normal;
   color: #2b190d;
   padding: 1rem;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22), inset 0 0 0 2px rgba(255, 244, 204, 0.55);
@@ -810,7 +894,13 @@ label {
 .demo-board {
   border: 2px solid #d3b15f;
   border-radius: 8px;
-  background: #213225;
+  background:
+    linear-gradient(145deg, rgba(23, 34, 25, 0.96), rgba(42, 54, 35, 0.94)),
+    url("/art/parchment-rune-texture.jpg"),
+    #213225;
+  background-position: center, center;
+  background-size: auto, cover;
+  background-blend-mode: normal, multiply, normal;
   color: #fff7de;
   padding: 1rem;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
@@ -1177,8 +1267,10 @@ label {
   border-radius: 8px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.12) 25%, transparent 25% 50%, rgba(255, 255, 255, 0.12) 50% 75%, transparent 75%) 0 0 / 24px 24px,
+    url("/art/parchment-rune-texture.jpg") center / cover,
     linear-gradient(180deg, #6d5e50, #352e2a);
   color: #fff7de;
+  background-blend-mode: normal, multiply, normal;
   box-shadow: inset 0 0 0 2px rgba(255, 239, 190, 0.22), 0 0 16px rgba(0, 0, 0, 0.16);
 }
 
@@ -1282,8 +1374,10 @@ label {
   border-radius: 0;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.12) 25%, transparent 25% 50%, rgba(255, 255, 255, 0.12) 50% 75%, transparent 75%) 0 0 / 24px 24px,
+    url("/art/parchment-rune-texture.jpg") center / cover,
     linear-gradient(180deg, #6d5e50, #352e2a);
   color: #fff7de;
+  background-blend-mode: normal, multiply, normal;
   touch-action: pan-y;
   user-select: none;
   box-shadow: inset 0 0 0 2px rgba(255, 239, 190, 0.22), 0 0 16px rgba(0, 0, 0, 0.18);
@@ -1298,8 +1392,10 @@ label {
   border: 0;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.12) 25%, transparent 25% 50%, rgba(255, 255, 255, 0.12) 50% 75%, transparent 75%) 0 0 / 24px 24px,
+    url("/art/parchment-rune-texture.jpg") center / cover,
     linear-gradient(180deg, #756658, #3c342f);
   color: #fff7de;
+  background-blend-mode: normal, multiply, normal;
 }
 
 .peek-cover span {
@@ -1399,15 +1495,44 @@ label {
 }
 
 .room-code {
+  position: relative;
   display: grid;
   gap: 0.65rem;
   align-content: center;
+  overflow: hidden;
   border: 2px solid #e7bd63;
   border-radius: 8px;
-  background: linear-gradient(145deg, #311843, #4b1d21 62%, #7a451b);
+  background:
+    linear-gradient(145deg, rgba(49, 24, 67, 0.96), rgba(75, 29, 33, 0.95) 62%, rgba(122, 69, 27, 0.95)),
+    url("/art/parchment-rune-texture.jpg"),
+    #311843;
+  background-position: center, center;
+  background-size: auto, cover;
+  background-blend-mode: normal, multiply, normal;
   color: #fff7de;
   padding: 0.85rem;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3), inset 0 0 0 2px rgba(255, 230, 157, 0.12);
+}
+
+.room-code > * {
+  position: relative;
+  z-index: 1;
+}
+
+.room-code::after {
+  content: "";
+  position: absolute;
+  right: -2.8rem;
+  bottom: -2.8rem;
+  width: 9rem;
+  height: 9rem;
+  border: 1px solid rgba(255, 227, 155, 0.22);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, transparent 0 42%, rgba(255, 227, 155, 0.14) 43% 45%, transparent 46%),
+    conic-gradient(from 28deg, rgba(255, 227, 155, 0.14), transparent 14deg 44deg, rgba(255, 227, 155, 0.11) 46deg 60deg, transparent 62deg);
+  opacity: 0.78;
+  pointer-events: none;
 }
 
 .room-code-top {
@@ -1833,6 +1958,10 @@ label {
 }
 
 @media (max-width: 560px) {
+  body {
+    background-attachment: scroll;
+  }
+
   .players li {
     grid-template-columns: minmax(0, 1fr) auto;
   }
@@ -2075,7 +2204,11 @@ label {
   border-color: #d3b15f;
   background:
     linear-gradient(145deg, rgba(48, 36, 28, 0.96), rgba(92, 58, 29, 0.94) 42%, rgba(41, 54, 39, 0.96)),
+    url("/art/avalon-mist-hall-bg.jpg"),
     #3c2b23;
+  background-position: center, center;
+  background-size: auto, cover;
+  background-blend-mode: normal, soft-light, normal;
   color: #fff7de;
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34), inset 0 0 0 2px rgba(255, 230, 157, 0.12);
 }
