@@ -3,6 +3,7 @@ import {
   buildAiAvalonDecisionRequest,
   formatMissionReasoningSummaryForHistory,
   normalizeAiAvalonDecision,
+  updateAiBeliefAfterFormalAction,
   updateAiBeliefAfterMissionResult,
   validateAiAvalonDecisionAction,
   type AiAgentMemory,
@@ -381,6 +382,86 @@ describe('AI Avalon request filtering and validation', () => {
       reason: expect.stringContaining('evil can submit success early'),
     });
     expect(result.memory.beliefProfiles?.p3.uncertainty.join(' ')).toContain('success does not clear');
+  });
+
+  it('updates belief from a proposal before the mission result exists', () => {
+    const memory: AiAgentMemory = { suspicion: { p2: 0, p3: 0, p4: 0, p5: 0 }, notes: [], publicClaims: [] };
+    const state: AiTableStateInput = {
+      ...baseState,
+      phase: 'vote',
+      selectedTeamIds: ['p2', 'p3'],
+      players: [
+        { id: 'p1', displayName: 'Merlin AI', seatIndex: 0, role: 'Merlin', controller: 'ai' },
+        { id: 'p2', displayName: 'Assassin AI', seatIndex: 1, role: 'Assassin', controller: 'ai' },
+        { id: 'p3', displayName: 'Loyal', seatIndex: 2, role: 'Loyal Servant', controller: 'human' },
+        { id: 'p4', displayName: 'Minion AI', seatIndex: 3, role: 'Minion', controller: 'ai' },
+        { id: 'p5', displayName: 'Loyal 2', seatIndex: 4, role: 'Loyal Servant', controller: 'human' },
+      ],
+    };
+
+    const result = updateAiBeliefAfterFormalAction(memory, state, 'p1', {
+      type: 'proposal',
+      roundIndex: 0,
+      leaderId: 'p2',
+      teamIds: ['p2', 'p3'],
+    });
+
+    expect(result.audit?.eventType).toBe('proposal');
+    expect(result.memory.beliefProfiles?.p2.evidenceForEvil[0]).toMatchObject({
+      event: 'Q1_PROPOSAL',
+      reason: expect.stringContaining('role-visible evil'),
+    });
+    expect(result.memory.beliefProfiles?.p2.suspicionScore).toBe(2.5);
+    expect(result.audit?.uncertainty.join(' ')).toContain('Good players can propose or approve bad teams');
+  });
+
+  it('updates belief from votes even when a proposal is rejected', () => {
+    const memory: AiAgentMemory = {
+      suspicion: { p2: 0, p3: 0, p4: 0, p5: 0 },
+      notes: [],
+      publicClaims: [],
+      beliefProfiles: {
+        p2: { playerId: 'p2', player: 'Assassin AI', pEvil: 0.5, suspicionScore: 0, evidenceForEvil: [], evidenceAgainstEvil: [], uncertainty: [] },
+        p3: { playerId: 'p3', player: 'Loyal', pEvil: 0.62, suspicionScore: 4, evidenceForEvil: [{ event: 'Q1_RESULT', reason: 'Prior failed team.' }], evidenceAgainstEvil: [], uncertainty: [] },
+        p4: { playerId: 'p4', player: 'Minion AI', pEvil: 0.5, suspicionScore: 0, evidenceForEvil: [], evidenceAgainstEvil: [], uncertainty: [] },
+        p5: { playerId: 'p5', player: 'Loyal 2', pEvil: 0.5, suspicionScore: 0, evidenceForEvil: [], evidenceAgainstEvil: [], uncertainty: [] },
+      },
+    };
+    const state: AiTableStateInput = {
+      ...baseState,
+      phase: 'proposal',
+      selectedTeamIds: [],
+      players: [
+        { id: 'p1', displayName: 'Arthur AI', seatIndex: 0, role: 'Loyal Servant', controller: 'ai' },
+        { id: 'p2', displayName: 'Bors AI', seatIndex: 1, role: 'Assassin', controller: 'ai', teamVote: 'approve' },
+        { id: 'p3', displayName: 'Cai AI', seatIndex: 2, role: 'Loyal Servant', controller: 'ai', teamVote: 'approve' },
+        { id: 'p4', displayName: 'Dagonet AI', seatIndex: 3, role: 'Loyal Servant', controller: 'ai', teamVote: 'reject' },
+        { id: 'p5', displayName: 'Elaine AI', seatIndex: 4, role: 'Minion', controller: 'ai', teamVote: 'reject' },
+      ],
+    };
+
+    const result = updateAiBeliefAfterFormalAction(memory, state, 'p1', {
+      type: 'vote',
+      roundIndex: 1,
+      teamIds: ['p2', 'p3'],
+      passed: false,
+      votes: [
+        { playerId: 'p2', vote: 'approve' },
+        { playerId: 'p3', vote: 'approve' },
+        { playerId: 'p4', vote: 'reject' },
+        { playerId: 'p5', vote: 'reject' },
+      ],
+    });
+
+    expect(result.audit?.eventType).toBe('vote');
+    expect(result.memory.beliefProfiles?.p2.evidenceForEvil.at(-1)).toMatchObject({
+      event: 'Q2_VOTE',
+      reason: expect.stringContaining('Approved'),
+    });
+    expect(result.memory.beliefProfiles?.p4.evidenceAgainstEvil.at(-1)).toMatchObject({
+      event: 'Q2_VOTE',
+      reason: expect.stringContaining('Rejected'),
+    });
   });
 
 });

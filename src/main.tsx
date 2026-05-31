@@ -35,10 +35,12 @@ import {
   findNextAiActor,
   formatMissionReasoningSummaryForHistory,
   mergeAiAgentMemory,
+  updateAiBeliefAfterFormalAction,
   updateAiBeliefAfterMissionResult,
   type AiAvalonDecision,
   type AiAgentMemory,
   type AiBeliefAudit,
+  type AiFormalActionBeliefEvent,
   type AiPlayerBeliefProfile,
 } from './aiAvalon';
 import { getNextRoomAiAction, getRoomAiActionKey, type RoomAiAction } from './services/roomAi';
@@ -2424,6 +2426,32 @@ function applyMissionResultBeliefUpdates(current: DemoState): DemoState {
   return { ...current, players, aiHistory };
 }
 
+function applyFormalActionBeliefUpdates(current: DemoState, event: AiFormalActionBeliefEvent): DemoState {
+  const players: DemoPlayer[] = [];
+  const aiHistory = [...current.aiHistory];
+
+  current.players.forEach((player) => {
+    if (player.controller !== 'ai') {
+      players.push(player);
+      return;
+    }
+    const memory = player.memory ?? createAgentMemory(current.players.map((candidate) => candidate.id), player.id);
+    const update = updateAiBeliefAfterFormalAction(memory, current, player.id, event);
+    players.push({ ...player, memory: update.memory });
+    if (update.audit) {
+      aiHistory.push(makeHistory(
+        current,
+        player,
+        event.type,
+        `Belief update: ${formatBeliefDeltas(update.audit, current)}`,
+        update.audit,
+      ));
+    }
+  });
+
+  return { ...current, players, aiHistory };
+}
+
 function makeDecisionAudit(current: DemoState, before: DemoPlayer, after: DemoPlayer, deduction: string): AiBeliefAudit {
   const beliefBefore = getPlayerBeliefSnapshot(current, before);
   const beliefAfter = getPlayerBeliefSnapshot(current, after);
@@ -2633,7 +2661,7 @@ function applyAiDecision(current: DemoState, actorId: string, decision: AiAvalon
     if (teamIds.length !== teamSize) return runAiProposal(current);
     const players = current.players.map((player) => (player.id === actor.id ? rememberedActor : { ...player, teamVote: undefined, missionCard: undefined }));
     const proposedState = { ...current, phase: 'vote' as const, selectedTeamIds: teamIds, players, lastVote: undefined, lastMission: undefined };
-    return {
+    const withHistory = {
       ...proposedState,
       tableHistory: [
         ...current.tableHistory,
@@ -2645,6 +2673,7 @@ function applyAiDecision(current: DemoState, actorId: string, decision: AiAvalon
         makeHistory(current, rememberedActor, 'proposal', formatPrivateReasoningSummaryForHistory(decision.privateReasoningSummary), decisionAudit),
       ],
     };
+    return applyFormalActionBeliefUpdates(withHistory, { type: 'proposal', roundIndex: current.roundIndex, leaderId: rememberedActor.id, teamIds });
   }
 
   if (current.phase === 'vote' && !actor.teamVote && decision.action.type === 'vote') {
@@ -2653,7 +2682,7 @@ function applyAiDecision(current: DemoState, actorId: string, decision: AiAvalon
       player.id === actor.id ? { ...rememberedActor, teamVote: vote } : player
     ));
     const resolved = resolveDemoVoteIfReady(current, playersWithVote);
-    return {
+    const withHistory = {
       ...current,
       players: resolved.players,
       tableHistory: [
@@ -2667,6 +2696,16 @@ function applyAiDecision(current: DemoState, actorId: string, decision: AiAvalon
       ],
       ...resolved.statePatch,
     };
+    if (!resolved.statePatch.lastVote) return withHistory;
+    return applyFormalActionBeliefUpdates(withHistory, {
+      type: 'vote',
+      roundIndex: current.roundIndex,
+      teamIds: [...current.selectedTeamIds],
+      passed: resolved.statePatch.lastVote.passed,
+      votes: playersWithVote
+        .filter((player): player is DemoPlayer & { teamVote: Vote } => Boolean(player.teamVote))
+        .map((player) => ({ playerId: player.id, vote: player.teamVote })),
+    });
   }
 
   if (current.phase === 'mission' && current.selectedTeamIds.includes(actor.id) && !actor.missionCard && decision.action.type === 'missionCard') {
@@ -2746,7 +2785,7 @@ function runAiProposal(current: DemoState, language: Language = 'en'): DemoState
     lastVote: undefined,
     lastMission: undefined,
   };
-  return {
+  const withHistory = {
     ...proposedState,
     tableHistory: [
       ...current.tableHistory,
@@ -2758,6 +2797,7 @@ function runAiProposal(current: DemoState, language: Language = 'en'): DemoState
       makeHistory(current, updatedLeader, 'proposal', formatPrivateReasoningSummaryForHistory(reasoning), decisionAudit),
     ],
   };
+  return applyFormalActionBeliefUpdates(withHistory, { type: 'proposal', roundIndex: current.roundIndex, leaderId: updatedLeader.id, teamIds });
 }
 
 function runAiVote(current: DemoState, language: Language = 'en'): DemoState {
@@ -2786,7 +2826,7 @@ function runAiVote(current: DemoState, language: Language = 'en'): DemoState {
     player.id === voter.id ? { ...rememberedVoter, teamVote: vote } : player
   ));
   const resolved = resolveDemoVoteIfReady(current, playersWithVote);
-  return {
+  const withHistory = {
     ...current,
     players: resolved.players,
     tableHistory: [
@@ -2800,6 +2840,16 @@ function runAiVote(current: DemoState, language: Language = 'en'): DemoState {
     ],
     ...resolved.statePatch,
   };
+  if (!resolved.statePatch.lastVote) return withHistory;
+  return applyFormalActionBeliefUpdates(withHistory, {
+    type: 'vote',
+    roundIndex: current.roundIndex,
+    teamIds: [...current.selectedTeamIds],
+    passed: resolved.statePatch.lastVote.passed,
+    votes: playersWithVote
+      .filter((player): player is DemoPlayer & { teamVote: Vote } => Boolean(player.teamVote))
+      .map((player) => ({ playerId: player.id, vote: player.teamVote })),
+  });
 }
 
 function runAiMission(current: DemoState, language: Language = 'en'): DemoState {
@@ -2932,6 +2982,7 @@ function updateAgentMemory(player: DemoPlayer, current: DemoState, reasoning: st
     notes: [...memory.notes.slice(-3), reasoning],
     publicClaims: [...memory.publicClaims].slice(-3),
     beliefAudit: memory.beliefAudit?.slice(-8) ?? [],
+    beliefProfiles: memory.beliefProfiles,
   };
 }
 
@@ -2941,6 +2992,8 @@ function scoreTeamSuspicion(current: DemoState, voter: DemoPlayer, teamIds: stri
 
 function suspicionFor(viewer: DemoPlayer, targetId: string): number {
   if (targetId === viewer.id) return roleAllegiance(viewer.role) === 'evil' ? -20 : -12;
+  const target = viewer.memory?.beliefProfiles?.[targetId];
+  if (target && roleAllegiance(viewer.role) !== 'evil') return Math.round(target.suspicionScore * 8);
   return viewer.memory?.suspicion[targetId] ?? 0;
 }
 

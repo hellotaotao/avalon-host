@@ -138,7 +138,7 @@ export interface AiAvalonDecision {
 }
 
 export interface AiBeliefAudit {
-  eventType: 'decision' | 'missionResult';
+  eventType: 'decision' | 'proposal' | 'vote' | 'missionResult';
   roundIndex: number;
   evidenceMode: 'formal_actions_only';
   speechPolicy: 'ignored_by_design';
@@ -156,6 +156,35 @@ export interface AiBeliefUpdateResult {
   memory: AiAgentMemory;
   audit?: AiBeliefAudit;
 }
+
+export type AiFormalActionBeliefEvent =
+  | { type: 'proposal'; roundIndex: number; leaderId: string; teamIds: string[] }
+  | { type: 'vote'; roundIndex: number; teamIds: string[]; passed: boolean; votes: Array<{ playerId: string; vote: Vote }> };
+
+const ACTION_ECONOMICS = {
+  failedMissionOtherMember: { raw: 32, profile: 4 },
+  failedMissionOtherMemberTwoFailQuest: { raw: 24, profile: 3 },
+  failedMissionPublicTeamMember: { raw: 18, profile: 2 },
+  merlinHiddenEvilCandidate: { raw: 34, profile: 4 },
+  successfulMissionMember: { raw: -8, profile: -0.5 },
+  visibleEvilMinimum: { raw: 55, profile: 8 },
+  visibleEvilOnSuccessfulMissionMinimum: { raw: 35, profile: 8 },
+  evilViewGoodOnFailedTeam: { raw: 10, profile: 1 },
+  proposalLaterFailed: { raw: 14, profile: 2 },
+  proposalLaterSucceeded: { raw: -4, profile: -0.5 },
+  approveFailedTeam: { raw: 6, profile: 1 },
+  rejectFailedTeam: { raw: -3, profile: -0.5 },
+  approveSuccessfulTeam: { raw: -2, profile: -0.25 },
+  rejectSuccessfulTeam: { raw: 2, profile: 0.25 },
+  proposalWithVisibleEvil: { raw: 16, profile: 2.5 },
+  proposalWithSuspiciousTeam: { raw: 8, profile: 1.25 },
+  proposalWithLowRiskTeam: { raw: -3, profile: -0.25 },
+  approveVisibleEvilTeam: { raw: 12, profile: 2 },
+  approveSuspiciousTeam: { raw: 6, profile: 1 },
+  rejectSuspiciousTeam: { raw: -3, profile: -0.5 },
+  rejectLowRiskTeam: { raw: 3, profile: 0.5 },
+  approveLowRiskTeam: { raw: -1, profile: -0.25 },
+} as const;
 
 export function findNextAiActor(state: AiTableStateInput): AiTablePlayerInput | undefined {
   if (state.phase === 'proposal') {
@@ -398,6 +427,149 @@ export function mergeAiAgentMemory(current: AiAgentMemory, update: AiAvalonDecis
   };
 }
 
+export function updateAiBeliefAfterFormalAction(current: AiAgentMemory, state: AiTableStateInput, actorId: string, event: AiFormalActionBeliefEvent): AiBeliefUpdateResult {
+  const actor = state.players.find((player) => player.id === actorId);
+  if (!actor) return { memory: current };
+  const allPlayerIds = state.players.map((player) => player.id);
+  const beliefBefore = normalizeSuspicionForPlayers(current.suspicion, allPlayerIds, actor.id);
+  const suspicion = { ...beliefBefore };
+  const beliefProfilesBefore = normalizeBeliefProfiles(current.beliefProfiles, state.players, actor.id, beliefBefore);
+  const beliefProfiles = cloneBeliefProfiles(beliefProfilesBefore) ?? {};
+  const visibility = getVisibilityInfo(toAvalonPlayer(actor), state.players.map(toAvalonPlayer));
+  const teamIds = event.teamIds;
+  const teamNames = teamIds.map((id) => playerNameFromState(state, id));
+  const teamText = teamNames.join('+');
+  const visibleEvilOnTeam = visibility.sees.filter((item) => item.hint === 'Evil player' && teamIds.includes(item.playerId));
+  const teamProfileScore = averageProfileScore(beliefProfiles, teamIds, actor.id);
+  const teamRisk = visibleEvilOnTeam.length ? 'role-visible-evil' : teamProfileScore >= 2 ? 'suspicious' : teamProfileScore <= 0 ? 'low-risk' : 'uncertain';
+  const informationUsed = [
+    `${event.type === 'proposal' ? 'Proposal' : 'Vote'} event in Quest ${event.roundIndex + 1}.`,
+    `Team: ${teamNames.join(', ')}.`,
+    `Actor role/allegiance: ${actor.role} / ${roleAllegiance(actor.role)}.`,
+    `Role-visible players on team: ${visibleEvilOnTeam.length ? visibleEvilOnTeam.map((item) => `${item.name} (${item.hint})`).join(', ') : 'none'}.`,
+    `Team profile suspicionScore average before event: ${teamProfileScore}.`,
+  ];
+  const deductions = [
+    'Formal actions are costly signals, not direct truth.',
+    'Proposal behavior is stronger than a single vote because the leader chooses who receives mission leverage.',
+    'Votes are weak-to-medium evidence because both sides can feint.',
+  ];
+  const uncertainty = [
+    'Good players can propose or approve bad teams with incomplete information.',
+    'Evil players can reject bad teams or approve good teams for cover.',
+    'Public speech is ignored by design; only verified formal actions are evidence.',
+  ];
+
+  const addEventEvidence = (
+    playerId: string,
+    rawDelta: number,
+    profileDelta: number,
+    direction: 'for' | 'against',
+    eventId: string,
+    reason: string,
+    uncertaintyItem: string,
+  ) => {
+    if (playerId === actor.id) return;
+    suspicion[playerId] = clampSuspicion((suspicion[playerId] ?? 0) + rawDelta);
+    addBeliefEvidence(beliefProfiles, playerId, direction, eventId, reason, profileDelta, uncertaintyItem);
+  };
+
+  if (event.type === 'proposal') {
+    const leader = state.players.find((player) => player.id === event.leaderId);
+    const eventId = `Q${event.roundIndex + 1}_PROPOSAL`;
+    informationUsed.push(`Leader: ${leader?.displayName ?? event.leaderId}.`);
+    if (leader && leader.id !== actor.id) {
+      if (teamRisk === 'role-visible-evil') {
+        const weight = ACTION_ECONOMICS.proposalWithVisibleEvil;
+        addEventEvidence(
+          leader.id,
+          weight.raw,
+          weight.profile,
+          'for',
+          eventId,
+          `Proposed ${teamText}, which contains role-visible evil from ${actor.displayName}'s information set.`,
+          `A bad-looking proposal is strong evidence but not proof; leaders can lack ${actor.displayName}'s private role vision.`,
+        );
+      } else if (teamRisk === 'suspicious') {
+        const weight = ACTION_ECONOMICS.proposalWithSuspiciousTeam;
+        addEventEvidence(
+          leader.id,
+          weight.raw,
+          weight.profile,
+          'for',
+          eventId,
+          `Proposed ${teamText}, which includes seats already carrying formal-action suspicion.`,
+          'Suspicious proposals are medium evidence because the leader may be testing a contested team.',
+        );
+      } else if (teamRisk === 'low-risk') {
+        const weight = ACTION_ECONOMICS.proposalWithLowRiskTeam;
+        addEventEvidence(
+          leader.id,
+          weight.raw,
+          weight.profile,
+          'against',
+          eventId,
+          `Proposed ${teamText}, a relatively low-risk team by current formal-action belief.`,
+          'Low-risk proposals are only weak positive evidence and do not clear the leader.',
+        );
+      }
+    }
+  } else {
+    informationUsed.push(`Vote result: ${event.passed ? 'passed' : 'rejected'}.`);
+    event.votes.forEach(({ playerId, vote }) => {
+      if (playerId === actor.id) return;
+      const voter = state.players.find((player) => player.id === playerId);
+      if (!voter) return;
+      const eventId = `Q${event.roundIndex + 1}_VOTE`;
+      if (vote === 'approve' && teamRisk === 'role-visible-evil') {
+        const weight = ACTION_ECONOMICS.approveVisibleEvilTeam;
+        addEventEvidence(playerId, weight.raw, weight.profile, 'for', eventId, `Approved ${teamText}, which contains role-visible evil from ${actor.displayName}'s information set.`, 'Approving a bad team is not hard proof; a good player may lack this private role vision.');
+      } else if (vote === 'approve' && teamRisk === 'suspicious') {
+        const weight = ACTION_ECONOMICS.approveSuspiciousTeam;
+        addEventEvidence(playerId, weight.raw, weight.profile, 'for', eventId, `Approved ${teamText}, a team already carrying formal-action suspicion.`, 'Good players can approve suspicious teams with incomplete information.');
+      } else if (vote === 'reject' && (teamRisk === 'role-visible-evil' || teamRisk === 'suspicious')) {
+        const weight = ACTION_ECONOMICS.rejectSuspiciousTeam;
+        addEventEvidence(playerId, weight.raw, weight.profile, 'against', eventId, `Rejected ${teamText}, a team that looked risky by current formal-action belief.`, `Rejecting a risky team does not clear ${voter.displayName}; evil can reject bad teams for cover.`);
+      } else if (vote === 'reject' && teamRisk === 'low-risk') {
+        const weight = ACTION_ECONOMICS.rejectLowRiskTeam;
+        addEventEvidence(playerId, weight.raw, weight.profile, 'for', eventId, `Rejected ${teamText}, a relatively low-risk team by current formal-action belief.`, 'Good players may reject good teams because they lack alignment certainty.');
+      } else if (vote === 'approve' && teamRisk === 'low-risk') {
+        const weight = ACTION_ECONOMICS.approveLowRiskTeam;
+        addEventEvidence(playerId, weight.raw, weight.profile, 'against', eventId, `Approved ${teamText}, a relatively low-risk team by current formal-action belief.`, 'Approving a low-risk team is very weak evidence and can be cheap cover.');
+      }
+    });
+  }
+
+  const beliefAfter = normalizeSuspicionForPlayers(suspicion, allPlayerIds, actor.id);
+  const beliefProfilesAfter = finalizeBeliefProfiles(beliefProfiles, state.players, actor.id);
+  const audit: AiBeliefAudit = {
+    eventType: event.type,
+    roundIndex: event.roundIndex,
+    evidenceMode: 'formal_actions_only',
+    speechPolicy: 'ignored_by_design',
+    informationUsed,
+    deductions,
+    beliefDeltas: computeSuspicionDeltas(beliefBefore, beliefAfter),
+    uncertainty,
+    beliefBefore,
+    beliefAfter,
+    beliefProfilesBefore,
+    beliefProfilesAfter,
+  };
+
+  if (!Object.keys(audit.beliefDeltas).length) return { memory: current };
+  return {
+    memory: {
+      suspicion: beliefAfter,
+      notes: [...current.notes.slice(-4), summarizeBeliefAudit(audit, state)].slice(-5),
+      publicClaims: [...current.publicClaims].slice(-5),
+      beliefAudit: [...(current.beliefAudit?.slice(-7) ?? []), audit],
+      beliefProfiles: beliefProfilesAfter,
+    },
+    audit,
+  };
+}
+
 export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: AiTableStateInput, actorId: string): AiBeliefUpdateResult {
   const actor = state.players.find((player) => player.id === actorId);
   const mission = state.lastMission ?? state.missionResults.at(-1);
@@ -461,10 +633,11 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
       if (actorOnTeam) {
         deductions.push('Actor is good and was on the failed mission, so their own card cannot be the source of the fail.');
         teamIds.filter((id) => id !== actor.id).forEach((id) => {
+          const weight = mission.requiredFails > 1 ? ACTION_ECONOMICS.failedMissionOtherMemberTwoFailQuest : ACTION_ECONOMICS.failedMissionOtherMember;
           addSuspicionEvidence(
             id,
-            mission.requiredFails > 1 ? 24 : 32,
-            mission.requiredFails > 1 ? 3 : 4,
+            weight.raw,
+            weight.profile,
             'for',
             `Was on failed mission ${teamText}; ${actor.displayName} knows their own card was success.`,
             `${playerNameFromState(state, id)} shares responsibility with ${teamIds.filter((teamId) => teamId !== id).map((teamId) => playerNameFromState(state, teamId)).join(', ')}, so responsibility is not isolated.`,
@@ -473,10 +646,11 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
       } else if (actor.role === 'Merlin' && !visibleEvilOnTeam.length) {
         deductions.push('Merlin saw no visible evil on this failed mission, so hidden evil/Mordred is likely among the team.');
         teamIds.forEach((id) => {
+          const weight = ACTION_ECONOMICS.merlinHiddenEvilCandidate;
           addSuspicionEvidence(
             id,
-            34,
-            4,
+            weight.raw,
+            weight.profile,
             'for',
             `Failed mission ${teamText} contained no Merlin-visible evil, so hidden evil/Mordred is possible here.`,
             `${playerNameFromState(state, id)} is only one member of the failed team; the hidden evil candidate set is ${teamNames.join(', ')}.`,
@@ -485,10 +659,11 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
       } else {
         deductions.push('Actor was not on the failed mission, so all team members become more suspicious from public evidence.');
         teamIds.forEach((id) => {
+          const weight = ACTION_ECONOMICS.failedMissionPublicTeamMember;
           addSuspicionEvidence(
             id,
-            18,
-            2,
+            weight.raw,
+            weight.profile,
             'for',
             `Was on failed mission ${teamText}.`,
             `${playerNameFromState(state, id)} is not isolated; the failed team was ${teamNames.join(', ')}.`,
@@ -496,7 +671,7 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
         });
       }
       visibleEvilOnTeam.forEach((item) => {
-        setSuspicionAtLeastWithEvidence(item.playerId, 55, 8, `Visible to ${actor.displayName} as evil by role vision.`);
+        setSuspicionAtLeastWithEvidence(item.playerId, ACTION_ECONOMICS.visibleEvilMinimum.raw, ACTION_ECONOMICS.visibleEvilMinimum.profile, `Visible to ${actor.displayName} as evil by role vision.`);
       });
       if (visibleEvilOnTeam.length) deductions.push('Role vision already flags at least one team member as visible evil.');
     } else {
@@ -511,10 +686,11 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
       teamIds.forEach((id) => {
         const player = state.players.find((candidate) => candidate.id === id);
         if (player && roleAllegiance(player.role) === 'good') {
+          const weight = ACTION_ECONOMICS.evilViewGoodOnFailedTeam;
           addSuspicionEvidence(
             id,
-            10,
-            1,
+            weight.raw,
+            weight.profile,
             'for',
             `Good player was on failed mission ${teamText}; from evil view this creates useful public suspicion pressure.`,
             'Evil players model public suspicion separately from true alignment.',
@@ -527,10 +703,11 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
     if (actorAllegiance === 'good') {
       teamIds.forEach((id) => {
         if (id !== actor.id && !visibleEvilOnTeam.some((item) => item.playerId === id)) {
+          const weight = ACTION_ECONOMICS.successfulMissionMember;
           addSuspicionEvidence(
             id,
-            -8,
-            -0.5,
+            weight.raw,
+            weight.profile,
             'against',
             `Was on successful mission ${teamText}, but this is weak because evil can submit success early.`,
             `Q${mission.roundIndex + 1} success does not clear ${playerNameFromState(state, id)}.`,
@@ -538,7 +715,7 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
         }
       });
       visibleEvilOnTeam.forEach((item) => {
-        setSuspicionAtLeastWithEvidence(item.playerId, 35, 8, `Visible to ${actor.displayName} as evil by role vision, despite the successful mission.`);
+        setSuspicionAtLeastWithEvidence(item.playerId, ACTION_ECONOMICS.visibleEvilOnSuccessfulMissionMinimum.raw, ACTION_ECONOMICS.visibleEvilOnSuccessfulMissionMinimum.profile, `Visible to ${actor.displayName} as evil by role vision, despite the successful mission.`);
       });
     } else {
       state.players.forEach((player) => {
@@ -554,20 +731,22 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
   const proposal = state.tableHistory.find((entry) => entry.roundIndex === mission.roundIndex && entry.kind === 'proposal' && entry.actorId);
   if (proposal?.actorId && proposal.actorId !== actor.id) {
     if (mission.outcome === 'fail') {
+      const weight = ACTION_ECONOMICS.proposalLaterFailed;
       addSuspicionEvidence(
         proposal.actorId,
-        14,
-        2,
+        weight.raw,
+        weight.profile,
         'for',
         `Proposed a team that later failed (${teamText}); proposal behavior is costlier than speech because it grants mission leverage.`,
         `A failed proposal is not proof by itself; a good leader may have incomplete information.`,
         `Q${mission.roundIndex + 1}_PROPOSAL`,
       );
     } else {
+      const weight = ACTION_ECONOMICS.proposalLaterSucceeded;
       addSuspicionEvidence(
         proposal.actorId,
-        -4,
-        -0.5,
+        weight.raw,
+        weight.profile,
         'against',
         `Proposed a team that succeeded (${teamText}), a mild positive signal.`,
         `Successful proposals do not hard-clear the leader because evil can build trust early.`,
@@ -579,40 +758,44 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
   state.players.forEach((voter) => {
     if (!voter.teamVote || voter.id === actor.id) return;
     if (mission.outcome === 'fail' && voter.teamVote === 'approve') {
+      const weight = ACTION_ECONOMICS.approveFailedTeam;
       addSuspicionEvidence(
         voter.id,
-        6,
-        1,
+        weight.raw,
+        weight.profile,
         'for',
         `Approved a team that later failed (${teamText}); this is weak-to-medium evidence with real voting cost.`,
         `Good players can approve bad teams with incomplete information, so this vote is not decisive.`,
         `Q${mission.roundIndex + 1}_VOTE`,
       );
     } else if (mission.outcome === 'fail' && voter.teamVote === 'reject') {
+      const weight = ACTION_ECONOMICS.rejectFailedTeam;
       addSuspicionEvidence(
         voter.id,
-        -3,
-        -0.5,
+        weight.raw,
+        weight.profile,
         'against',
         `Rejected a team that later failed (${teamText}), a mild positive signal.`,
         `Evil can reject bad teams for cover, so this vote does not clear ${voter.displayName}.`,
         `Q${mission.roundIndex + 1}_VOTE`,
       );
     } else if (mission.outcome === 'success' && voter.teamVote === 'approve') {
+      const weight = ACTION_ECONOMICS.approveSuccessfulTeam;
       addSuspicionEvidence(
         voter.id,
-        -2,
-        -0.25,
+        weight.raw,
+        weight.profile,
         'against',
         `Approved a team that succeeded (${teamText}), a very weak positive signal.`,
         `Approval of a successful team is cheap cover and should barely move belief.`,
         `Q${mission.roundIndex + 1}_VOTE`,
       );
     } else if (mission.outcome === 'success' && voter.teamVote === 'reject') {
+      const weight = ACTION_ECONOMICS.rejectSuccessfulTeam;
       addSuspicionEvidence(
         voter.id,
-        2,
-        0.25,
+        weight.raw,
+        weight.profile,
         'for',
         `Rejected a team that succeeded (${teamText}), a very weak negative signal.`,
         `Good players may reject good teams because they lack alignment information.`,
@@ -866,6 +1049,14 @@ function profileScoreToProbability(score: number): number {
 
 function clampProfileScore(value: number): number {
   return Math.max(-10, Math.min(10, Math.round(value * 4) / 4));
+}
+
+function averageProfileScore(profiles: Record<string, AiPlayerBeliefProfile>, teamIds: string[], selfId: string): number {
+  const scores = teamIds
+    .filter((id) => id !== selfId)
+    .map((id) => profiles[id]?.suspicionScore ?? 0);
+  if (!scores.length) return 0;
+  return Math.round((scores.reduce((sum, score) => sum + score, 0) / scores.length) * 100) / 100;
 }
 
 function toAvalonPlayer(player: AiTablePlayerInput): Player {
