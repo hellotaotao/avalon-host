@@ -986,7 +986,6 @@ const DEMO_RESULT_AUTO_ADVANCE_MS = 2200;
 function DemoSimulator() {
   const { t, language } = useI18n();
   const [demo, setDemo] = useState(() => createDemoState(7, getRecommendedRolePresetOptions(7), { humanCount: 0 }));
-  const [autoAi, setAutoAi] = useState(true);
   const [pauseAfterAiQuest, setPauseAfterAiQuest] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiStatus, setAiStatus] = useState('');
@@ -1020,13 +1019,13 @@ function DemoSimulator() {
   }, [demo.phase, demo.roundIndex, demo.missionResults.length, shouldPauseAfterAiQuest, winner]);
 
   useEffect(() => {
-    if (demo.mode !== 'ai' || !autoAi || aiBusy || winner || demo.phase === 'setup' || demo.phase === 'result' || demo.phase === 'finished') return undefined;
+    if (demo.mode !== 'ai' || aiBusy || winner || demo.phase === 'setup' || demo.phase === 'result' || demo.phase === 'finished') return undefined;
     if (!hasPendingAiAction(demo)) return undefined;
     const timeout = window.setTimeout(() => {
       void runAiOnce();
     }, 750);
     return () => window.clearTimeout(timeout);
-  }, [aiBusy, autoAi, demo, winner]);
+  }, [aiBusy, demo, winner]);
 
   function resetWith(playerCount: number, roleOptions: RolePresetOptions, options: { humanCount?: number } = {}) {
     const nextHumanCount = options.humanCount ?? (demo.humanCount === demo.playerCount ? playerCount : Math.min(demo.humanCount, playerCount));
@@ -1345,29 +1344,25 @@ function DemoSimulator() {
               <p>{t('AI actions are generated from each player’s own role, legal moves, public history, and private suspicion memory.')}</p>
             </div>
             <div className="choice-row">
-              <button
-                type="button"
-                className={`ai-auto-switch ${autoAi ? 'is-on' : 'is-off'}`}
-                role="switch"
-                aria-checked={autoAi}
-                aria-label={t('Auto-advance AI actions')}
-                onClick={() => setAutoAi(!autoAi)}
-              >
-                <span>{t('Auto-advance AI actions')}</span>
-                <strong>{autoAi ? t('On') : t('Off')}</strong>
-              </button>
+              {isPureAiDemo && (
+                <button
+                  type="button"
+                  className={`ai-state-switch ${pauseAfterAiQuest ? 'is-on' : 'is-off'}`}
+                  role="switch"
+                  aria-checked={pauseAfterAiQuest}
+                  aria-label={t('Pause after each AI quest')}
+                  onClick={() => setPauseAfterAiQuest(!pauseAfterAiQuest)}
+                >
+                  <span>
+                    <span>{t('Pause after each AI quest')}</span>
+                    <small>{t('When enabled, pure AI demo pauses after each quest so you can review the log before the next round.')}</small>
+                  </span>
+                  <strong>{pauseAfterAiQuest ? t('On') : t('Off')}</strong>
+                </button>
+              )}
               <button type="button" onClick={() => void runAiOnce()} disabled={aiBusy || !hasPendingAiAction(demo) || Boolean(winner)}>{aiBusy ? t('AI thinking…') : t('Run next AI action')}</button>
             </div>
           </div>
-          {isPureAiDemo && (
-            <label className="check ai-pause-toggle">
-              <input type="checkbox" checked={pauseAfterAiQuest} onChange={(event) => setPauseAfterAiQuest(event.target.checked)} />
-              <span>
-                <strong>{t('Pause after each AI quest')}</strong>
-                <small>{t('When enabled, pure AI demo pauses after each quest so you can review the log before the next round.')}</small>
-              </span>
-            </label>
-          )}
           {aiStatus && <p className="ai-status" aria-live="polite">{aiStatus}</p>}
           <DemoHistoryLog entries={demo.tableHistory.slice(-8)} />
           {demo.aiHistory.length > 0 && (
