@@ -578,9 +578,9 @@ function App() {
       screen === 'room' ? 'room-shell' : '',
     ].filter(Boolean).join(' ')}>
       <header className="hero">
-        <div className="hero-top"><p className="eyebrow">{t('Avalon room assistant')}</p><LanguageSwitcher /></div>
-        <h1>{screen === 'room' ? getRoomHeroTitle(snapshot, t) : t('Veiled Roundtable')}</h1>
-        <p className="lede">{screen === 'room' ? getRoomHeroCopy(snapshot, t) : t('Create a room, let every player ready at the table, then reveal each secret role on their own phone.')}</p>
+        <div className="hero-top"><p className="eyebrow">{screen === 'room' ? t('Avalon room assistant') : t('Veiled Roundtable')}</p><LanguageSwitcher /></div>
+        <h1>{screen === 'room' ? getRoomHeroTitle(snapshot, t) : t('Avalon room assistant')}</h1>
+        <p className="lede">{screen === 'room' ? getRoomHeroCopy(snapshot, t) : t('Create or join a table, reveal secret roles on each phone, and use AI fill-ins when the room is short.')}</p>
       </header>
 
       {message && <p className="notice">{message}</p>}
@@ -599,14 +599,10 @@ function App() {
 
       {screen === 'home' && (
         <section className="entry">
-          <div className="entry-intro">
-            <h2>{t('Let Merlin handle the hidden-role ritual')}</h2>
-            <p>{t('Veiled Roundtable gives the table one magic number, watches the round table fill, and reveals only the secrets each player should know.')}</p>
-          </div>
           <section className="path-section" aria-labelledby="choose-path-title">
             <div>
-              <p className="eyebrow">{t('Choose your path')}</p>
-              <h2 id="choose-path-title">{t('Host / Join / Demo')}</h2>
+              <p className="eyebrow">{t('Start here')}</p>
+              <h2 id="choose-path-title">{t('Create / Join / Demo')}</h2>
             </div>
             <div className="path-grid" aria-label={t('Primary actions')}>
               <button type="button" className="path-card primary-path" onClick={() => navigateEntry('create')}>
@@ -623,25 +619,32 @@ function App() {
               </button>
             </div>
           </section>
-          <HomeSeoIntro />
-          <div className="workflow-grid" aria-label={t('Live workflow')}>
-            <article>
-              <strong>{t('1. Host opens the hall')}</strong>
-              <span>{t('Share the 5-digit room code with every knight at the table.')}</span>
-            </article>
-            <article>
-              <strong>{t('2. Knights take seats')}</strong>
-              <span>{t('The lobby tracks the fellowship and who is ready for the quest.')}</span>
-            </article>
-            <article>
-              <strong>{t('3. Secrets are revealed')}</strong>
-              <span>{t("Each phone shows only that player's role and night vision.")}</span>
-            </article>
-          </div>
-          <div className="entry-guide">
-            <h2>{t('What each choice means')}</h2>
-            <p><strong>{t('Host')}</strong> {t('opens a real table room.')} <strong>{t('Join')}</strong> {t('is for players with a 5-digit code.')} <strong>{t('Demo')}</strong> {t('stays on this device and never connects to Neon.')}</p>
-          </div>
+          <section className="learn-more" aria-labelledby="learn-more-title">
+            <p className="eyebrow">{t('About Veiled Roundtable')}</p>
+            <h2 id="learn-more-title">{t('For short Avalon tables, hidden roles, and phone-based flow')}</h2>
+            <HomeSeoIntro />
+            <details className="home-details">
+              <summary>{t('View flow and option details')}</summary>
+              <div className="workflow-grid" aria-label={t('Live workflow')}>
+                <article>
+                  <strong>{t('1. Host opens the hall')}</strong>
+                  <span>{t('Share the 5-digit room code with every knight at the table.')}</span>
+                </article>
+                <article>
+                  <strong>{t('2. Knights take seats')}</strong>
+                  <span>{t('The lobby tracks the fellowship and who is ready for the quest.')}</span>
+                </article>
+                <article>
+                  <strong>{t('3. Secrets are revealed')}</strong>
+                  <span>{t("Each phone shows only that player's role and night vision.")}</span>
+                </article>
+              </div>
+              <div className="entry-guide">
+                <h2>{t('What each choice means')}</h2>
+                <p><strong>{t('Host')}</strong> {t('opens a real table room.')} <strong>{t('Join')}</strong> {t('is for players with a 5-digit code.')} <strong>{t('Demo')}</strong> {t('stays on this device and never connects to Neon.')}</p>
+              </div>
+            </details>
+          </section>
         </section>
       )}
 
