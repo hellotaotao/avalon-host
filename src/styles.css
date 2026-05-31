@@ -1184,8 +1184,11 @@ label {
   min-height: 0;
 }
 
-.leader-phone {
-  border-color: #d1a34e;
+.leader-phone:not(.mission-success-phone):not(.mission-fail-phone):not(.phone-winner):not(.phone-loser) {
+  border-color: #2f8ca3;
+  box-shadow:
+    0 12px 24px rgba(0, 0, 0, 0.28),
+    0 0 0 3px rgba(111, 210, 227, 0.36);
 }
 
 .mission-success-phone {

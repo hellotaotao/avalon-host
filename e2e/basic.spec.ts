@@ -63,6 +63,11 @@ test('demo phone result styling does not enlarge cards into neighbors', async ({
 
   const phones = page.locator('.demo-phone-grid .player-phone');
   await expect(phones).toHaveCount(5);
+  await expect(phones.first()).toHaveClass(/leader-phone/);
+  await expect(phones.first()).toHaveCSS('border-top-color', 'rgb(47, 140, 163)');
+  await phones.first().evaluate((node) => node.classList.add('phone-winner'));
+  await expect(phones.first()).toHaveCSS('border-top-color', 'rgb(233, 188, 72)');
+  await phones.first().evaluate((node) => node.classList.remove('phone-winner'));
 
   await phones.evaluateAll((nodes) => {
     nodes.forEach((node, index) => {
