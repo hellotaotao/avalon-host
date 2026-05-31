@@ -134,6 +134,11 @@ label {
   text-transform: uppercase;
 }
 
+.hero .eyebrow {
+  font-size: clamp(0.95rem, 3vw, 1.15rem);
+  line-height: 1.2;
+}
+
 .primary,
 .active-soft,
 .demo-button {

@@ -578,9 +578,9 @@ function App() {
       screen === 'room' ? 'room-shell' : '',
     ].filter(Boolean).join(' ')}>
       <header className="hero">
-        <div className="hero-top"><p className="eyebrow">{screen === 'room' ? t('Avalon room assistant') : t('Veiled Roundtable')}</p><LanguageSwitcher /></div>
-        <h1>{screen === 'room' ? getRoomHeroTitle(snapshot, t) : t('Avalon room assistant')}</h1>
-        <p className="lede">{screen === 'room' ? getRoomHeroCopy(snapshot, t) : t('Create or join a table, reveal secret roles on each phone, and use AI fill-ins when the room is short.')}</p>
+        <div className="hero-top"><p className="eyebrow">{t('Avalon room assistant')}</p><LanguageSwitcher /></div>
+        <h1>{screen === 'room' ? getRoomHeroTitle(snapshot, t) : t('Veiled Roundtable')}</h1>
+        <p className="lede">{screen === 'room' ? getRoomHeroCopy(snapshot, t) : t('Create or join a room, then guide identities, readiness, teams, votes, quest results, Merlin assassination, and AI fill-ins from one table flow.')}</p>
       </header>
 
       {message && <p className="notice">{message}</p>}
