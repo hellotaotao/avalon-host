@@ -1235,7 +1235,7 @@ function DemoSimulator() {
         </section>
       )}
 
-      <section className="demo-board" aria-label={t('Demo table state')}>
+      <section className="demo-progress-sticky" aria-label={t('Quest track')}>
         <div className="quest-track">
           {[0, 1, 2, 3, 4].map((roundIndex) => {
             const result = demo.missionResults.find((item) => item.roundIndex === roundIndex);
@@ -1254,6 +1254,9 @@ function DemoSimulator() {
           <span>{t('Quest')}: {demo.roundIndex + 1} {t('needs')} {teamSize}</span>
           <span>{t('Score')}: {t('Good')} {goodScore} / {t('Evil')} {evilScore}</span>
         </div>
+      </section>
+
+      <section className="demo-board" aria-label={t('Demo table state')}>
         {demo.lastVote && (
           <p className="hint">
             {t('Last vote')}: {demo.lastVote.approveCount} {t('approve')}, {demo.lastVote.rejectCount} {t('reject')}.
@@ -3478,7 +3481,7 @@ function MissionPanel({
         </div>
       </section>
 
-      <section className="mission-board-section" aria-label={t('Quest track')}>
+      <section className="mission-board-section mission-progress-sticky" aria-label={t('Quest track')}>
         <div className="mission-section-heading">
           <h3>{t('Quest Track')}</h3>
           <span>{t('First side to three wins')}</span>

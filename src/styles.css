@@ -609,6 +609,7 @@ label {
 .demo-options,
 .demo-simulator,
 .demo-setup,
+.demo-progress-sticky,
 .demo-board {
   display: grid;
   gap: 1rem;
@@ -891,6 +892,7 @@ label {
   font-weight: 800;
 }
 
+.demo-progress-sticky,
 .demo-board {
   border: 2px solid #d3b15f;
   border-radius: 8px;
@@ -906,26 +908,32 @@ label {
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
 }
 
+.demo-progress-sticky {
+  position: sticky;
+  top: max(0.5rem, env(safe-area-inset-top));
+  z-index: 30;
+}
+
 .demo-board .mission-step p {
   margin: 0;
   color: #f2ddae;
   font-weight: 800;
 }
 
-.demo-board .quest-track span,
-.demo-board .status span {
+.demo-progress-sticky .quest-track span,
+.demo-progress-sticky .status span {
   color: #321a0c;
 }
 
-.demo-board .quest-track .current {
+.demo-progress-sticky .quest-track .current {
   color: #3a2148;
 }
 
-.demo-board .quest-track .success {
+.demo-progress-sticky .quest-track .success {
   color: #26351f;
 }
 
-.demo-board .quest-track .fail {
+.demo-progress-sticky .quest-track .fail {
   color: #61170e;
 }
 
@@ -2671,18 +2679,23 @@ label {
     linear-gradient(180deg, #ffd8ca, #ee9b7d);
 }
 
-.quest-track .fail::after {
-  content: '×';
-  position: absolute;
-  top: 0.1rem;
-  right: 0.28rem;
-  color: #7a1d10;
-  font-size: 1.1rem;
-  font-weight: 1000;
-}
-
 .mission-quest-track {
   gap: 0.55rem;
+}
+
+.mission-progress-sticky {
+  position: sticky;
+  top: max(0.5rem, env(safe-area-inset-top));
+  z-index: 25;
+  border-color: rgba(211, 177, 95, 0.76);
+  background:
+    linear-gradient(145deg, rgba(48, 36, 28, 0.97), rgba(72, 49, 28, 0.96)),
+    url("/art/parchment-rune-texture.jpg"),
+    #3c2b23;
+  background-position: center, center;
+  background-size: auto, cover;
+  background-blend-mode: normal, soft-light, normal;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(255, 230, 157, 0.14);
 }
 
 .mission-quest-track .quest-card {
@@ -2764,16 +2777,6 @@ label {
     repeating-linear-gradient(135deg, rgba(117, 29, 16, 0.1) 0 5px, transparent 5px 10px),
     linear-gradient(180deg, rgba(255, 219, 203, 0.98), rgba(217, 133, 101, 0.94)),
     #f8c8a9;
-}
-
-.mission-quest-track .quest-card.fail::after {
-  content: '×';
-  position: absolute;
-  top: 0.08rem;
-  right: 0.34rem;
-  color: #7a1d10;
-  font-size: 1.22rem;
-  font-weight: 1000;
 }
 
 .mission-quest-track .quest-card.pending {

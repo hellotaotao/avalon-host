@@ -35,6 +35,15 @@ test('demo setup uses table size and manual seats instead of separate modes', as
   await autoAdvanceSwitch.click();
   await expect(autoAdvanceSwitch).not.toBeChecked();
   await expect(page.getByLabel(/Pause after each AI quest/i)).toBeVisible();
+
+  const progress = page.locator('.demo-progress-sticky');
+  await expect(progress).toHaveCSS('position', 'sticky');
+  await expect(progress).toHaveCSS('z-index', '30');
+
+  const firstQuest = progress.locator('.quest-track span').first();
+  await firstQuest.evaluate((node) => node.classList.add('fail'));
+  const failMarkerContent = await firstQuest.evaluate((node) => getComputedStyle(node, '::after').content);
+  expect(failMarkerContent).toBe('none');
 });
 
 test('pure AI demo can pause between quest rounds', async ({ page }) => {
