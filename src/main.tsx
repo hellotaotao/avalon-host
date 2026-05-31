@@ -1342,7 +1342,17 @@ function DemoSimulator() {
               <p>{t('AI actions are generated from each player’s own role, legal moves, public history, and private suspicion memory.')}</p>
             </div>
             <div className="choice-row">
-              <button type="button" className={autoAi ? 'selected' : ''} onClick={() => setAutoAi(!autoAi)}>{autoAi ? t('Auto AI on') : t('Auto AI off')}</button>
+              <button
+                type="button"
+                className={`ai-auto-switch ${autoAi ? 'is-on' : 'is-off'}`}
+                role="switch"
+                aria-checked={autoAi}
+                aria-label={t('Auto-advance AI actions')}
+                onClick={() => setAutoAi(!autoAi)}
+              >
+                <span>{t('Auto-advance AI actions')}</span>
+                <strong>{autoAi ? t('On') : t('Off')}</strong>
+              </button>
               <button type="button" onClick={() => void runAiOnce()} disabled={aiBusy || !hasPendingAiAction(demo) || Boolean(winner)}>{aiBusy ? t('AI thinking…') : t('Run next AI action')}</button>
             </div>
           </div>
