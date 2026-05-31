@@ -1189,17 +1189,19 @@ label {
 
 .demo-phone-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 0.85rem;
 }
 
 .agent-card {
   display: grid;
   gap: 0.35rem;
+  min-width: 0;
   border: 1px solid #9f8050;
   border-radius: 8px;
   background: #fff3c6;
   padding: 0.6rem;
+  overflow-wrap: anywhere;
 }
 
 .agent-card span {
@@ -1215,14 +1217,18 @@ label {
   color: #321a0c;
   font-size: 0.78rem;
   font-weight: 800;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .agent-visible-info {
   display: grid;
   gap: 0.25rem;
+  min-width: 0;
   color: #321a0c;
   font-size: 0.78rem;
   font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 .agent-visible-info ul {
@@ -1234,6 +1240,8 @@ label {
 
 .agent-visible-info p {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .human-card {
@@ -1246,6 +1254,8 @@ label {
   grid-template-rows: auto auto minmax(0, 1fr);
   align-content: start;
   gap: 0.7rem;
+  width: 100%;
+  min-width: 0;
   min-height: 430px;
   overflow: hidden;
   border: 9px solid #151515;
@@ -1254,6 +1264,11 @@ label {
   color: #26170e;
   padding: 0.75rem;
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.28);
+}
+
+.player-phone > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .live-player-phone {
@@ -1329,8 +1344,10 @@ label {
 .phone-action {
   display: grid;
   gap: 0.4rem;
+  min-width: 0;
   border-radius: 8px;
   padding: 0.65rem;
+  overflow-wrap: anywhere;
 }
 
 .phone-top {
@@ -1351,11 +1368,13 @@ label {
 
 .phone-action span,
 .phone-info span {
+  min-width: 0;
   color: #b98533;
   font-size: 0.75rem;
   font-weight: 900;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
 
 .phone-top strong {
@@ -1415,6 +1434,8 @@ label {
 .phone-private-swipe {
   position: relative;
   height: 146px;
+  width: 100%;
+  min-width: 0;
   min-height: 146px;
   overflow: hidden;
   border: 0;
@@ -1432,9 +1453,11 @@ label {
   display: grid;
   align-content: center;
   gap: 0.35rem;
+  min-width: 0;
   min-height: 0;
   padding: 0.7rem;
   pointer-events: none;
+  overflow-wrap: anywhere;
 }
 
 .private-swipe-left {
@@ -1456,8 +1479,9 @@ label {
   inset: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  width: 200%;
+  grid-template-columns: 100% 100%;
+  width: 100%;
+  min-width: 0;
   transform: translateX(var(--swipe-x, 0px));
   transition: transform 120ms ease-out;
 }
@@ -1485,6 +1509,8 @@ label {
   align-content: center;
   justify-items: center;
   gap: 0.45rem;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   border-radius: 0;
   background: #10251b url("/art/avalon-card-back.png") center / cover;
@@ -1510,6 +1536,8 @@ label {
   inset: auto;
   align-content: start;
   height: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   border: 0;
   border-radius: 0;
@@ -1528,10 +1556,12 @@ label {
 }
 
 .private-swipe-neutral > span {
+  max-width: calc(100% - 1rem);
   color: #fff7de;
   font-size: 0.88rem;
   font-weight: 900;
   text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .private-swipe-actions {
@@ -1539,9 +1569,13 @@ label {
   flex-wrap: wrap;
   justify-content: center;
   gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0 0.35rem;
 }
 
 .private-swipe-actions button {
+  max-width: 100%;
   min-height: 34px;
   border-color: rgba(255, 247, 222, 0.42);
   background: rgba(255, 247, 222, 0.12);
@@ -1561,6 +1595,7 @@ label {
   position: relative;
   grid-template-rows: minmax(0, 1fr) auto;
   height: 164px;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -1668,9 +1703,11 @@ label {
 
 .phone-action p {
   margin: 0;
+  min-width: 0;
   color: #4b2e18;
   line-height: 1.35;
   font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 .phone-readonly {

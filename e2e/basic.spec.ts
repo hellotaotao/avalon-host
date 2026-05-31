@@ -107,3 +107,47 @@ test('demo phone result styling does not enlarge cards into neighbors', async ({
     expect(layout[index].right).toBeLessThanOrEqual(layout[index + 1].left);
   }
 });
+
+test('demo phone internals do not overflow the phone frame', async ({ page }) => {
+  await page.goto('/?step=demo');
+  await page.getByLabel(/Table size/i).getByRole('button', { name: '5' }).click();
+  await page.getByLabel(/Manual seats/i).getByRole('button', { name: '0' }).click();
+  await page.getByRole('button', { name: /Start demo/i }).click();
+
+  const phones = page.locator('.demo-phone-grid .player-phone');
+  await expect(phones).toHaveCount(5);
+
+  const borsPhone = phones.nth(1);
+  await borsPhone.locator('.agent-card p').first().evaluate((node) => {
+    node.textContent = `公开发言：${'currentTeamRoleVisibleInfo'.repeat(4)}，Arthur AI supports Bors AI as a test team.`;
+  });
+  await borsPhone.locator('.phone-action p').first().evaluate((node) => {
+    node.textContent = `任务队伍：Arthur AI, Bors AI, ${'veryLongUnbrokenPlayerName'.repeat(4)}`;
+  });
+
+  const swipeArea = borsPhone.locator('.phone-private-swipe');
+  const swipeBox = await swipeArea.boundingBox();
+  expect(swipeBox).not.toBeNull();
+  if (!swipeBox) return;
+  await page.mouse.move(swipeBox.x + swipeBox.width / 2, swipeBox.y + swipeBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(swipeBox.x + swipeBox.width * 0.9, swipeBox.y + swipeBox.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await expect(borsPhone.locator('.private-swipe-slider')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
+
+  const overflowIssues = await phones.evaluateAll((nodes) => nodes.flatMap((phone, phoneIndex) => {
+    const phoneRect = phone.getBoundingClientRect();
+    const visibleBlocks = [
+      ...phone.querySelectorAll(':scope > .phone-top, :scope > .phone-private-swipe, :scope > .agent-card, :scope > .phone-action, .private-swipe-neutral'),
+    ];
+    return visibleBlocks.flatMap((block, blockIndex) => {
+      const rect = block.getBoundingClientRect();
+      const outsideFrame = rect.left < phoneRect.left - 1 || rect.right > phoneRect.right + 1;
+      const scrollOverflow = !block.classList.contains('phone-private-swipe') && block.scrollWidth > block.clientWidth + 1;
+      return outsideFrame || scrollOverflow
+        ? [`phone ${phoneIndex} block ${blockIndex}: rect ${rect.left}-${rect.right}, frame ${phoneRect.left}-${phoneRect.right}, scroll ${block.scrollWidth}/${block.clientWidth}`]
+        : [];
+    });
+  }));
+  expect(overflowIssues).toEqual([]);
+});

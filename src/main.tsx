@@ -2027,6 +2027,7 @@ function PrivateSwipeReveal({
       onPointerMove={handlePointerMove}
       onPointerUp={resetReveal}
       onPointerCancel={resetReveal}
+      onLostPointerCapture={resetReveal}
     >
       <div className={`private-swipe-panel private-swipe-left phone-role revealed ${allegiance}`} aria-hidden={activeSide !== 'left'}>
         <span className="private-swipe-label">{t('Identity')}</span>
