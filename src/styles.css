@@ -1000,6 +1000,20 @@ label {
   text-align: left;
 }
 
+.ai-pause-option {
+  display: grid;
+  gap: 0.3rem;
+  max-width: 260px;
+}
+
+.ai-pause-help {
+  margin: 0;
+  color: #cdbf9f;
+  font-size: 0.76rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
 .ai-state-switch > span {
   font-size: 0.86rem;
   font-weight: 800;

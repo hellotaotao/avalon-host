@@ -41,6 +41,7 @@ test('demo setup uses table size and manual seats instead of separate modes', as
   const pauseAfterQuestSwitch = page.getByRole('switch', { name: /Pause after AI quests/i });
   await expect(pauseAfterQuestSwitch).toBeVisible();
   await expect(pauseAfterQuestSwitch).not.toBeChecked();
+  await expect(page.getByText(/AI pauses after each quest result/i)).toBeVisible();
   await pauseAfterQuestSwitch.click();
   await expect(pauseAfterQuestSwitch).toBeChecked();
 

@@ -1357,17 +1357,21 @@ function DemoSimulator() {
             </div>
             {isPureAiDemo && (
               <div className="choice-row">
-                <button
-                  type="button"
-                  className={`ai-state-switch ${pauseAfterAiQuest ? 'is-on' : 'is-off'}`}
-                  role="switch"
-                  aria-checked={pauseAfterAiQuest}
-                  aria-label={t('Pause after AI quests')}
-                  onClick={() => setPauseAfterAiQuest(!pauseAfterAiQuest)}
-                >
-                  <span>{t('Pause after AI quests')}</span>
-                  <strong>{pauseAfterAiQuest ? t('On') : t('Off')}</strong>
-                </button>
+                <div className="ai-pause-option">
+                  <button
+                    type="button"
+                    className={`ai-state-switch ${pauseAfterAiQuest ? 'is-on' : 'is-off'}`}
+                    role="switch"
+                    aria-checked={pauseAfterAiQuest}
+                    aria-label={t('Pause after AI quests')}
+                    aria-describedby="ai-pause-help"
+                    onClick={() => setPauseAfterAiQuest(!pauseAfterAiQuest)}
+                  >
+                    <span>{t('Pause after AI quests')}</span>
+                    <strong>{pauseAfterAiQuest ? t('On') : t('Off')}</strong>
+                  </button>
+                  <p id="ai-pause-help" className="ai-pause-help">{t('AI pauses after each quest result so you can review the log before continuing.')}</p>
+                </div>
               </div>
             )}
           </div>

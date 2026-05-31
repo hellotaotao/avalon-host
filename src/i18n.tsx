@@ -382,6 +382,7 @@ const zh: Record<string, string> = {
   'Off': '关',
   'AI thinking…': 'AI 思考中…',
   'Pause after AI quests': '每轮任务后暂停',
+  'AI pauses after each quest result so you can review the log before continuing.': 'AI 每轮任务结算后会停下，确认后再继续。',
   'AI demo paused': 'AI 演示已暂停',
   'Review this round?': '要查看这一轮吗？',
   'The AI table will wait here until you start the next round.': 'AI 牌桌会停在这里，直到你手动开始下一轮。',
