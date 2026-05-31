@@ -398,6 +398,8 @@ const zh: Record<string, string> = {
   'Evil wins: the Assassin found Merlin.': '坏人获胜：刺客刺中了梅林。',
   'Evil wins.': '坏人获胜。',
   'Reset the table to try another setup.': '重置牌桌即可尝试另一套配置。',
+  'Copy demo log': '复制本轮 log',
+  'Demo log copied.': '已复制。',
   'The table advances when every player has voted.': '所有玩家投完后进入下一步。',
   'The quest resolves when the team is done.': '任务队伍全部提交后结算。',
   'Good has three successful quests. Assassin chooses one player as Merlin: hit Merlin and Evil wins; miss and Good wins.': '好人已完成三轮任务成功。刺客选择一名玩家刺杀梅林：刺中则坏人获胜，刺错则好人获胜。',

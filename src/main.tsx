@@ -989,6 +989,7 @@ function DemoSimulator() {
   const [pauseAfterAiQuest, setPauseAfterAiQuest] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiStatus, setAiStatus] = useState('');
+  const [demoLogCopied, setDemoLogCopied] = useState(false);
   const rule = getPlayerCountRule(demo.playerCount);
   const preset = buildRolePreset(demo.playerCount, demo.roleOptions);
   const isPureAiDemo = demo.mode === 'ai' && demo.humanCount === 0;
@@ -1029,12 +1030,14 @@ function DemoSimulator() {
 
   function resetWith(playerCount: number, roleOptions: RolePresetOptions, options: { humanCount?: number } = {}) {
     const nextHumanCount = options.humanCount ?? (demo.humanCount === demo.playerCount ? playerCount : Math.min(demo.humanCount, playerCount));
+    setDemoLogCopied(false);
     setDemo(createDemoState(playerCount, sanitizeRoleOptions(playerCount, roleOptions), {
       humanCount: nextHumanCount,
     }));
   }
 
   function startTable() {
+    setDemoLogCopied(false);
     setDemo((current) => ({
       ...current,
       phase: 'proposal',
@@ -1148,6 +1151,11 @@ function DemoSimulator() {
       if (current.phase !== 'result' || getDemoWinner(current) || current.roundIndex >= 4) return current;
       return advanceDemoToNextQuest(current);
     });
+  }
+
+  async function copyDemoLog() {
+    await copyText(buildDemoLog(demo, language));
+    setDemoLogCopied(true);
   }
 
   return (
@@ -1272,15 +1280,19 @@ function DemoSimulator() {
         )}
         {demo.phase === 'assassin' && <p className="notice">{t('Good completed three quests. The Assassin is choosing Merlin.')}</p>}
         {demo.phase === 'finished' && winner && (
-          <p className="notice">
-            {winner === 'good'
-              ? t('Good wins: the Assassin missed Merlin.')
-              : demo.assassination?.hitMerlin
-                ? t('Evil wins: the Assassin found Merlin.')
-                : t('Evil wins.')}
-            {' '}
-            {t('Reset the table to try another setup.')}
-          </p>
+          <div className="demo-result-actions">
+            <p className="notice">
+              {winner === 'good'
+                ? t('Good wins: the Assassin missed Merlin.')
+                : demo.assassination?.hitMerlin
+                  ? t('Evil wins: the Assassin found Merlin.')
+                  : t('Evil wins.')}
+              {' '}
+              {t('Reset the table to try another setup.')}
+            </p>
+            <button type="button" className="primary" onClick={copyDemoLog}>{t('Copy demo log')}</button>
+            {demoLogCopied && <span className="copy-status" aria-live="polite">{t('Demo log copied.')}</span>}
+          </div>
         )}
         {demo.phase === 'setup' && (
           <div className="mission-step">
@@ -2165,6 +2177,100 @@ function getDemoQuestTeamNames(demo: DemoState, teamIds: string[] = []): string[
   return teamIds.map((id) => demo.players.find((player) => player.id === id)?.displayName ?? id);
 }
 
+function buildDemoLog(demo: DemoState, language: Language): string {
+  const winner = getDemoWinner(demo);
+  const lines = [
+    '# Avalon demo log',
+    '',
+    `Generated: ${new Date().toISOString()}`,
+    `Players: ${demo.playerCount}`,
+    `Mode: ${demo.mode}`,
+    `Manual seats: ${demo.humanCount}`,
+    `AI seats: ${demo.playerCount - demo.humanCount}`,
+    `Current phase: ${demo.phase}`,
+    `Winner: ${winner ? formatAllegiance(winner, language) : 'not decided'}`,
+  ];
+
+  lines.push('', '## Players, identities, and role vision');
+  demo.players.forEach((player) => {
+    const visibleInfo = getVisibilityInfo(
+      { id: player.id, name: player.displayName, role: player.role },
+      demo.players.map(toDemoAvalonPlayer),
+    );
+    lines.push(
+      '',
+      `### Seat ${player.seatIndex + 1}: ${player.displayName}`,
+      `- Controller: ${player.controller}`,
+      `- Role: ${formatRole(player.role, language)} (${formatAllegiance(roleAllegiance(player.role), language)})`,
+      `- Persona: ${player.persona ?? 'human-controlled'}`,
+      `- Role vision: ${visibleInfo.sees.length ? visibleInfo.sees.map((item) => `${item.name} = ${formatHint(item.hint, language)}`).join('; ') : 'none'}`,
+    );
+    if (player.memory) {
+      lines.push(`- Suspicion memory: ${formatSuspicionMemory(player.memory.suspicion, demo)}`);
+      lines.push(`- Memory notes: ${player.memory.notes.length ? player.memory.notes.join(' | ') : 'none'}`);
+      lines.push(`- Public claims remembered: ${player.memory.publicClaims.length ? player.memory.publicClaims.join(' | ') : 'none'}`);
+    }
+    if (player.lastPublicSpeech) lines.push(`- Last public speech: ${player.lastPublicSpeech}`);
+    if (player.lastReasoningSummary) lines.push(`- Last private reasoning: ${player.lastReasoningSummary}`);
+  });
+
+  lines.push('', '## Quest rounds');
+  const roundIndexes = [...new Set([
+    ...demo.tableHistory.map((entry) => entry.roundIndex),
+    ...demo.aiHistory.map((entry) => entry.roundIndex),
+    ...demo.missionResults.map((result) => result.roundIndex),
+  ])].sort((left, right) => left - right);
+
+  if (!roundIndexes.length) {
+    lines.push('No rounds have been played.');
+  }
+
+  roundIndexes.forEach((roundIndex) => {
+    const mission = demo.missionResults.find((result) => result.roundIndex === roundIndex);
+    const teamNames = mission?.selectedTeamIds?.map((id) => playerName(demo, id)) ?? [];
+    lines.push('', `### Quest ${roundIndex + 1}`);
+    if (teamNames.length) lines.push(`- Team: ${teamNames.join(', ')}`);
+    if (mission) {
+      lines.push(`- Result: ${mission.outcome}; success cards: ${mission.successCount}; fail cards: ${mission.failCount}; required fails: ${mission.requiredFails}`);
+    }
+    const publicEntries = demo.tableHistory.filter((entry) => entry.roundIndex === roundIndex);
+    const privateEntries = demo.aiHistory.filter((entry) => entry.roundIndex === roundIndex);
+    lines.push('- Public table history:');
+    if (publicEntries.length) {
+      publicEntries.forEach((entry) => {
+        const display = formatDemoHistoryEntry(entry, language);
+        lines.push(`  - ${display.label} | ${entry.actorName ?? display.actorFallback}: ${display.text}`);
+      });
+    } else {
+      lines.push('  - none');
+    }
+    lines.push('- AI private reasoning:');
+    if (privateEntries.length) {
+      privateEntries.forEach((entry) => {
+        const display = formatDemoHistoryEntry(entry, language);
+        lines.push(`  - ${display.label} | ${entry.actorName ?? display.actorFallback}: ${display.text}`);
+      });
+    } else {
+      lines.push('  - none');
+    }
+  });
+
+  if (demo.lastVote) {
+    lines.push('', '## Last vote snapshot', `- Approve: ${demo.lastVote.approveCount}`, `- Reject: ${demo.lastVote.rejectCount}`, `- Passed: ${demo.lastVote.passed}`);
+  }
+  if (demo.assassination) {
+    lines.push('', '## Assassination', `- Target: ${demo.assassination.targetName}`, `- Hit Merlin: ${demo.assassination.hitMerlin}`, `- Winner: ${formatAllegiance(demo.assassination.winner, language)}`);
+  }
+
+  return `${lines.join('\n')}\n`;
+}
+
+function formatSuspicionMemory(suspicion: Record<string, number>, demo: DemoState): string {
+  const entries = Object.entries(suspicion);
+  if (!entries.length) return 'none';
+  return entries.map(([playerId, score]) => `${playerName(demo, playerId)} ${score >= 0 ? '+' : ''}${score}`).join(', ');
+}
+
 function createAgentMemory(playerIds: string[], selfId: string): AgentMemory {
   return {
     suspicion: Object.fromEntries(playerIds.filter((id) => id !== selfId).map((id) => [id, 0])),
@@ -2208,6 +2314,15 @@ function formatDemoHistoryEntry(entry: DemoHistoryEntry, language: Language): { 
     return {
       label: isZh ? '刺客推理' : 'Assassin reasoning',
       text: rawText.replace(/^(Assassin reasoning:|Assassin heuristic:|刺客推理：)\s*/, ''),
+      tone: 'reasoning',
+      actorFallback: isZh ? 'AI' : 'AI',
+    };
+  }
+
+  if (rawText.startsWith('Private reasoning:') || rawText.startsWith('私有推理：')) {
+    return {
+      label: isZh ? '私有推理' : 'Private reasoning',
+      text: rawText.replace(/^(Private reasoning:|私有推理：)\s*/, ''),
       tone: 'reasoning',
       actorFallback: isZh ? 'AI' : 'AI',
     };
@@ -2277,6 +2392,10 @@ function stripHistoryActorPrefix(text: string, actorName?: string): string {
   return text.startsWith(prefix) ? text.slice(prefix.length) : text;
 }
 
+function formatPrivateReasoningSummaryForHistory(summary: string): string {
+  return `Private reasoning: ${summary}`;
+}
+
 function hasPendingAiAction(demo: DemoState): boolean {
   if (demo.mode !== 'ai') return false;
   if (demo.phase === 'proposal') return demo.players[demo.leaderIndex]?.controller === 'ai';
@@ -2315,6 +2434,10 @@ function applyAiDecision(current: DemoState, actorId: string, decision: AiAvalon
         makeHistory(current, rememberedActor, 'speech', publicSpeech),
         makeHistory(current, rememberedActor, 'proposal', `${rememberedActor.displayName} proposed ${teamIds.map((id) => playerName(current, id)).join(', ')}.`),
       ],
+      aiHistory: [
+        ...current.aiHistory,
+        makeHistory(current, rememberedActor, 'proposal', formatPrivateReasoningSummaryForHistory(decision.privateReasoningSummary)),
+      ],
     };
   }
 
@@ -2331,6 +2454,10 @@ function applyAiDecision(current: DemoState, actorId: string, decision: AiAvalon
         ...current.tableHistory,
         makeHistory(current, actor, 'speech', publicSpeech),
         makeHistory(current, actor, 'vote', `${actor.displayName} voted ${vote}.`),
+      ],
+      aiHistory: [
+        ...current.aiHistory,
+        makeHistory(current, rememberedActor, 'vote', formatPrivateReasoningSummaryForHistory(decision.privateReasoningSummary)),
       ],
       ...resolved.statePatch,
     };
@@ -2419,6 +2546,10 @@ function runAiProposal(current: DemoState, language: Language = 'en'): DemoState
       makeHistory(current, updatedLeader, 'speech', publicSpeech),
       makeHistory(current, updatedLeader, 'proposal', `${updatedLeader.displayName} proposed ${teamIds.map((id) => playerName(current, id)).join(', ')}.`),
     ],
+    aiHistory: [
+      ...current.aiHistory,
+      makeHistory(current, updatedLeader, 'proposal', formatPrivateReasoningSummaryForHistory(reasoning)),
+    ],
   };
 }
 
@@ -2453,6 +2584,10 @@ function runAiVote(current: DemoState, language: Language = 'en'): DemoState {
       ...current.tableHistory,
       makeHistory(current, voter, 'speech', publicSpeech),
       makeHistory(current, voter, 'vote', `${voter.displayName} voted ${vote}.`),
+    ],
+    aiHistory: [
+      ...current.aiHistory,
+      makeHistory(current, voter, 'vote', formatPrivateReasoningSummaryForHistory(reasoning)),
     ],
     ...resolved.statePatch,
   };
@@ -3634,8 +3769,11 @@ async function copyText(text: string) {
     await navigator.clipboard.writeText(text);
     return;
   }
-  const input = document.createElement('input');
+  const input = document.createElement('textarea');
   input.value = text;
+  input.setAttribute('readonly', '');
+  input.style.position = 'fixed';
+  input.style.left = '-9999px';
   document.body.append(input);
   input.select();
   document.execCommand('copy');

@@ -948,6 +948,23 @@ label {
   margin: 0;
 }
 
+.demo-result-actions {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.demo-result-actions .notice {
+  flex: 1 1 280px;
+}
+
+.copy-status {
+  color: #ffe39b;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
 .ai-table-panel {
   display: grid;
   gap: 0.75rem;

@@ -77,6 +77,41 @@ test('pure AI demo can pause between quest rounds', async ({ page }) => {
   await expect(page.getByText(/Quest: 2 needs/i)).toBeVisible();
 });
 
+test('finished AI demo can copy a complete analysis log', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5173' });
+  await page.addInitScript(() => {
+    const nativeSetTimeout = window.setTimeout;
+    window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => (
+      nativeSetTimeout(handler, typeof timeout === 'number' && timeout > 20 ? 20 : timeout, ...args)
+    )) as typeof window.setTimeout;
+  });
+  await page.route('**/api/ai-avalon', (route) => route.fulfill({
+    status: 503,
+    contentType: 'application/json',
+    body: JSON.stringify({ ok: false, error: { message: 'forced fallback' } }),
+  }));
+
+  await page.goto('/?step=demo');
+  await page.getByLabel(/Table size/i).getByRole('button', { name: '5' }).click();
+  await page.getByLabel(/Manual seats/i).getByRole('button', { name: '0' }).click();
+  await page.getByRole('button', { name: /Start demo/i }).click();
+
+  const copyButton = page.getByRole('button', { name: /Copy demo log/i });
+  await expect(copyButton).toBeVisible({ timeout: 20000 });
+  await copyButton.click();
+  await expect(page.getByText(/Demo log copied\./i)).toBeVisible();
+
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copied).toContain('# Avalon demo log');
+  expect(copied).toContain('## Players, identities, and role vision');
+  expect(copied).toContain('- Controller: ai');
+  expect(copied).toContain('- Role vision:');
+  expect(copied).toContain('## Quest rounds');
+  expect(copied).toContain('- Public table history:');
+  expect(copied).toContain('- AI private reasoning:');
+  expect(copied).toContain('Private reasoning');
+});
+
 test('demo phone result styling does not enlarge cards into neighbors', async ({ page }) => {
   await page.goto('/?step=demo');
   await page.getByLabel(/Table size/i).getByRole('button', { name: '5' }).click();
