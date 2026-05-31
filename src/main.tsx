@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   buildRolePreset,
+  getMissionFailThreshold,
   getPlayerCountRule,
   getRecommendedRolePresetOptions,
   getTeamSize,
@@ -2888,6 +2889,12 @@ function formatFailThresholdLabel(threshold: number, language: ReturnType<typeof
   return language === 'zh' ? ` · ${threshold} 张失败票才失败` : ` / ${threshold} fails`;
 }
 
+function formatFailThresholdRule(threshold: number, language: ReturnType<typeof useI18n>['language']): string {
+  return language === 'zh'
+    ? `需要 ${threshold} 张失败票才失败`
+    : `${threshold} Fail ${threshold === 1 ? 'card' : 'cards'} to fail`;
+}
+
 const publicRoleOrder: Role[] = ['Merlin', 'Percival', 'Loyal Servant', 'Assassin', 'Morgana', 'Mordred', 'Oberon', 'Minion'];
 
 function summarizePublicRoleLineup(players: RoomPlayer[]): Array<{ role: Role; count: number }> {
@@ -3542,6 +3549,7 @@ function MissionPanel({
   const visibleTeamNames = visibleTeamIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id);
   const roleSummary = summarizePublicRoleLineup(players);
   const phaseLabel = t(getMissionPhaseLabel(missionState));
+  const currentFailThreshold = getMissionFailThreshold(players.length, missionState.roundIndex);
   const phaseCopy = getMissionPhaseCopy({
     missionState,
     currentTeamSize,
@@ -3622,10 +3630,12 @@ function MissionPanel({
             const result = missionState.missionResults.find((item) => item.roundIndex === roundIndex);
             const state = result?.outcome ?? (roundIndex === missionState.roundIndex && missionState.phase !== 'finished' ? 'current' : 'pending');
             const questTeamNames = getRoomPlayerNames(players, result?.selectedTeamIds ?? (state === 'current' ? visibleTeamIds : []));
+            const failThreshold = result?.requiredFails ?? getMissionFailThreshold(players.length, roundIndex);
             return (
               <div key={roundIndex} className={`quest-card ${state}`}>
                 <span>{formatQuestLabel(roundIndex, language)}</span>
                 <strong>{getTeamSize(players.length, roundIndex)}</strong>
+                <small className="quest-fail-threshold">{formatFailThresholdRule(failThreshold, language)}</small>
                 <small>
                   {result
                     ? result.outcome === 'success' ? t('Good won') : t('Evil won')
@@ -3655,6 +3665,7 @@ function MissionPanel({
           <div className="expedition-state-card">
             <span>{phaseLabel}</span>
             <p>{phaseCopy}</p>
+            <small>{formatFailThresholdRule(currentFailThreshold, language)}</small>
           </div>
         </div>
         <div className="team-roster">

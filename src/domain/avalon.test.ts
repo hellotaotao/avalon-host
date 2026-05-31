@@ -80,10 +80,10 @@ describe('Avalon Lite rules', () => {
     expect([0, 1, 2, 3, 4].map((round) => getTeamSize(10, round))).toEqual([3, 4, 4, 5, 5]);
   });
 
-  it('returns one-fail mission thresholds by player count and round', () => {
+  it('returns official fail thresholds by player count and round', () => {
     expect([0, 1, 2, 3, 4].map((round) => getMissionFailThreshold(6, round))).toEqual([1, 1, 1, 1, 1]);
-    expect([0, 1, 2, 3, 4].map((round) => getMissionFailThreshold(7, round))).toEqual([1, 1, 1, 1, 1]);
-    expect([0, 1, 2, 3, 4].map((round) => getMissionFailThreshold(10, round))).toEqual([1, 1, 1, 1, 1]);
+    expect([0, 1, 2, 3, 4].map((round) => getMissionFailThreshold(7, round))).toEqual([1, 1, 1, 2, 1]);
+    expect([0, 1, 2, 3, 4].map((round) => getMissionFailThreshold(10, round))).toEqual([1, 1, 1, 2, 1]);
   });
 
   it('requires strict majority for team voting', () => {
@@ -92,9 +92,13 @@ describe('Avalon Lite rules', () => {
     expect(votePasses(['approve', 'approve', 'approve', 'reject', 'reject', 'reject'], 6)).toBe(false);
   });
 
-  it('fails missions with any fail card, including the 7+ player fourth quest', () => {
+  it('requires two fail cards on the 7+ player fourth quest', () => {
     expect(resolveMission(['success', 'fail'], 5, 0).outcome).toBe('fail');
-    expect(resolveMission(['success', 'fail', 'success', 'success'], 7, 3).outcome).toBe('fail');
+    expect(resolveMission(['success', 'fail', 'success', 'success'], 7, 3)).toMatchObject({
+      outcome: 'success',
+      failCount: 1,
+      requiredFails: 2,
+    });
     expect(resolveMission(['fail', 'fail', 'success', 'success'], 7, 3).outcome).toBe('fail');
   });
 
@@ -102,7 +106,7 @@ describe('Avalon Lite rules', () => {
     expect(resolveMission(['success', 'success', 'success', 'success'], 7, 3)).toMatchObject({
       outcome: 'success',
       failCount: 0,
-      requiredFails: 1,
+      requiredFails: 2,
     });
   });
 

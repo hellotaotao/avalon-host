@@ -127,7 +127,7 @@ export function getTeamSize(playerCount: number, roundIndex: number): number {
 export function getMissionFailThreshold(playerCount: number, roundIndex: number): number {
   assertSupportedPlayerCount(playerCount);
   if (roundIndex < 0 || roundIndex > 4) throw new Error(`Unsupported round index: ${roundIndex}`);
-  return 1;
+  return playerCount >= 7 && roundIndex === 3 ? 2 : 1;
 }
 
 export function getPlayerCountRule(playerCount: number): PlayerCountRule {

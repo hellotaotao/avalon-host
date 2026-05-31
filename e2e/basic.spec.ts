@@ -35,6 +35,7 @@ test('demo setup uses table size and manual seats instead of separate modes', as
   await expect(setupSummary.getByText('Demo roundtable', { exact: true })).toBeVisible();
   await expect(setupSummary.getByText(/Watch 7 AI players/i)).toBeVisible();
   await expect(page.getByText(/AI Orchestrator/i)).toBeVisible();
+  await expect(page.getByText(/Q4: 4 \/ 2 fails/i)).toBeVisible();
   await expect(page.getByRole('switch', { name: /Auto-advance AI actions/i })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Run next AI action/i })).toHaveCount(0);
   await expect(page.getByText(/When enabled, pure AI demo pauses/i)).toHaveCount(0);

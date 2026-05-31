@@ -41,6 +41,14 @@ test('live UI creates a room, joins five players, starts, proposes, votes, and s
   });
 });
 
+test('live quest track shows the official fail threshold for every quest', async ({ browser }) => {
+  await withStartedRoom(browser, 7, async ({ host }) => {
+    const questTrack = host.locator('.mission-quest-track');
+    await expect(questTrack.getByText(/1 Fail card to fail/i).first()).toBeVisible();
+    await expect(questTrack.getByText(/2 Fail cards to fail/i)).toBeVisible();
+  });
+});
+
 test('five-player Good reaches three successful quests, Assassin hits Merlin, and Evil wins', async ({ browser }) => {
   await withStartedRoom(browser, 5, async ({ host, players }) => {
     await revealRoles(players);

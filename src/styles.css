@@ -2788,6 +2788,12 @@ label {
   font-weight: 900;
 }
 
+.mission-quest-track .quest-card .quest-fail-threshold {
+  color: #7c2f1f;
+  font-size: 0.7rem;
+  line-height: 1.1;
+}
+
 .mission-quest-track .quest-card.current {
   border-color: #d6a93d;
   background:
@@ -2868,6 +2874,13 @@ label {
 .empty-team {
   color: #3e2618;
   font-weight: 800;
+}
+
+.expedition-state-card small {
+  display: block;
+  margin-top: 0.35rem;
+  color: #7c2f1f;
+  font-weight: 900;
 }
 
 .team-roster {

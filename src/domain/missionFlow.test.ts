@@ -165,7 +165,7 @@ describe('mission flow', () => {
     expect(state.winner).toBe('evil');
   });
 
-  it('fails a 7-player fourth quest with one fail and succeeds with all success cards', () => {
+  it('requires two fail cards to fail a 7-player fourth quest', () => {
     const fourthQuest: MissionState = {
       ...createInitialMissionState(sevenPlayerIds),
       phase: 'mission',
@@ -174,10 +174,13 @@ describe('mission flow', () => {
     };
 
     expect(advanceMissionResult(fourthQuest, sevenPlayerIds, 3, 1).missionResults).toMatchObject([
-      { roundIndex: 3, outcome: 'fail', successCount: 3, failCount: 1, requiredFails: 1 },
+      { roundIndex: 3, outcome: 'success', successCount: 3, failCount: 1, requiredFails: 2 },
+    ]);
+    expect(advanceMissionResult(fourthQuest, sevenPlayerIds, 2, 2).missionResults).toMatchObject([
+      { roundIndex: 3, outcome: 'fail', successCount: 2, failCount: 2, requiredFails: 2 },
     ]);
     expect(advanceMissionResult(fourthQuest, sevenPlayerIds, 4, 0).missionResults).toMatchObject([
-      { roundIndex: 3, outcome: 'success', successCount: 4, failCount: 0, requiredFails: 1 },
+      { roundIndex: 3, outcome: 'success', successCount: 4, failCount: 0, requiredFails: 2 },
     ]);
   });
 });
