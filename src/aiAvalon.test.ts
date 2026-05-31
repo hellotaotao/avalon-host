@@ -282,9 +282,20 @@ describe('AI Avalon request filtering and validation', () => {
     expect(result.memory.suspicion.p3).toBeGreaterThan(0);
     expect(result.memory.suspicion.p4).toBeGreaterThan(0);
     expect(result.memory.suspicion.p2).toBe(0);
+    expect(result.memory.beliefProfiles?.p3).toMatchObject({
+      player: 'Dagonet AI',
+      pEvil: 0.62,
+      suspicionScore: 4,
+    });
+    expect(result.memory.beliefProfiles?.p3.evidenceForEvil[0]).toMatchObject({
+      event: 'Q3_RESULT',
+      reason: expect.stringContaining('Was on failed mission Cai AI+Dagonet AI+Elaine AI'),
+    });
+    expect(result.memory.beliefProfiles?.p3.uncertainty.join(' ')).toContain('responsibility is not isolated');
     expect(result.audit?.informationUsed.join(' ')).toContain("Actor's own mission card: success");
     expect(result.audit?.deductions.join(' ')).toContain('own card cannot be the source');
     expect(result.audit).toMatchObject({ evidenceMode: 'formal_actions_only', speechPolicy: 'ignored_by_design' });
+    expect(result.audit?.beliefProfilesAfter?.p4.evidenceForEvil[0].event).toBe('Q3_RESULT');
   });
 
   it('lets Merlin infer hidden evil when a failed mission contains no visible evil', () => {
@@ -294,6 +305,9 @@ describe('AI Avalon request filtering and validation', () => {
       playerCount: 7,
       phase: 'result',
       selectedTeamIds: ['p2', 'p3', 'p4'],
+      tableHistory: [
+        { roundIndex: 1, actorId: 'p3', actorName: 'Bors AI', kind: 'proposal', text: 'Bors AI proposed Arthur AI, Bors AI, Cai AI.' },
+      ],
       lastMission: {
         roundIndex: 1,
         outcome: 'fail',
@@ -320,9 +334,53 @@ describe('AI Avalon request filtering and validation', () => {
     expect(result.memory.suspicion.p4).toBeGreaterThan(0);
     expect(result.memory.suspicion.p5).toBe(0);
     expect(result.memory.suspicion.p6).toBe(0);
+    expect(result.memory.beliefProfiles?.p3).toMatchObject({
+      player: 'Bors AI',
+      pEvil: 0.68,
+      suspicionScore: 6,
+    });
+    expect(result.memory.beliefProfiles?.p3.evidenceForEvil[0].reason).toContain('hidden evil/Mordred');
+    expect(result.memory.beliefProfiles?.p3.evidenceForEvil[1]).toMatchObject({
+      event: 'Q2_PROPOSAL',
+      reason: expect.stringContaining('Proposed a team that later failed'),
+    });
     expect(result.audit?.deductions.join(' ')).toContain('hidden evil/Mordred');
     expect(result.audit?.uncertainty.join(' ')).toContain('Mordred is hidden from Merlin');
     expect(result.audit?.uncertainty.join(' ')).toContain('Public speech is ignored by design');
+  });
+
+  it('prices successful missions as weak evidence against evil without hard clearing', () => {
+    const memory: AiAgentMemory = { suspicion: { p2: 0, p3: 0, p4: 0, p5: 0 }, notes: [], publicClaims: [] };
+    const state: AiTableStateInput = {
+      ...baseState,
+      phase: 'result',
+      selectedTeamIds: ['p1', 'p3'],
+      lastMission: {
+        roundIndex: 0,
+        outcome: 'success',
+        successCount: 2,
+        failCount: 0,
+        requiredFails: 1,
+        selectedTeamIds: ['p1', 'p3'],
+      },
+      players: [
+        { id: 'p1', displayName: 'Arthur AI', seatIndex: 0, role: 'Merlin', controller: 'ai', missionCard: 'success' },
+        { id: 'p2', displayName: 'Bors AI', seatIndex: 1, role: 'Assassin', controller: 'ai' },
+        { id: 'p3', displayName: 'Cai AI', seatIndex: 2, role: 'Loyal Servant', controller: 'ai', missionCard: 'success' },
+        { id: 'p4', displayName: 'Dagonet AI', seatIndex: 3, role: 'Loyal Servant', controller: 'ai' },
+        { id: 'p5', displayName: 'Elaine AI', seatIndex: 4, role: 'Minion', controller: 'ai' },
+      ],
+    };
+
+    const result = updateAiBeliefAfterMissionResult(memory, state, 'p1');
+
+    expect(result.memory.beliefProfiles?.p3.pEvil).toBeLessThan(0.5);
+    expect(result.memory.beliefProfiles?.p3.suspicionScore).toBe(-0.5);
+    expect(result.memory.beliefProfiles?.p3.evidenceAgainstEvil[0]).toMatchObject({
+      event: 'Q1_RESULT',
+      reason: expect.stringContaining('evil can submit success early'),
+    });
+    expect(result.memory.beliefProfiles?.p3.uncertainty.join(' ')).toContain('success does not clear');
   });
 
 });

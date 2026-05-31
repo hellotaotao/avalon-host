@@ -5,6 +5,22 @@ export interface AiAgentMemory {
   notes: string[];
   publicClaims: string[];
   beliefAudit?: AiBeliefAudit[];
+  beliefProfiles?: Record<string, AiPlayerBeliefProfile>;
+}
+
+export interface AiEvidenceItem {
+  event: string;
+  reason: string;
+}
+
+export interface AiPlayerBeliefProfile {
+  playerId: string;
+  player: string;
+  pEvil: number;
+  suspicionScore: number;
+  evidenceForEvil: AiEvidenceItem[];
+  evidenceAgainstEvil: AiEvidenceItem[];
+  uncertainty: string[];
 }
 
 export interface AiTablePlayerInput {
@@ -109,6 +125,7 @@ export interface AiAvalonDecisionRequest {
     topSuspicious: Array<{ playerId: string; displayName: string; suspicion: number }>;
     topTrusted: Array<{ playerId: string; displayName: string; suspicion: number }>;
   };
+  beliefProfiles: AiPlayerBeliefProfile[];
   ownMemory: AiAgentMemory;
   legalActions: AiAvalonLegalAction[];
 }
@@ -131,6 +148,8 @@ export interface AiBeliefAudit {
   uncertainty: string[];
   beliefBefore: Record<string, number>;
   beliefAfter: Record<string, number>;
+  beliefProfilesBefore?: Record<string, AiPlayerBeliefProfile>;
+  beliefProfilesAfter?: Record<string, AiPlayerBeliefProfile>;
 }
 
 export interface AiBeliefUpdateResult {
@@ -161,6 +180,7 @@ export function buildAiAvalonDecisionRequest(state: AiTableStateInput, actorId: 
   const currentActionContext = buildCurrentActionContext(state, legalActions[0], publicPlayers, roleVisibleInfo);
   const roleVisiblePlayersOnCurrentTeam = currentActionContext.currentTeamRoleVisibleInfo;
   const ownMemory = cloneMemory(actor.memory, state.players.map((player) => player.id), actor.id);
+  const beliefProfiles = formatBeliefProfilesForRequest(ownMemory, state.players, actor.id);
   const formalActionHistory = state.tableHistory.filter((entry) => entry.kind !== 'speech').slice(-24).map((entry) => ({ ...entry }));
   const formalActionHistoryNote = 'Verified formal action history only. Public speech, chat, voice, tone, claims, accusations, and defenses are intentionally omitted by design; reason only from actions that changed game state.';
   return {
@@ -200,6 +220,7 @@ export function buildAiAvalonDecisionRequest(state: AiTableStateInput, actorId: 
     publicTableHistory: formalActionHistory,
     beliefStateBefore: { ...ownMemory.suspicion },
     beliefSummary: summarizeBeliefForRequest(ownMemory.suspicion, state.players, actor.id),
+    beliefProfiles,
     ownMemory,
     legalActions,
   };
@@ -373,6 +394,7 @@ export function mergeAiAgentMemory(current: AiAgentMemory, update: AiAvalonDecis
     notes: [...current.notes.slice(-4), cleanText(update.note, fallbackNote)].slice(-5),
     publicClaims: [...current.publicClaims].slice(-5),
     beliefAudit: current.beliefAudit?.slice(-8) ?? [],
+    beliefProfiles: cloneBeliefProfiles(current.beliefProfiles),
   };
 }
 
@@ -394,6 +416,34 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
     ? actor.missionCard ?? (actorAllegiance === 'good' ? 'success' : undefined)
     : undefined;
   const teamNames = teamIds.map((id) => state.players.find((player) => player.id === id)?.displayName ?? id);
+  const eventId = `Q${mission.roundIndex + 1}_RESULT`;
+  const teamText = teamNames.join('+');
+  const beliefProfilesBefore = normalizeBeliefProfiles(current.beliefProfiles, state.players, actor.id, beliefBefore);
+  const beliefProfiles = cloneBeliefProfiles(beliefProfilesBefore) ?? {};
+  const addSuspicionEvidence = (
+    playerId: string,
+    rawDelta: number,
+    profileDelta: number,
+    direction: 'for' | 'against',
+    reason: string,
+    uncertaintyItem?: string,
+    evidenceEvent = eventId,
+  ) => {
+    if (playerId === actor.id) return;
+    suspicion[playerId] = clampSuspicion((suspicion[playerId] ?? 0) + rawDelta);
+    addBeliefEvidence(beliefProfiles, playerId, direction, evidenceEvent, reason, profileDelta, uncertaintyItem);
+  };
+  const setSuspicionAtLeastWithEvidence = (
+    playerId: string,
+    minimum: number,
+    minimumProfileScore: number,
+    reason: string,
+  ) => {
+    if (playerId === actor.id) return;
+    suspicion[playerId] = clampSuspicion(Math.max(suspicion[playerId] ?? 0, minimum));
+    setBeliefProfileScoreAtLeast(beliefProfiles, playerId, minimumProfileScore);
+    addBeliefEvidence(beliefProfiles, playerId, 'for', 'ROLE_VISION', reason, 0);
+  };
   const informationUsed = [
     `Quest ${mission.roundIndex + 1} result: ${mission.outcome}; fail cards ${mission.failCount}/${mission.requiredFails}.`,
     `Quest team: ${teamNames.join(', ')}.`,
@@ -411,21 +461,42 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
       if (actorOnTeam) {
         deductions.push('Actor is good and was on the failed mission, so their own card cannot be the source of the fail.');
         teamIds.filter((id) => id !== actor.id).forEach((id) => {
-          suspicion[id] = clampSuspicion((suspicion[id] ?? 0) + (mission.requiredFails > 1 ? 24 : 32));
+          addSuspicionEvidence(
+            id,
+            mission.requiredFails > 1 ? 24 : 32,
+            mission.requiredFails > 1 ? 3 : 4,
+            'for',
+            `Was on failed mission ${teamText}; ${actor.displayName} knows their own card was success.`,
+            `${playerNameFromState(state, id)} shares responsibility with ${teamIds.filter((teamId) => teamId !== id).map((teamId) => playerNameFromState(state, teamId)).join(', ')}, so responsibility is not isolated.`,
+          );
         });
       } else if (actor.role === 'Merlin' && !visibleEvilOnTeam.length) {
         deductions.push('Merlin saw no visible evil on this failed mission, so hidden evil/Mordred is likely among the team.');
         teamIds.forEach((id) => {
-          if (id !== actor.id) suspicion[id] = clampSuspicion((suspicion[id] ?? 0) + 34);
+          addSuspicionEvidence(
+            id,
+            34,
+            4,
+            'for',
+            `Failed mission ${teamText} contained no Merlin-visible evil, so hidden evil/Mordred is possible here.`,
+            `${playerNameFromState(state, id)} is only one member of the failed team; the hidden evil candidate set is ${teamNames.join(', ')}.`,
+          );
         });
       } else {
         deductions.push('Actor was not on the failed mission, so all team members become more suspicious from public evidence.');
         teamIds.forEach((id) => {
-          if (id !== actor.id) suspicion[id] = clampSuspicion((suspicion[id] ?? 0) + 18);
+          addSuspicionEvidence(
+            id,
+            18,
+            2,
+            'for',
+            `Was on failed mission ${teamText}.`,
+            `${playerNameFromState(state, id)} is not isolated; the failed team was ${teamNames.join(', ')}.`,
+          );
         });
       }
       visibleEvilOnTeam.forEach((item) => {
-        suspicion[item.playerId] = clampSuspicion(Math.max(suspicion[item.playerId] ?? 0, 55));
+        setSuspicionAtLeastWithEvidence(item.playerId, 55, 8, `Visible to ${actor.displayName} as evil by role vision.`);
       });
       if (visibleEvilOnTeam.length) deductions.push('Role vision already flags at least one team member as visible evil.');
     } else {
@@ -433,11 +504,22 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
       state.players.forEach((player) => {
         if (player.id !== actor.id && roleAllegiance(player.role) === 'evil' && player.role !== 'Oberon') {
           suspicion[player.id] = Math.min(suspicion[player.id] ?? 0, -35);
+          setBeliefProfileScoreAtLeast(beliefProfiles, player.id, 10);
+          addBeliefEvidence(beliefProfiles, player.id, 'for', 'EVIL_TEAM_VISION', `Known evil teammate from ${actor.displayName}'s private information set.`, 0);
         }
       });
       teamIds.forEach((id) => {
         const player = state.players.find((candidate) => candidate.id === id);
-        if (player && roleAllegiance(player.role) === 'good') suspicion[id] = clampSuspicion((suspicion[id] ?? 0) + 10);
+        if (player && roleAllegiance(player.role) === 'good') {
+          addSuspicionEvidence(
+            id,
+            10,
+            1,
+            'for',
+            `Good player was on failed mission ${teamText}; from evil view this creates useful public suspicion pressure.`,
+            'Evil players model public suspicion separately from true alignment.',
+          );
+        }
       });
     }
   } else {
@@ -445,20 +527,99 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
     if (actorAllegiance === 'good') {
       teamIds.forEach((id) => {
         if (id !== actor.id && !visibleEvilOnTeam.some((item) => item.playerId === id)) {
-          suspicion[id] = clampSuspicion((suspicion[id] ?? 0) - 8);
+          addSuspicionEvidence(
+            id,
+            -8,
+            -0.5,
+            'against',
+            `Was on successful mission ${teamText}, but this is weak because evil can submit success early.`,
+            `Q${mission.roundIndex + 1} success does not clear ${playerNameFromState(state, id)}.`,
+          );
         }
       });
       visibleEvilOnTeam.forEach((item) => {
-        suspicion[item.playerId] = clampSuspicion(Math.max(suspicion[item.playerId] ?? 0, 35));
+        setSuspicionAtLeastWithEvidence(item.playerId, 35, 8, `Visible to ${actor.displayName} as evil by role vision, despite the successful mission.`);
       });
     } else {
       state.players.forEach((player) => {
         if (player.id !== actor.id && roleAllegiance(player.role) === 'evil' && player.role !== 'Oberon') {
           suspicion[player.id] = Math.min(suspicion[player.id] ?? 0, -35);
+          setBeliefProfileScoreAtLeast(beliefProfiles, player.id, 10);
+          addBeliefEvidence(beliefProfiles, player.id, 'for', 'EVIL_TEAM_VISION', `Known evil teammate from ${actor.displayName}'s private information set.`, 0);
         }
       });
     }
   }
+
+  const proposal = state.tableHistory.find((entry) => entry.roundIndex === mission.roundIndex && entry.kind === 'proposal' && entry.actorId);
+  if (proposal?.actorId && proposal.actorId !== actor.id) {
+    if (mission.outcome === 'fail') {
+      addSuspicionEvidence(
+        proposal.actorId,
+        14,
+        2,
+        'for',
+        `Proposed a team that later failed (${teamText}); proposal behavior is costlier than speech because it grants mission leverage.`,
+        `A failed proposal is not proof by itself; a good leader may have incomplete information.`,
+        `Q${mission.roundIndex + 1}_PROPOSAL`,
+      );
+    } else {
+      addSuspicionEvidence(
+        proposal.actorId,
+        -4,
+        -0.5,
+        'against',
+        `Proposed a team that succeeded (${teamText}), a mild positive signal.`,
+        `Successful proposals do not hard-clear the leader because evil can build trust early.`,
+        `Q${mission.roundIndex + 1}_PROPOSAL`,
+      );
+    }
+  }
+
+  state.players.forEach((voter) => {
+    if (!voter.teamVote || voter.id === actor.id) return;
+    if (mission.outcome === 'fail' && voter.teamVote === 'approve') {
+      addSuspicionEvidence(
+        voter.id,
+        6,
+        1,
+        'for',
+        `Approved a team that later failed (${teamText}); this is weak-to-medium evidence with real voting cost.`,
+        `Good players can approve bad teams with incomplete information, so this vote is not decisive.`,
+        `Q${mission.roundIndex + 1}_VOTE`,
+      );
+    } else if (mission.outcome === 'fail' && voter.teamVote === 'reject') {
+      addSuspicionEvidence(
+        voter.id,
+        -3,
+        -0.5,
+        'against',
+        `Rejected a team that later failed (${teamText}), a mild positive signal.`,
+        `Evil can reject bad teams for cover, so this vote does not clear ${voter.displayName}.`,
+        `Q${mission.roundIndex + 1}_VOTE`,
+      );
+    } else if (mission.outcome === 'success' && voter.teamVote === 'approve') {
+      addSuspicionEvidence(
+        voter.id,
+        -2,
+        -0.25,
+        'against',
+        `Approved a team that succeeded (${teamText}), a very weak positive signal.`,
+        `Approval of a successful team is cheap cover and should barely move belief.`,
+        `Q${mission.roundIndex + 1}_VOTE`,
+      );
+    } else if (mission.outcome === 'success' && voter.teamVote === 'reject') {
+      addSuspicionEvidence(
+        voter.id,
+        2,
+        0.25,
+        'for',
+        `Rejected a team that succeeded (${teamText}), a very weak negative signal.`,
+        `Good players may reject good teams because they lack alignment information.`,
+        `Q${mission.roundIndex + 1}_VOTE`,
+      );
+    }
+  });
 
   if (actor.role === 'Percival') {
     uncertainty.push('Percival sees Merlin candidates only; that vision is ambiguous between Merlin and Morgana.');
@@ -469,6 +630,7 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
   uncertainty.push('Public speech is ignored by design; only verified formal actions are evidence.');
 
   const beliefAfter = normalizeSuspicionForPlayers(suspicion, allPlayerIds, actor.id);
+  const beliefProfilesAfter = finalizeBeliefProfiles(beliefProfiles, state.players, actor.id);
   const audit: AiBeliefAudit = {
     eventType: 'missionResult',
     roundIndex: mission.roundIndex,
@@ -480,6 +642,8 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
     uncertainty,
     beliefBefore,
     beliefAfter,
+    beliefProfilesBefore,
+    beliefProfilesAfter,
   };
 
   return {
@@ -488,6 +652,7 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
       notes: [...current.notes.slice(-4), summarizeBeliefAudit(audit, state)].slice(-5),
       publicClaims: [...current.publicClaims].slice(-5),
       beliefAudit: [...(current.beliefAudit?.slice(-7) ?? []), audit],
+      beliefProfiles: beliefProfilesAfter,
     },
     audit,
   };
@@ -517,7 +682,10 @@ function cloneMemory(memory: AiAgentMemory | undefined, playerIds: string[], sel
       uncertainty: [...entry.uncertainty],
       beliefBefore: { ...entry.beliefBefore },
       beliefAfter: { ...entry.beliefAfter },
+      beliefProfilesBefore: cloneBeliefProfiles(entry.beliefProfilesBefore),
+      beliefProfilesAfter: cloneBeliefProfiles(entry.beliefProfilesAfter),
     })),
+    beliefProfiles: cloneBeliefProfiles(memory.beliefProfiles),
   };
 }
 
@@ -578,8 +746,134 @@ function summarizeBeliefForRequest(
   };
 }
 
+function formatBeliefProfilesForRequest(memory: AiAgentMemory, players: AiTablePlayerInput[], selfId: string): AiPlayerBeliefProfile[] {
+  return Object.values(normalizeBeliefProfiles(memory.beliefProfiles, players, selfId, memory.suspicion))
+    .sort((left, right) => right.pEvil - left.pEvil || right.suspicionScore - left.suspicionScore || left.player.localeCompare(right.player))
+    .map(cloneBeliefProfile);
+}
+
+function normalizeBeliefProfiles(
+  source: Record<string, AiPlayerBeliefProfile> | undefined,
+  players: AiTablePlayerInput[],
+  selfId: string,
+  suspicion: Record<string, number>,
+): Record<string, AiPlayerBeliefProfile> {
+  return Object.fromEntries(
+    players
+      .filter((player) => player.id !== selfId)
+      .map((player) => {
+        const existing = source?.[player.id];
+        const fallbackScore = suspicionToProfileScore(suspicion[player.id] ?? 0);
+        const profile: AiPlayerBeliefProfile = existing
+          ? {
+              ...cloneBeliefProfile(existing),
+              playerId: player.id,
+              player: player.displayName,
+            }
+          : {
+              playerId: player.id,
+              player: player.displayName,
+              pEvil: profileScoreToProbability(fallbackScore),
+              suspicionScore: fallbackScore,
+              evidenceForEvil: [],
+              evidenceAgainstEvil: [],
+              uncertainty: [],
+            };
+        return [player.id, finalizeBeliefProfile(profile)] as const;
+      }),
+  );
+}
+
+function finalizeBeliefProfiles(
+  profiles: Record<string, AiPlayerBeliefProfile>,
+  players: AiTablePlayerInput[],
+  selfId: string,
+): Record<string, AiPlayerBeliefProfile> {
+  const playerMap = new Map(players.map((player) => [player.id, player]));
+  return Object.fromEntries(
+    Object.entries(profiles)
+      .filter(([id]) => id !== selfId && playerMap.has(id))
+      .map(([id, profile]) => {
+        const player = playerMap.get(id);
+        return [id, finalizeBeliefProfile({ ...profile, playerId: id, player: player?.displayName ?? profile.player })] as const;
+      }),
+  );
+}
+
+function finalizeBeliefProfile(profile: AiPlayerBeliefProfile): AiPlayerBeliefProfile {
+  const suspicionScore = clampProfileScore(profile.suspicionScore);
+  return {
+    ...profile,
+    suspicionScore,
+    pEvil: profileScoreToProbability(suspicionScore),
+    evidenceForEvil: profile.evidenceForEvil.slice(-8).map((item) => ({ ...item })),
+    evidenceAgainstEvil: profile.evidenceAgainstEvil.slice(-8).map((item) => ({ ...item })),
+    uncertainty: [...new Set(profile.uncertainty.filter(Boolean))].slice(-8),
+  };
+}
+
+function addBeliefEvidence(
+  profiles: Record<string, AiPlayerBeliefProfile>,
+  playerId: string,
+  direction: 'for' | 'against',
+  event: string,
+  reason: string,
+  scoreDelta: number,
+  uncertainty?: string,
+): void {
+  const profile = profiles[playerId];
+  if (!profile) return;
+  profile.suspicionScore = clampProfileScore(profile.suspicionScore + scoreDelta);
+  const evidence = { event, reason };
+  if (direction === 'for') profile.evidenceForEvil = [...profile.evidenceForEvil, evidence].slice(-8);
+  else profile.evidenceAgainstEvil = [...profile.evidenceAgainstEvil, evidence].slice(-8);
+  if (uncertainty) profile.uncertainty = [...new Set([...profile.uncertainty, uncertainty])].slice(-8);
+  profile.pEvil = profileScoreToProbability(profile.suspicionScore);
+}
+
+function setBeliefProfileScoreAtLeast(profiles: Record<string, AiPlayerBeliefProfile>, playerId: string, minimumScore: number): void {
+  const profile = profiles[playerId];
+  if (!profile) return;
+  profile.suspicionScore = Math.max(profile.suspicionScore, minimumScore);
+  profile.pEvil = profileScoreToProbability(profile.suspicionScore);
+}
+
+function cloneBeliefProfiles(source: Record<string, AiPlayerBeliefProfile> | undefined): Record<string, AiPlayerBeliefProfile> | undefined {
+  if (!source) return undefined;
+  return Object.fromEntries(Object.entries(source).map(([id, profile]) => [id, cloneBeliefProfile(profile)]));
+}
+
+function cloneBeliefProfile(profile: AiPlayerBeliefProfile): AiPlayerBeliefProfile {
+  return {
+    ...profile,
+    evidenceForEvil: profile.evidenceForEvil.map((item) => ({ ...item })),
+    evidenceAgainstEvil: profile.evidenceAgainstEvil.map((item) => ({ ...item })),
+    uncertainty: [...profile.uncertainty],
+  };
+}
+
+function suspicionToProfileScore(suspicion: number): number {
+  return clampProfileScore(Math.round((suspicion / 8) * 2) / 2);
+}
+
+function profileScoreToProbability(score: number): number {
+  const clamped = clampProfileScore(score);
+  if (clamped >= 10) return 0.95;
+  if (clamped <= -10) return 0.05;
+  const raw = 0.5 + clamped * 0.03;
+  return Math.round(Math.max(0.05, Math.min(0.95, raw)) * 100) / 100;
+}
+
+function clampProfileScore(value: number): number {
+  return Math.max(-10, Math.min(10, Math.round(value * 4) / 4));
+}
+
 function toAvalonPlayer(player: AiTablePlayerInput): Player {
   return { id: player.id, name: player.displayName, role: player.role };
+}
+
+function playerNameFromState(state: AiTableStateInput, playerId: string): string {
+  return state.players.find((player) => player.id === playerId)?.displayName ?? playerId;
 }
 
 function cleanText(value: unknown, fallback: string): string {

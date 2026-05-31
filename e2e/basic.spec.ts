@@ -108,6 +108,9 @@ test('finished AI demo can copy a complete analysis log', async ({ page }) => {
   expect(copied).toContain('## Players, identities, and role vision');
   expect(copied).toContain('- Controller: ai');
   expect(copied).toContain('- Role vision:');
+  expect(copied).toContain('## AI belief profiles');
+  expect(copied).toContain('- pEvil:');
+  expect(copied).toContain('- Evidence for evil:');
   expect(copied).toContain('## Quest rounds');
   expect(copied).toContain('- Public table history:');
   expect(copied).toContain('- AI private reasoning:');
@@ -118,6 +121,8 @@ test('finished AI demo can copy a complete analysis log', async ({ page }) => {
   expect(copied).toContain('## Structured audit events');
   expect(copied).toContain('"schema": "avalon-demo-audit.v1"');
   expect(copied).toContain('"formalActionPolicy"');
+  expect(copied).toContain('"beliefProfiles"');
+  expect(copied).toContain('"pEvil"');
   expect(copied).toContain('"speechPolicy": "ignored_by_design"');
   expect(copied).toContain('"evidenceMode": "formal_actions_only"');
 });

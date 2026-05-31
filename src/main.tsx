@@ -39,6 +39,7 @@ import {
   type AiAvalonDecision,
   type AiAgentMemory,
   type AiBeliefAudit,
+  type AiPlayerBeliefProfile,
 } from './aiAvalon';
 import { getNextRoomAiAction, getRoomAiActionKey, type RoomAiAction } from './services/roomAi';
 import { buildJoinUrl, buildStepUrl, parseEntryStep, parseJoinCodeFromUrl, type EntryScreen } from './navigationState';
@@ -2215,9 +2216,32 @@ function buildDemoLog(demo: DemoState, language: Language): string {
       lines.push(`- Memory notes: ${player.memory.notes.length ? player.memory.notes.join(' | ') : 'none'}`);
       lines.push('- Speech policy: ignored by design; formal actions only are used as evidence.');
       lines.push(`- Belief audit entries: ${player.memory.beliefAudit?.length ?? 0}`);
+      lines.push(`- Belief profiles: ${player.memory.beliefProfiles ? Object.keys(player.memory.beliefProfiles).length : 0}`);
     }
     if (player.lastPublicSpeech) lines.push(`- Last public speech: ${player.lastPublicSpeech}`);
     if (player.lastReasoningSummary) lines.push(`- Last private reasoning: ${player.lastReasoningSummary}`);
+  });
+
+  lines.push('', '## AI belief profiles');
+  const aiPlayersWithProfiles = demo.players.filter((player) => player.controller === 'ai' && player.memory?.beliefProfiles);
+  if (!aiPlayersWithProfiles.length) {
+    lines.push('No structured belief profiles yet.');
+  }
+  aiPlayersWithProfiles.forEach((actor) => {
+    lines.push('', `### ${actor.displayName}'s formal-action beliefs`);
+    Object.values(actor.memory?.beliefProfiles ?? {})
+      .sort((left, right) => right.pEvil - left.pEvil || right.suspicionScore - left.suspicionScore || left.player.localeCompare(right.player))
+      .forEach((profile) => {
+        lines.push(
+          '',
+          `#### ${playerName(demo, profile.playerId)}`,
+          `- pEvil: ${profile.pEvil.toFixed(2)}`,
+          `- suspicionScore: ${profile.suspicionScore >= 0 ? '+' : ''}${profile.suspicionScore}`,
+          `- Evidence for evil: ${formatEvidenceItems(profile.evidenceForEvil)}`,
+          `- Evidence against evil: ${formatEvidenceItems(profile.evidenceAgainstEvil)}`,
+          `- Uncertainty: ${profile.uncertainty.length ? profile.uncertainty.join(' | ') : 'none'}`,
+        );
+      });
   });
 
   lines.push('', '## Quest rounds');
@@ -2283,6 +2307,11 @@ function formatSuspicionMemory(suspicion: Record<string, number>, demo: DemoStat
   return entries.map(([playerId, score]) => `${playerName(demo, playerId)} ${score >= 0 ? '+' : ''}${score}`).join(', ');
 }
 
+function formatEvidenceItems(items: Array<{ event: string; reason: string }>): string {
+  if (!items.length) return 'none';
+  return items.map((item) => `${item.event}: ${item.reason}`).join(' | ');
+}
+
 function formatAuditForLog(audit: AiBeliefAudit, demo: DemoState, indent: string): string[] {
   return [
     `${indent}- Audit event: ${audit.eventType}`,
@@ -2293,8 +2322,19 @@ function formatAuditForLog(audit: AiBeliefAudit, demo: DemoState, indent: string
     `${indent}- Belief before: ${formatSuspicionMemory(audit.beliefBefore, demo)}`,
     `${indent}- Belief after: ${formatSuspicionMemory(audit.beliefAfter, demo)}`,
     `${indent}- Belief deltas: ${formatSuspicionMemory(audit.beliefDeltas, demo)}`,
+    `${indent}- Profile updates: ${formatProfileUpdates(audit.beliefProfilesAfter)}`,
     `${indent}- Uncertainty: ${audit.uncertainty.join(' | ')}`,
   ];
+}
+
+function formatProfileUpdates(profiles?: Record<string, AiPlayerBeliefProfile>): string {
+  if (!profiles) return 'none';
+  const updated = Object.values(profiles)
+    .filter((profile) => profile.evidenceForEvil.length || profile.evidenceAgainstEvil.length || profile.uncertainty.length)
+    .sort((left, right) => right.pEvil - left.pEvil || right.suspicionScore - left.suspicionScore)
+    .slice(0, 4);
+  if (!updated.length) return 'none';
+  return updated.map((profile) => `${profile.player}: pEvil ${profile.pEvil.toFixed(2)}, suspicionScore ${profile.suspicionScore >= 0 ? '+' : ''}${profile.suspicionScore}`).join(' | ');
 }
 
 function buildStructuredAuditExport(demo: DemoState) {
@@ -2310,6 +2350,13 @@ function buildStructuredAuditExport(demo: DemoState) {
       ...result,
       selectedTeamNames: result.selectedTeamIds?.map((id) => playerName(demo, id)) ?? [],
     })),
+    beliefProfiles: demo.players
+      .filter((player) => player.controller === 'ai' && player.memory?.beliefProfiles)
+      .map((player) => ({
+        actorId: player.id,
+        actorName: player.displayName,
+        profiles: Object.values(player.memory?.beliefProfiles ?? {}),
+      })),
     auditEvents: demo.aiHistory
       .filter((entry) => entry.audit)
       .map((entry) => ({
@@ -2330,6 +2377,23 @@ function createAgentMemory(playerIds: string[], selfId: string): AgentMemory {
     notes: ['Opening read: no public evidence yet.'],
     publicClaims: [],
     beliefAudit: [],
+    beliefProfiles: Object.fromEntries(
+      playerIds
+        .filter((id) => id !== selfId)
+        .map((id) => [id, createEmptyBeliefProfile(id, id)]),
+    ),
+  };
+}
+
+function createEmptyBeliefProfile(playerId: string, player: string): AiPlayerBeliefProfile {
+  return {
+    playerId,
+    player,
+    pEvil: 0.5,
+    suspicionScore: 0,
+    evidenceForEvil: [],
+    evidenceAgainstEvil: [],
+    uncertainty: [],
   };
 }
 
@@ -2363,6 +2427,8 @@ function applyMissionResultBeliefUpdates(current: DemoState): DemoState {
 function makeDecisionAudit(current: DemoState, before: DemoPlayer, after: DemoPlayer, deduction: string): AiBeliefAudit {
   const beliefBefore = getPlayerBeliefSnapshot(current, before);
   const beliefAfter = getPlayerBeliefSnapshot(current, after);
+  const beliefProfilesBefore = before.memory?.beliefProfiles;
+  const beliefProfilesAfter = after.memory?.beliefProfiles;
   return {
     eventType: 'decision',
     roundIndex: current.roundIndex,
@@ -2380,6 +2446,8 @@ function makeDecisionAudit(current: DemoState, before: DemoPlayer, after: DemoPl
     uncertainty: ['Decision audit v1 records the summary and belief state; it does not expose free-form chain-of-thought.', 'Public speech is ignored by design; only verified formal actions are evidence.'],
     beliefBefore,
     beliefAfter,
+    beliefProfilesBefore,
+    beliefProfilesAfter,
   };
 }
 
