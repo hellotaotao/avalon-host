@@ -24,6 +24,12 @@ test('demo setup uses table size and manual seats instead of separate modes', as
   await page.getByLabel(/Table size/i).getByRole('button', { name: '7' }).click();
   await expect(page.getByLabel(/Manual seats/i).getByRole('button', { name: '0' })).toHaveClass(/selected/);
   await expect(page.getByText(/Watch 7 AI players/i)).toBeVisible();
+
+  const roleToggles = page.locator('.optional-roles .role-toggle');
+  await expect(roleToggles).toHaveCount(4);
+  const roleToggleRows = await roleToggles.evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().top)));
+  expect(new Set(roleToggleRows).size).toBe(1);
+
   await page.getByRole('button', { name: /Start demo/i }).click();
   const setupSummary = page.getByLabel(/Demo table setup/i);
   await expect(setupSummary.getByText('Demo roundtable', { exact: true })).toBeVisible();

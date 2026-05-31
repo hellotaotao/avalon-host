@@ -788,6 +788,10 @@ label {
   margin-top: 0.75rem;
 }
 
+.demo-role-setup {
+  min-width: 0;
+}
+
 .create-role-config {
   display: grid;
   gap: 1rem;
@@ -880,11 +884,13 @@ label {
   border-radius: 8px;
   background: #fff0c4;
   padding: 0.65rem;
+  min-width: 0;
 }
 
 .role-toggle span {
   display: grid;
   gap: 0.15rem;
+  min-width: 0;
 }
 
 .role-toggle small {
@@ -3182,6 +3188,14 @@ label {
   .demo-options,
   .demo-setup {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .demo-role-setup {
+    grid-column: 1 / -1;
+  }
+
+  .optional-roles {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
 
   .ai-table-controls {

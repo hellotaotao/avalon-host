@@ -1194,7 +1194,7 @@ function DemoSimulator() {
             </div>
             <p>{formatDemoSeatMix(demo.humanCount, demo.playerCount - demo.humanCount, t, language)}</p>
           </div>
-          <div>
+          <div className="demo-role-setup">
             <h3>{t('Role setup')}</h3>
             <div className="role-preset">
               <span>{t('Fixed')}: {preset.requiredRoles.map((role) => formatRole(role, language)).join(', ')}</span>
