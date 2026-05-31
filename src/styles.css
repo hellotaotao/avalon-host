@@ -1264,14 +1264,24 @@ label {
   align-content: center;
   justify-items: center;
   gap: 0.45rem;
+  overflow: hidden;
   border-radius: 8px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.12) 25%, transparent 25% 50%, rgba(255, 255, 255, 0.12) 50% 75%, transparent 75%) 0 0 / 24px 24px,
-    url("/art/parchment-rune-texture.jpg") center / cover,
-    linear-gradient(180deg, #6d5e50, #352e2a);
+  background: #10251b url("/art/avalon-card-back.png") center / cover;
   color: #fff7de;
-  background-blend-mode: normal, multiply, normal;
+  isolation: isolate;
   box-shadow: inset 0 0 0 2px rgba(255, 239, 190, 0.22), 0 0 16px rgba(0, 0, 0, 0.16);
+}
+
+.private-swipe-neutral::before,
+.peek-cover::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(circle at center, rgba(4, 12, 8, 0.12) 0 26%, rgba(3, 8, 6, 0.34) 58%, rgba(0, 0, 0, 0.7) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.5));
+  content: "";
+  pointer-events: none;
 }
 
 .private-swipe-right {
@@ -1289,6 +1299,11 @@ label {
 
 .private-swipe-slider .phone-night-info {
   height: 100%;
+}
+
+.private-swipe-neutral > * {
+  position: relative;
+  z-index: 1;
 }
 
 .private-swipe-neutral > span {
@@ -1372,12 +1387,10 @@ label {
   min-height: 100%;
   border: 0;
   border-radius: 0;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.12) 25%, transparent 25% 50%, rgba(255, 255, 255, 0.12) 50% 75%, transparent 75%) 0 0 / 24px 24px,
-    url("/art/parchment-rune-texture.jpg") center / cover,
-    linear-gradient(180deg, #6d5e50, #352e2a);
+  overflow: hidden;
+  background: #10251b url("/art/avalon-card-back.png") center / cover;
   color: #fff7de;
-  background-blend-mode: normal, multiply, normal;
+  isolation: isolate;
   touch-action: pan-y;
   user-select: none;
   box-shadow: inset 0 0 0 2px rgba(255, 239, 190, 0.22), 0 0 16px rgba(0, 0, 0, 0.18);
@@ -1390,12 +1403,12 @@ label {
 
 .peek-cover:hover:not(:disabled) {
   border: 0;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.12) 25%, transparent 25% 50%, rgba(255, 255, 255, 0.12) 50% 75%, transparent 75%) 0 0 / 24px 24px,
-    url("/art/parchment-rune-texture.jpg") center / cover,
-    linear-gradient(180deg, #756658, #3c342f);
   color: #fff7de;
-  background-blend-mode: normal, multiply, normal;
+}
+
+.peek-cover > * {
+  position: relative;
+  z-index: 1;
 }
 
 .peek-cover span {
