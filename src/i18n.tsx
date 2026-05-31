@@ -5,13 +5,13 @@ export type Language = 'en' | 'zh';
 const LANGUAGE_STORAGE_KEY = 'avalon-host-language';
 
 const zh: Record<string, string> = {
-  'Avalon Host': '阿瓦隆主持',
+  'Veiled Roundtable': '迷雾圆桌',
+  'Avalon room assistant': '阿瓦隆房间助手',
   'The Merlin Reveal': '身份确认',
   'Game Progress': '本局进度',
   'Your Player Area': '你的操作区',
   'Round Table Lobby': '房间大厅',
-  'Gather the Knights of Avalon': '开一局阿瓦隆',
-  'Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.': '创建房间，让玩家入座准备，然后在各自手机上查看秘密身份。',
+  'Create a room, let every player ready at the table, then reveal each secret role on their own phone.': '创建房间，让玩家入座准备，然后在各自手机上查看秘密身份。',
   'Each player can privately reveal their role and night information before the first quest.': '每位玩家可在第一轮任务前私下查看身份和夜晚信息。',
   'Check your private identity first; the shared board below keeps the table moving through teams, votes, quests, and results.': '先查看自己的身份与夜晚信息；下面的公共棋盘会继续推进组队、投票、任务和结果。',
   'The shared board tracks proposals, votes, mission cards, and quest results.': '公共面板会记录组队、投票、任务票和任务结果。',
@@ -46,7 +46,7 @@ const zh: Record<string, string> = {
   'You left the room.': '你已离开房间。',
   'Could not leave room.': '无法离开房间。',
   'Let Merlin handle the hidden-role ritual': '手机自动分发身份信息',
-  'Avalon Host gives the table one magic number, watches the round table fill, and reveals only the secrets each player should know.': '阿瓦隆主持会生成一个房号，显示玩家入座和准备状态，并只向每位玩家展示自己该知道的信息。',
+  'Veiled Roundtable gives the table one magic number, watches the round table fill, and reveals only the secrets each player should know.': '迷雾圆桌会生成一个房号，显示玩家入座和准备状态，并只向每位玩家展示自己该知道的信息。',
   'Choose your path': '选择路径',
   'Host / Join / Demo': '房主 / 加入 / 演示',
   'Primary actions': '主要操作',

@@ -578,9 +578,9 @@ function App() {
       screen === 'room' ? 'room-shell' : '',
     ].filter(Boolean).join(' ')}>
       <header className="hero">
-        <div className="hero-top"><p className="eyebrow">{t('Avalon Host')}</p><LanguageSwitcher /></div>
-        <h1>{screen === 'room' ? getRoomHeroTitle(snapshot, t) : t('Gather the Knights of Avalon')}</h1>
-        <p className="lede">{screen === 'room' ? getRoomHeroCopy(snapshot, t) : t('Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.')}</p>
+        <div className="hero-top"><p className="eyebrow">{t('Avalon room assistant')}</p><LanguageSwitcher /></div>
+        <h1>{screen === 'room' ? getRoomHeroTitle(snapshot, t) : t('Veiled Roundtable')}</h1>
+        <p className="lede">{screen === 'room' ? getRoomHeroCopy(snapshot, t) : t('Create a room, let every player ready at the table, then reveal each secret role on their own phone.')}</p>
       </header>
 
       {message && <p className="notice">{message}</p>}
@@ -601,7 +601,7 @@ function App() {
         <section className="entry">
           <div className="entry-intro">
             <h2>{t('Let Merlin handle the hidden-role ritual')}</h2>
-            <p>{t('Avalon Host gives the table one magic number, watches the round table fill, and reveals only the secrets each player should know.')}</p>
+            <p>{t('Veiled Roundtable gives the table one magic number, watches the round table fill, and reveals only the secrets each player should know.')}</p>
           </div>
           <section className="path-section" aria-labelledby="choose-path-title">
             <div>
@@ -2574,9 +2574,9 @@ function getRoomHeroTitle(snapshot: RoomSnapshot | undefined, t: (text: string) 
 }
 
 function getRoomHeroCopy(snapshot: RoomSnapshot | undefined, t: (text: string) => string): string {
-  if (!snapshot) return t('Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.');
+  if (!snapshot) return t('Create a room, let every player ready at the table, then reveal each secret role on their own phone.');
   const missionState = snapshot.room.settings.missionState;
-  if (snapshot.room.status === 'lobby' || snapshot.room.status === 'setup') return t('Summon a room, let every knight ready at the table, then reveal each secret role on their own phone.');
+  if (snapshot.room.status === 'lobby' || snapshot.room.status === 'setup') return t('Create a room, let every player ready at the table, then reveal each secret role on their own phone.');
   if (snapshot.room.status === 'reveal') return t('Check your private identity first; the shared board below keeps the table moving through teams, votes, quests, and results.');
   if (!missionState) return t('The shared board tracks proposals, votes, mission cards, and quest results.');
   if (missionState.phase === 'proposal') return t('The current captain picks a crew, then every player votes on that proposal.');

@@ -1,6 +1,6 @@
-# Avalon Host
+# Veiled Roundtable
 
-Mobile-first room flow for face-to-face Avalon Lite gatherings. One person creates a room at the table, everyone else joins with a 5-digit numeric code or share link, players mark ready, and the host starts once the lobby is valid.
+Avalon room assistant for face-to-face Avalon Lite gatherings. One person creates a room at the table, everyone else joins with a 5-digit numeric code or share link, players mark ready, and the host starts once the lobby is valid.
 
 ## Local Run
 

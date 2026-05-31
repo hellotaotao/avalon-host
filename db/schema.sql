@@ -1,4 +1,4 @@
--- Avalon Host Neon schema.
+-- Veiled Roundtable Neon schema.
 -- Apply with DATABASE_URL set server-side; do not expose this value to Vite.
 
 create extension if not exists pgcrypto;

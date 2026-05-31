@@ -70,7 +70,7 @@ function getProviderConfig() {
       model: process.env.OPENROUTER_MODEL || process.env.OPENAI_MODEL || 'openai/gpt-4o-mini',
       headers: {
         'HTTP-Referer': process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5173',
-        'X-Title': 'Avalon Host AI Table',
+        'X-Title': 'Veiled Roundtable AI Table',
       },
     };
   }
