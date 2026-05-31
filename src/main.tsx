@@ -987,10 +987,13 @@ function DemoSimulator() {
   const { t, language } = useI18n();
   const [demo, setDemo] = useState(() => createDemoState(7, getRecommendedRolePresetOptions(7)));
   const [autoAi, setAutoAi] = useState(true);
+  const [pauseAfterAiQuest, setPauseAfterAiQuest] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiStatus, setAiStatus] = useState('');
   const rule = getPlayerCountRule(demo.playerCount);
   const preset = buildRolePreset(demo.playerCount, demo.roleOptions);
+  const isPureAiDemo = demo.mode === 'ai' && demo.humanCount === 0;
+  const shouldPauseAfterAiQuest = isPureAiDemo && pauseAfterAiQuest;
   const teamSize = getTeamSize(demo.playerCount, demo.roundIndex);
   const selectedPlayers = demo.selectedTeamIds.map((id) => demo.players.find((player) => player.id === id)?.displayName ?? id);
   const approveCount = demo.players.filter((player) => player.teamVote === 'approve').length;
@@ -1006,6 +1009,7 @@ function DemoSimulator() {
 
   useEffect(() => {
     if (demo.phase !== 'result' || winner || demo.roundIndex >= 4) return undefined;
+    if (shouldPauseAfterAiQuest) return undefined;
     const timeout = window.setTimeout(() => {
       setDemo((current) => {
         if (current.phase !== 'result' || getDemoWinner(current) || current.roundIndex >= 4) return current;
@@ -1013,7 +1017,7 @@ function DemoSimulator() {
       });
     }, DEMO_RESULT_AUTO_ADVANCE_MS);
     return () => window.clearTimeout(timeout);
-  }, [demo.phase, demo.roundIndex, demo.missionResults.length, winner]);
+  }, [demo.phase, demo.roundIndex, demo.missionResults.length, shouldPauseAfterAiQuest, winner]);
 
   useEffect(() => {
     if (demo.mode !== 'ai' || !autoAi || aiBusy || winner || demo.phase === 'setup' || demo.phase === 'result' || demo.phase === 'finished') return undefined;
@@ -1138,6 +1142,13 @@ function DemoSimulator() {
   function chooseAssassinationTarget(targetPlayerId: string) {
     if (demo.phase !== 'assassin') return;
     setDemo((current) => resolveDemoAssassination(current, targetPlayerId));
+  }
+
+  function continueAfterAiQuestPause() {
+    setDemo((current) => {
+      if (current.phase !== 'result' || getDemoWinner(current) || current.roundIndex >= 4) return current;
+      return advanceDemoToNextQuest(current);
+    });
   }
 
   return (
@@ -1303,7 +1314,7 @@ function DemoSimulator() {
         )}
         {demo.phase === 'result' && !winner && (
           <div className="mission-step">
-            <p>{t('Quest result is public on every phone. Next quest starts automatically.')}</p>
+            <p>{shouldPauseAfterAiQuest ? t('Quest result is public. Review the table history, then continue when ready.') : t('Quest result is public on every phone. Next quest starts automatically.')}</p>
           </div>
         )}
         {demo.phase === 'assassin' && (
@@ -1335,6 +1346,15 @@ function DemoSimulator() {
               <button type="button" onClick={() => void runAiOnce()} disabled={aiBusy || !hasPendingAiAction(demo) || Boolean(winner)}>{aiBusy ? t('AI thinking…') : t('Run next AI action')}</button>
             </div>
           </div>
+          {isPureAiDemo && (
+            <label className="check ai-pause-toggle">
+              <input type="checkbox" checked={pauseAfterAiQuest} onChange={(event) => setPauseAfterAiQuest(event.target.checked)} />
+              <span>
+                <strong>{t('Pause after each AI quest')}</strong>
+                <small>{t('When enabled, pure AI demo pauses after each quest so you can review the log before the next round.')}</small>
+              </span>
+            </label>
+          )}
           {aiStatus && <p className="ai-status" aria-live="polite">{aiStatus}</p>}
           <DemoHistoryLog entries={demo.tableHistory.slice(-8)} />
           {demo.aiHistory.length > 0 && (
@@ -1365,6 +1385,17 @@ function DemoSimulator() {
           />
         ))}
       </section>
+
+      {shouldPauseAfterAiQuest && demo.phase === 'result' && !winner && (
+        <div className="ai-round-pause" role="dialog" aria-modal="false" aria-labelledby="ai-round-pause-title">
+          <div>
+            <p className="eyebrow">{t('AI demo paused')}</p>
+            <h3 id="ai-round-pause-title">{t('Review this round?')}</h3>
+            <p>{t('The AI table will wait here until you start the next round.')}</p>
+          </div>
+          <button type="button" className="primary" onClick={continueAfterAiQuestPause}>{t('Enter next round')}</button>
+        </div>
+      )}
     </div>
   );
 }
