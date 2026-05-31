@@ -580,7 +580,7 @@ function App() {
       <header className="hero">
         <div className="hero-top"><p className="eyebrow">{t('Avalon room assistant')}</p><LanguageSwitcher /></div>
         <h1>{screen === 'room' ? getRoomHeroTitle(snapshot, t) : t('Veiled Roundtable')}</h1>
-        <p className="lede">{screen === 'room' ? getRoomHeroCopy(snapshot, t) : t('Create or join a room, then guide identities, readiness, teams, votes, quest results, Merlin assassination, and AI fill-ins from one table flow.')}</p>
+        <p className="lede">{screen === 'room' ? getRoomHeroCopy(snapshot, t) : t('Guide the Avalon game from setup to finish, with AI ready to fill empty seats when needed.')}</p>
       </header>
 
       {message && <p className="notice">{message}</p>}

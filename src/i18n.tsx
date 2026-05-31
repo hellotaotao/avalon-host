@@ -12,7 +12,7 @@ const zh: Record<string, string> = {
   'Your Player Area': '你的操作区',
   'Round Table Lobby': '房间大厅',
   'Create a room, let every player ready at the table, then reveal each secret role on their own phone.': '创建房间，让玩家入座准备，然后在各自手机上查看秘密身份。',
-  'Create or join a room, then guide identities, readiness, teams, votes, quest results, Merlin assassination, and AI fill-ins from one table flow.': '创建或加入房间，并在同一流程中管理身份、准备、组队、投票、任务结果、刺杀梅林和 AI 补位。',
+  'Guide the Avalon game from setup to finish, with AI ready to fill empty seats when needed.': '管理并推进阿瓦隆游戏流程。人数不够时，AI 可以补上空缺。',
   'Each player can privately reveal their role and night information before the first quest.': '每位玩家可在第一轮任务前私下查看身份和夜晚信息。',
   'Check your private identity first; the shared board below keeps the table moving through teams, votes, quests, and results.': '先查看自己的身份与夜晚信息；下面的公共棋盘会继续推进组队、投票、任务和结果。',
   'The shared board tracks proposals, votes, mission cards, and quest results.': '公共面板会记录组队、投票、任务票和任务结果。',
