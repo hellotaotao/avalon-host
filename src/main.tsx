@@ -1557,7 +1557,10 @@ function PlayerPhone({
   const { t } = useI18n();
   const isLeader = player.id === leaderId;
   const onTeam = selectedTeamIds.includes(player.id);
-  const publicRole = isLeader ? t('Current Leader') : mode === 'live' ? t('Your phone') : t('Table player');
+  const playerMeta = [
+    `${t('Seat')} ${player.seatIndex + 1}`,
+    isLeader ? t('Current Leader') : mode === 'live' ? t('Your phone') : undefined,
+  ].filter(Boolean).join(' · ');
   const outcomeClass = [
     winner && player.role ? (roleAllegiance(player.role) === winner ? 'phone-winner' : 'phone-loser') : '',
     result ? `mission-${result.outcome}-phone` : '',
@@ -1568,7 +1571,7 @@ function PlayerPhone({
       <div className="phone-top">
         <div className="phone-player-row">
           <strong>{player.displayName}</strong>
-          <small>{t('Seat')} {player.seatIndex + 1} · {publicRole}</small>
+          <small>{playerMeta}</small>
         </div>
         {onTeam && <span className="phone-team-pill">{t('Mission team')}</span>}
       </div>
