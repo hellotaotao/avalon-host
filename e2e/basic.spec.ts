@@ -36,7 +36,9 @@ test('demo setup uses table size and manual seats instead of separate modes', as
   await expect(setupSummary.getByText(/Watch 7 AI players/i)).toBeVisible();
   await expect(page.getByText(/AI Orchestrator/i)).toBeVisible();
   await expect(page.getByRole('switch', { name: /Auto-advance AI actions/i })).toHaveCount(0);
-  const pauseAfterQuestSwitch = page.getByRole('switch', { name: /Pause after each AI quest/i });
+  await expect(page.getByRole('button', { name: /Run next AI action/i })).toHaveCount(0);
+  await expect(page.getByText(/When enabled, pure AI demo pauses/i)).toHaveCount(0);
+  const pauseAfterQuestSwitch = page.getByRole('switch', { name: /Pause after AI quests/i });
   await expect(pauseAfterQuestSwitch).toBeVisible();
   await expect(pauseAfterQuestSwitch).not.toBeChecked();
   await pauseAfterQuestSwitch.click();
@@ -64,7 +66,7 @@ test('pure AI demo can pause between quest rounds', async ({ page }) => {
   await page.getByLabel(/Table size/i).getByRole('button', { name: '5' }).click();
   await page.getByLabel(/Manual seats/i).getByRole('button', { name: '0' }).click();
   await page.getByRole('button', { name: /Start demo/i }).click();
-  await page.getByRole('switch', { name: /Pause after each AI quest/i }).click();
+  await page.getByRole('switch', { name: /Pause after AI quests/i }).click();
 
   await expect(page.getByRole('dialog', { name: /Review this round/i })).toBeVisible({ timeout: 15000 });
   await expect(page.getByText(/Quest result is public\. Review the table history/i)).toBeVisible();

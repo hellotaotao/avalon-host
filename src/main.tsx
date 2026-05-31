@@ -1343,25 +1343,21 @@ function DemoSimulator() {
               <h3>{t('Independent agents, filtered vision')}</h3>
               <p>{t('AI actions are generated from each player’s own role, legal moves, public history, and private suspicion memory.')}</p>
             </div>
-            <div className="choice-row">
-              {isPureAiDemo && (
+            {isPureAiDemo && (
+              <div className="choice-row">
                 <button
                   type="button"
                   className={`ai-state-switch ${pauseAfterAiQuest ? 'is-on' : 'is-off'}`}
                   role="switch"
                   aria-checked={pauseAfterAiQuest}
-                  aria-label={t('Pause after each AI quest')}
+                  aria-label={t('Pause after AI quests')}
                   onClick={() => setPauseAfterAiQuest(!pauseAfterAiQuest)}
                 >
-                  <span>
-                    <span>{t('Pause after each AI quest')}</span>
-                    <small>{t('When enabled, pure AI demo pauses after each quest so you can review the log before the next round.')}</small>
-                  </span>
+                  <span>{t('Pause after AI quests')}</span>
                   <strong>{pauseAfterAiQuest ? t('On') : t('Off')}</strong>
                 </button>
-              )}
-              <button type="button" onClick={() => void runAiOnce()} disabled={aiBusy || !hasPendingAiAction(demo) || Boolean(winner)}>{aiBusy ? t('AI thinking…') : t('Run next AI action')}</button>
-            </div>
+              </div>
+            )}
           </div>
           {aiStatus && <p className="ai-status" aria-live="polite">{aiStatus}</p>}
           <DemoHistoryLog entries={demo.tableHistory.slice(-8)} />

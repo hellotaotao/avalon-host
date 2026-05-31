@@ -975,30 +975,18 @@ label {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.65rem;
-  min-width: min(320px, 100%);
+  min-width: min(210px, 100%);
   border-color: #758071;
   background: #314139;
   color: #eee1c5;
-  padding: 0.48rem 0.5rem 0.48rem 0.75rem;
+  padding: 0.48rem 0.5rem 0.48rem 0.7rem;
   text-align: left;
 }
 
 .ai-state-switch > span {
-  display: grid;
-  gap: 0.12rem;
-  font-size: 0.82rem;
-  line-height: 1.1;
-}
-
-.ai-state-switch small {
-  color: #d9c99f;
-  font-size: 0.68rem;
+  font-size: 0.86rem;
   font-weight: 800;
-  line-height: 1.25;
-}
-
-.ai-state-switch.is-on small {
-  color: #c9f3fb;
+  line-height: 1.1;
 }
 
 .ai-state-switch strong {
