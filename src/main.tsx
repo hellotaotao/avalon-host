@@ -1024,10 +1024,10 @@ function DemoSimulator() {
     return () => window.clearTimeout(timeout);
   }, [aiBusy, autoAi, demo, winner]);
 
-  function resetWith(playerCount: number, roleOptions: RolePresetOptions, options: { mode?: DemoMode; humanCount?: number } = {}) {
+  function resetWith(playerCount: number, roleOptions: RolePresetOptions, options: { humanCount?: number } = {}) {
+    const nextHumanCount = options.humanCount ?? (demo.humanCount === demo.playerCount ? playerCount : Math.min(demo.humanCount, playerCount));
     setDemo(createDemoState(playerCount, sanitizeRoleOptions(playerCount, roleOptions), {
-      mode: options.mode ?? demo.mode,
-      humanCount: options.humanCount ?? demo.humanCount,
+      humanCount: nextHumanCount,
     }));
   }
 
@@ -1037,17 +1037,13 @@ function DemoSimulator() {
       phase: 'proposal',
       tableHistory: [
         ...current.tableHistory,
-        makeHistory(current, undefined, 'result', `${current.mode === 'ai' ? 'AI Table' : 'Manual demo'} started with ${current.playerCount} players.`),
+        makeHistory(current, undefined, 'result', `Demo roundtable started with ${current.playerCount} players and ${current.playerCount - current.humanCount} AI fill-ins.`),
       ],
     }));
   }
 
-  function switchDemoMode(mode: DemoMode) {
-    resetWith(demo.playerCount, demo.roleOptions, { mode, humanCount: mode === 'ai' ? Math.min(demo.humanCount, 3) : demo.humanCount });
-  }
-
-  function setHumanCount(humanCount: number) {
-    resetWith(demo.playerCount, demo.roleOptions, { mode: 'ai', humanCount });
+  function setManualSeatCount(humanCount: number) {
+    resetWith(demo.playerCount, demo.roleOptions, { humanCount });
   }
 
   function toggleOptionalRole(key: keyof RolePresetOptions) {
@@ -1156,26 +1152,13 @@ function DemoSimulator() {
 
       {demo.phase === 'setup' ? (
         <section className="demo-setup">
-          <div className="demo-mode-tabs">
-            <button type="button" className={demo.mode === 'manual' ? 'selected' : ''} onClick={() => switchDemoMode('manual')}>{t('Manual phones')}</button>
-            <button type="button" className={demo.mode === 'ai' ? 'selected' : ''} onClick={() => switchDemoMode('ai')}>{t('AI Table')}</button>
-          </div>
           <div className="demo-ai-intro">
-            {demo.mode === 'ai' ? (
-              <>
-                <h3>{t('AI fill seats')}</h3>
-                <p>{t('Start solo or keep 2–3 human seats. Each AI player gets only its role-visible information, public table history, and its own private suspicion memory.')}</p>
-              </>
-            ) : (
-              <>
-                <h3>{t('Manual multi-phone demo')}</h3>
-                <p>{t('Drive every virtual phone yourself to demonstrate reveal, proposal, voting, and mission flow.')}</p>
-              </>
-            )}
+            <h3>{t('Demo roundtable')}</h3>
+            <p>{t('Choose the table size and manual seats. AI fills the rest; set manual seats to 0 to watch a full AI table play itself.')}</p>
           </div>
           <div>
-            <h3>{t('Players')}</h3>
-            <div className="segmented" aria-label={t('Player count')}>
+            <h3>{t('Table size')}</h3>
+            <div className="segmented" aria-label={t('Table size')}>
               {playerCountRange.map((count) => (
                 <button
                   key={count}
@@ -1189,19 +1172,17 @@ function DemoSimulator() {
             </div>
             <p>{rule.goodCount} {t('Good')} / {rule.evilCount} {t('Evil')}</p>
           </div>
-          {demo.mode === 'ai' && (
-            <div>
-              <h3>{t('Human seats')}</h3>
-              <div className="segmented" aria-label={t('Human seats')}>
-                {[1, 2, 3].map((count) => (
-                  <button key={count} type="button" className={demo.humanCount === count ? 'selected' : ''} onClick={() => setHumanCount(count)}>
-                    {count}
-                  </button>
-                ))}
-              </div>
-              <p>{demo.playerCount - demo.humanCount} {t('AI agents will fill the table.')}</p>
+          <div>
+            <h3>{t('Manual seats')}</h3>
+            <div className="segmented" aria-label={t('Manual seats')}>
+              {Array.from({ length: demo.playerCount + 1 }, (_, count) => (
+                <button key={count} type="button" className={demo.humanCount === count ? 'selected' : ''} onClick={() => setManualSeatCount(count)}>
+                  {count}
+                </button>
+              ))}
             </div>
-          )}
+            <p>{formatDemoSeatMix(demo.humanCount, demo.playerCount - demo.humanCount, t, language)}</p>
+          </div>
           <div>
             <h3>{t('Role setup')}</h3>
             <div className="role-preset">
@@ -1221,21 +1202,21 @@ function DemoSimulator() {
               })}
             </div>
           </div>
-          {demo.mode === 'ai' && (
+          {demo.playerCount > demo.humanCount && (
             <div className="ai-instruction-card">
               <h3>{t('Agent input contract')}</h3>
               <p>{t('On each turn the orchestrator sends: rules + current phase + legal actions + public history + that agent’s role vision + that agent’s private memory. Other agents’ private memory is never included.')}</p>
             </div>
           )}
           <div className="demo-start-row">
-            <button type="button" className="primary" onClick={startTable}>{demo.mode === 'ai' ? t('Start AI table') : t('Start tabletop')}</button>
+            <button type="button" className="primary" onClick={startTable}>{t('Start demo')}</button>
           </div>
         </section>
       ) : (
         <section className="demo-setup-summary" aria-label={t('Demo table setup')}>
-          <span>{demo.mode === 'ai' ? t('AI Table') : t('Manual Demo')}</span>
+          <span>{t('Demo roundtable')}</span>
           <span>{demo.playerCount} {t('players')}</span>
-          {demo.mode === 'ai' && <span>{demo.humanCount} {t('human')} / {demo.playerCount - demo.humanCount} AI</span>}
+          <span>{formatDemoSeatMix(demo.humanCount, demo.playerCount - demo.humanCount, t, language)}</span>
           <span>{rule.goodCount} {t('Good')} / {rule.evilCount} {t('Evil')}</span>
           <span>{t('Special roles')}: {includedSpecialRoles.length ? includedSpecialRoles.map((role) => formatRole(role, language)).join(', ') : t('None')}</span>
           <span>{t('Base')}: {preset.requiredRoles.map((role) => formatRole(role, language)).join(', ')}</span>
@@ -2486,28 +2467,46 @@ function deterministicShuffle<T>(items: T[], seed: string): T[] {
 
 function getAgentViewSummary(player: DemoPlayer, privateInfo: VisibilityInfo, t: (text: string) => string, language: ReturnType<typeof useI18n>['language']): React.ReactNode {
   if (player.controller !== 'ai') return <div className="agent-card human-card"><span>{t('Human seat')}</span><p>{t("You make this player's decisions.")}</p></div>;
-  const suspicionEntries = Object.entries(player.memory?.suspicion ?? {})
-    .sort(([, left], [, right]) => right - left)
-    .slice(0, 2);
   return (
     <div className="agent-card">
       <span>{t('AI Agent')} · {player.persona}</span>
-      <p><strong>{t('Visible info')}:</strong> {privateInfo.sees.length ? privateInfo.sees.map((item) => `${item.name} (${formatHint(item.hint, language)})`).join(', ') : t('No private identity info.')}</p>
+      <div className="agent-visible-info">
+        <strong>{t('Visible info')}:</strong>
+        {privateInfo.sees.length ? (
+          <ul>
+            {privateInfo.sees.map((item) => (
+              <li key={item.playerId}>{item.name}{language === 'zh' ? '：' : ': '}{formatHint(item.hint, language)}</li>
+            ))}
+          </ul>
+        ) : (
+          <p>{t('No private identity info.')}</p>
+        )}
+      </div>
       {player.lastPublicSpeech && <p><strong>{t('Public')}:</strong> "{player.lastPublicSpeech}"</p>}
       {player.lastReasoningSummary && <p><strong>{t('Reasoning summary')}:</strong> {player.lastReasoningSummary}</p>}
-      {suspicionEntries.length > 0 && <p><strong>{t('Memory')}:</strong> {suspicionEntries.map(([id, score]) => `${id.replace('demo-player-', 'P')} ${score > 0 ? '+' : ''}${score}`).join(', ')}</p>}
     </div>
   );
+}
+
+function formatDemoSeatMix(humanCount: number, aiCount: number, t: (text: string) => string, language: ReturnType<typeof useI18n>['language']): string {
+  if (language === 'zh') {
+    if (aiCount === 0) return `${humanCount} 个手动座位，无 AI 补位`;
+    if (humanCount === 0) return `0 个手动座位，观战 ${aiCount} 个 AI 玩家`;
+    return `${humanCount} 个手动座位 + ${aiCount} 个 AI 补位`;
+  }
+  if (aiCount === 0) return `${humanCount} ${t('manual seats')}, ${t('no AI fill-ins')}`;
+  if (humanCount === 0) return `${t('Watch')} ${aiCount} ${t('AI players')}`;
+  return `${humanCount} ${t('manual seats')} + ${aiCount} ${t('AI fill-ins')}`;
 }
 
 function createDemoState(
   playerCount: number,
   roleOptions: RolePresetOptions,
-  options: { mode?: DemoMode; humanCount?: number } = {},
+  options: { humanCount?: number } = {},
 ): DemoState {
   const sanitizedOptions = sanitizeRoleOptions(playerCount, roleOptions);
-  const mode = options.mode ?? 'manual';
-  const humanCount = mode === 'ai' ? Math.min(Math.max(options.humanCount ?? 1, 1), Math.min(3, playerCount)) : playerCount;
+  const humanCount = Math.min(Math.max(options.humanCount ?? playerCount, 0), playerCount);
+  const mode: DemoMode = humanCount === playerCount ? 'manual' : 'ai';
   const basePlayers = demoNames.slice(0, playerCount).map((name, index) => ({ id: `demo-player-${index + 1}`, name }));
   const presetRoles = buildRolePreset(playerCount, sanitizedOptions).roles;
   const roles = mode === 'ai' ? deterministicShuffle(presetRoles, `ai-table-${playerCount}-${JSON.stringify(sanitizedOptions)}`) : presetRoles;

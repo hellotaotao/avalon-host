@@ -1021,6 +1021,25 @@ label {
   font-weight: 800;
 }
 
+.agent-visible-info {
+  display: grid;
+  gap: 0.25rem;
+  color: #321a0c;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.agent-visible-info ul {
+  display: grid;
+  gap: 0.16rem;
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.agent-visible-info p {
+  margin: 0;
+}
+
 .human-card {
   background: #e8ecd8;
 }
