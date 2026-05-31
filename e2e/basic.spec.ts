@@ -16,9 +16,13 @@ test('demo setup uses table size and manual seats instead of separate modes', as
   await expect(page.getByRole('button', { name: /Manual phones/i })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^AI Table$/i })).toHaveCount(0);
   await expect(page.getByLabel(/Manual seats/i).getByRole('button', { name: '0' })).toBeVisible();
-  await expect(page.getByLabel(/Manual seats/i).getByRole('button', { name: '7' })).toHaveClass(/selected/);
+  await expect(page.getByLabel(/Manual seats/i).getByRole('button', { name: '0' })).toHaveClass(/selected/);
 
-  await page.getByLabel(/Manual seats/i).getByRole('button', { name: '0' }).click();
+  await page.getByLabel(/Table size/i).getByRole('button', { name: '5' }).click();
+  await expect(page.getByLabel(/Manual seats/i).getByRole('button', { name: '0' })).toHaveClass(/selected/);
+  await expect(page.getByText(/Watch 5 AI players/i)).toBeVisible();
+  await page.getByLabel(/Table size/i).getByRole('button', { name: '7' }).click();
+  await expect(page.getByLabel(/Manual seats/i).getByRole('button', { name: '0' })).toHaveClass(/selected/);
   await expect(page.getByText(/Watch 7 AI players/i)).toBeVisible();
   await page.getByRole('button', { name: /Start demo/i }).click();
   const setupSummary = page.getByLabel(/Demo table setup/i);

@@ -985,7 +985,7 @@ const DEMO_RESULT_AUTO_ADVANCE_MS = 2200;
 
 function DemoSimulator() {
   const { t, language } = useI18n();
-  const [demo, setDemo] = useState(() => createDemoState(7, getRecommendedRolePresetOptions(7)));
+  const [demo, setDemo] = useState(() => createDemoState(7, getRecommendedRolePresetOptions(7), { humanCount: 0 }));
   const [autoAi, setAutoAi] = useState(true);
   const [pauseAfterAiQuest, setPauseAfterAiQuest] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
