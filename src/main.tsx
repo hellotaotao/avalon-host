@@ -623,6 +623,7 @@ function App() {
               </button>
             </div>
           </section>
+          <HomeSeoIntro />
           <div className="workflow-grid" aria-label={t('Live workflow')}>
             <article>
               <strong>{t('1. Host opens the hall')}</strong>
@@ -748,6 +749,44 @@ function App() {
     setScreen(nextScreen);
     setMessage('');
   }
+}
+
+function HomeSeoIntro() {
+  const { t } = useI18n();
+
+  return (
+    <section className="home-seo" aria-labelledby="home-seo-title">
+      <div className="home-seo-copy">
+        <p className="eyebrow">{t('Medieval table, modern phones')}</p>
+        <h2 id="home-seo-title">{t('AI fill-ins for short tables')}</h2>
+        <p>{t('Veiled Roundtable is a mobile Avalon board game assistant for hidden identities, quest voting, and the Merlin assassination endgame.')}</p>
+        <p>{t('When the Avalon room is short on people or you want to test and practice a flow, AI players can fill empty seats so the table can start sooner.')}</p>
+        <div className="seo-tags" aria-label={t('Avalon assistant highlights')}>
+          <span>{t('Round table setup')}</span>
+          <span>{t('Private phone reveals')}</span>
+          <span>{t('Quest votes and Merlin endgame')}</span>
+          <span>{t('AI player fill-ins')}</span>
+        </div>
+      </div>
+      <figure className="home-seo-art">
+        <img
+          src="/seo/avalon-phone-table.jpg"
+          alt={t('Phones around a candlelit Avalon round table')}
+          loading="lazy"
+          width="1448"
+          height="1086"
+        />
+        <img
+          className="home-seo-castle"
+          src="/seo/veiled-roundtable-room.jpg"
+          alt={t('Misty castle council room with a round table')}
+          loading="lazy"
+          width="1672"
+          height="941"
+        />
+      </figure>
+    </section>
+  );
 }
 
 function CreateRoomRoleConfig({

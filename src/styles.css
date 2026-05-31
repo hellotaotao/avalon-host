@@ -244,6 +244,90 @@ label {
   padding: 1rem;
 }
 
+.home-seo {
+  display: grid;
+  gap: 1rem;
+  overflow: hidden;
+  border: 1px solid rgba(240, 199, 107, 0.5);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(19, 28, 23, 0.94), rgba(47, 27, 28, 0.88)),
+    #1d241f;
+  color: #fff7de;
+  padding: 1rem;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.26), inset 0 0 0 1px rgba(255, 248, 221, 0.08);
+}
+
+.home-seo-copy {
+  display: grid;
+  align-content: center;
+  gap: 0.7rem;
+}
+
+.home-seo h2 {
+  margin: 0;
+  color: #ffe39b;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.55rem, 7vw, 2.45rem);
+  line-height: 1.04;
+  letter-spacing: 0;
+}
+
+.home-seo p {
+  max-width: 42rem;
+  margin: 0;
+  color: #f2ddae;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.seo-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding-top: 0.15rem;
+}
+
+.seo-tags span {
+  border: 1px solid rgba(240, 199, 107, 0.45);
+  border-radius: 999px;
+  background: rgba(255, 248, 221, 0.1);
+  color: #ffe9ab;
+  padding: 0.32rem 0.55rem;
+  font-size: 0.82rem;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.home-seo-art {
+  position: relative;
+  min-height: 260px;
+  margin: 0;
+}
+
+.home-seo-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+  border: 1px solid rgba(240, 199, 107, 0.45);
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.36);
+}
+
+.home-seo-art .home-seo-castle {
+  position: absolute;
+  right: 0.65rem;
+  bottom: 0.65rem;
+  width: 42%;
+  min-width: 132px;
+  height: auto;
+  min-height: 0;
+  aspect-ratio: 16 / 9;
+  border-color: rgba(255, 227, 155, 0.7);
+}
+
 .workflow-grid {
   display: grid;
   gap: 0.75rem;
@@ -2650,6 +2734,16 @@ label {
 
   .workflow-grid {
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  .home-seo {
+    grid-template-columns: minmax(0, 0.95fr) minmax(300px, 1.05fr);
+    align-items: stretch;
+    padding: 1.1rem;
+  }
+
+  .home-seo-art {
+    min-height: 320px;
   }
 
   .room-history-panel,
