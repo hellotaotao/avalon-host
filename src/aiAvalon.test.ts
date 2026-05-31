@@ -83,8 +83,16 @@ describe('AI Avalon request filtering and validation', () => {
       { playerId: 'p3', displayName: 'Loyal', seatIndex: 2 },
       { playerId: 'p5', displayName: 'Loyal 2', seatIndex: 4 },
     ]);
-    expect(request.publicTableHistoryNote).toContain('Historical public transcript only');
-    expect(request.publicTableHistory.map((entry) => entry.text).join(' ')).toContain('Arthur AI, Bors AI');
+    expect(request.formalActionPolicy).toMatchObject({
+      evidenceMode: 'formal_actions_only',
+      speechPolicy: 'ignored_by_design',
+    });
+    expect(request.formalActionHistoryNote).toContain('Verified formal action history only');
+    expect(request.formalActionHistory.map((entry) => entry.text).join(' ')).toContain('Arthur AI, Bors AI');
+    expect(request.formalActionHistory.map((entry) => entry.kind)).not.toContain('speech');
+    expect(JSON.stringify(request)).not.toContain('I reject Arthur AI and Bors AI.');
+    expect(request.beliefStateBefore).toEqual({ p2: 5, p3: 0, p4: 0, p5: 0 });
+    expect(request.beliefSummary.topSuspicious[0]).toMatchObject({ playerId: 'p2', suspicion: 5 });
     expect(request.legalActions).toEqual([{ type: 'vote', values: ['approve', 'reject'], selectedTeamIds: ['p3', 'p5'] }]);
   });
 
@@ -276,6 +284,7 @@ describe('AI Avalon request filtering and validation', () => {
     expect(result.memory.suspicion.p2).toBe(0);
     expect(result.audit?.informationUsed.join(' ')).toContain("Actor's own mission card: success");
     expect(result.audit?.deductions.join(' ')).toContain('own card cannot be the source');
+    expect(result.audit).toMatchObject({ evidenceMode: 'formal_actions_only', speechPolicy: 'ignored_by_design' });
   });
 
   it('lets Merlin infer hidden evil when a failed mission contains no visible evil', () => {
@@ -313,6 +322,7 @@ describe('AI Avalon request filtering and validation', () => {
     expect(result.memory.suspicion.p6).toBe(0);
     expect(result.audit?.deductions.join(' ')).toContain('hidden evil/Mordred');
     expect(result.audit?.uncertainty.join(' ')).toContain('Mordred is hidden from Merlin');
+    expect(result.audit?.uncertainty.join(' ')).toContain('Public speech is ignored by design');
   });
 
 });

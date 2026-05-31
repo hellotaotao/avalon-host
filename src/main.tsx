@@ -2213,7 +2213,7 @@ function buildDemoLog(demo: DemoState, language: Language): string {
     if (player.memory) {
       lines.push(`- Suspicion memory: ${formatSuspicionMemory(player.memory.suspicion, demo)}`);
       lines.push(`- Memory notes: ${player.memory.notes.length ? player.memory.notes.join(' | ') : 'none'}`);
-      lines.push(`- Public claims remembered: ${player.memory.publicClaims.length ? player.memory.publicClaims.join(' | ') : 'none'}`);
+      lines.push('- Speech policy: ignored by design; formal actions only are used as evidence.');
       lines.push(`- Belief audit entries: ${player.memory.beliefAudit?.length ?? 0}`);
     }
     if (player.lastPublicSpeech) lines.push(`- Last public speech: ${player.lastPublicSpeech}`);
@@ -2286,7 +2286,8 @@ function formatSuspicionMemory(suspicion: Record<string, number>, demo: DemoStat
 function formatAuditForLog(audit: AiBeliefAudit, demo: DemoState, indent: string): string[] {
   return [
     `${indent}- Audit event: ${audit.eventType}`,
-    `${indent}- Public speech available to AI: ${audit.publicSpeechAvailableToAI} (${audit.speechSource})`,
+    `${indent}- Evidence mode: ${audit.evidenceMode}`,
+    `${indent}- Speech policy: ${audit.speechPolicy}`,
     `${indent}- Information used: ${audit.informationUsed.join(' | ')}`,
     `${indent}- Deductions: ${audit.deductions.join(' | ')}`,
     `${indent}- Belief before: ${formatSuspicionMemory(audit.beliefBefore, demo)}`,
@@ -2299,10 +2300,10 @@ function formatAuditForLog(audit: AiBeliefAudit, demo: DemoState, indent: string
 function buildStructuredAuditExport(demo: DemoState) {
   return {
     schema: 'avalon-demo-audit.v1',
-    publicSpeechPolicy: {
-      publicSpeechAvailableToAI: demo.tableHistory.some((entry) => entry.kind === 'speech'),
-      speechSource: demo.tableHistory.some((entry) => entry.kind === 'speech') ? 'demo text table history' : 'none',
-      claimExtractor: 'not available in v1',
+    formalActionPolicy: {
+      evidenceMode: 'formal_actions_only',
+      speechPolicy: 'ignored_by_design',
+      principle: 'AI does not analyze what people said; it analyzes what they paid a game-state cost to do.',
       note: 'Markdown is a rendering of this structured event/audit state; do not infer private reasoning after the fact.',
     },
     missionResults: demo.missionResults.map((result) => ({
@@ -2365,18 +2366,18 @@ function makeDecisionAudit(current: DemoState, before: DemoPlayer, after: DemoPl
   return {
     eventType: 'decision',
     roundIndex: current.roundIndex,
-    publicSpeechAvailableToAI: current.tableHistory.some((entry) => entry.kind === 'speech'),
-    speechSource: current.tableHistory.some((entry) => entry.kind === 'speech') ? 'demo text table history' : 'none',
+    evidenceMode: 'formal_actions_only',
+    speechPolicy: 'ignored_by_design',
     informationUsed: [
       `Phase: ${current.phase}.`,
       `Quest: ${current.roundIndex + 1}.`,
       `Selected team: ${current.selectedTeamIds.length ? current.selectedTeamIds.map((id) => playerName(current, id)).join(', ') : 'none yet'}.`,
       `Role vision: ${formatDemoRoleVision(current, before)}.`,
-      `Public history entries available: ${current.tableHistory.length}.`,
+      `Formal action history entries available: ${current.tableHistory.filter((entry) => entry.kind !== 'speech').length}.`,
     ],
     deductions: [deduction],
     beliefDeltas: computeBeliefDeltas(beliefBefore, beliefAfter),
-    uncertainty: ['Decision audit v1 records the summary and belief state; it does not expose free-form chain-of-thought.', 'No claim extractor is available in v1; raw public speech is not converted into structured claims.'],
+    uncertainty: ['Decision audit v1 records the summary and belief state; it does not expose free-form chain-of-thought.', 'Public speech is ignored by design; only verified formal actions are evidence.'],
     beliefBefore,
     beliefAfter,
   };
@@ -2850,7 +2851,7 @@ function rememberAgent(player: DemoPlayer, current: DemoState, reasoning: string
   };
 }
 
-function updateAgentMemory(player: DemoPlayer, current: DemoState, reasoning: string, publicSpeech: string): AgentMemory {
+function updateAgentMemory(player: DemoPlayer, current: DemoState, reasoning: string, _publicSpeech: string): AgentMemory {
   const memory = player.memory ?? createAgentMemory(current.players.map((candidate) => candidate.id), player.id);
   const suspicion = { ...memory.suspicion };
   current.selectedTeamIds.forEach((id) => {
@@ -2861,7 +2862,7 @@ function updateAgentMemory(player: DemoPlayer, current: DemoState, reasoning: st
   return {
     suspicion,
     notes: [...memory.notes.slice(-3), reasoning],
-    publicClaims: [...memory.publicClaims.slice(-3), publicSpeech],
+    publicClaims: [...memory.publicClaims].slice(-3),
     beliefAudit: memory.beliefAudit?.slice(-8) ?? [],
   };
 }

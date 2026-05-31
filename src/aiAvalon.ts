@@ -53,6 +53,15 @@ export type AiAvalonDecisionAction =
   | { type: 'assassinate'; targetPlayerId: string };
 
 export interface AiAvalonDecisionRequest {
+  formalActionPolicy: {
+    evidenceMode: 'formal_actions_only';
+    speechPolicy: 'ignored_by_design';
+    principle: string;
+    allowedEvidence: string[];
+    ignoredEvidence: string[];
+    costlySignalRules: string[];
+    evidenceStrength: Array<{ evidence: string; strength: 'very_strong' | 'strong' | 'medium_high' | 'medium' | 'medium_low' | 'zero'; note: string }>;
+  };
   game: {
     name: 'Avalon Lite';
     playerCount: number;
@@ -89,8 +98,17 @@ export interface AiAvalonDecisionRequest {
   publicPlayers: Array<{ playerId: string; displayName: string; seatIndex: number }>;
   roleVisibleInfo: Array<{ playerId: string; displayName: string; hint: string }>;
   roleVisiblePlayersOnCurrentTeam: Array<{ playerId: string; displayName: string; hint: string }>;
+  formalActionHistoryNote: string;
+  formalActionHistory: AiTableHistoryEntryInput[];
+  /** @deprecated Use formalActionHistory. Speech entries are intentionally omitted from AI evidence. */
   publicTableHistoryNote: string;
+  /** @deprecated Use formalActionHistory. Speech entries are intentionally omitted from AI evidence. */
   publicTableHistory: AiTableHistoryEntryInput[];
+  beliefStateBefore: Record<string, number>;
+  beliefSummary: {
+    topSuspicious: Array<{ playerId: string; displayName: string; suspicion: number }>;
+    topTrusted: Array<{ playerId: string; displayName: string; suspicion: number }>;
+  };
   ownMemory: AiAgentMemory;
   legalActions: AiAvalonLegalAction[];
 }
@@ -105,8 +123,8 @@ export interface AiAvalonDecision {
 export interface AiBeliefAudit {
   eventType: 'decision' | 'missionResult';
   roundIndex: number;
-  publicSpeechAvailableToAI: boolean;
-  speechSource: string;
+  evidenceMode: 'formal_actions_only';
+  speechPolicy: 'ignored_by_design';
   informationUsed: string[];
   deductions: string[];
   beliefDeltas: Record<string, number>;
@@ -142,7 +160,11 @@ export function buildAiAvalonDecisionRequest(state: AiTableStateInput, actorId: 
   const publicPlayers = state.players.map((player) => ({ playerId: player.id, displayName: player.displayName, seatIndex: player.seatIndex }));
   const currentActionContext = buildCurrentActionContext(state, legalActions[0], publicPlayers, roleVisibleInfo);
   const roleVisiblePlayersOnCurrentTeam = currentActionContext.currentTeamRoleVisibleInfo;
+  const ownMemory = cloneMemory(actor.memory, state.players.map((player) => player.id), actor.id);
+  const formalActionHistory = state.tableHistory.filter((entry) => entry.kind !== 'speech').slice(-24).map((entry) => ({ ...entry }));
+  const formalActionHistoryNote = 'Verified formal action history only. Public speech, chat, voice, tone, claims, accusations, and defenses are intentionally omitted by design; reason only from actions that changed game state.';
   return {
+    formalActionPolicy: buildFormalActionPolicy(),
     game: {
       name: 'Avalon Lite',
       playerCount: state.playerCount,
@@ -172,9 +194,13 @@ export function buildAiAvalonDecisionRequest(state: AiTableStateInput, actorId: 
     publicPlayers,
     roleVisibleInfo,
     roleVisiblePlayersOnCurrentTeam,
-    publicTableHistoryNote: 'Historical public transcript only. It may mention older proposed teams; do not treat those as the current proposal. For the action now, use currentActionContext as authoritative. During mission-card actions, give a brief private reason for the card choice; public speech must not reveal the chosen card before mission resolution.',
-    publicTableHistory: state.tableHistory.slice(-24).map((entry) => ({ ...entry })),
-    ownMemory: cloneMemory(actor.memory, state.players.map((player) => player.id), actor.id),
+    formalActionHistoryNote,
+    formalActionHistory,
+    publicTableHistoryNote: formalActionHistoryNote,
+    publicTableHistory: formalActionHistory,
+    beliefStateBefore: { ...ownMemory.suspicion },
+    beliefSummary: summarizeBeliefForRequest(ownMemory.suspicion, state.players, actor.id),
+    ownMemory,
     legalActions,
   };
 }
@@ -255,12 +281,12 @@ function buildCurrentActionContext(
     currentProposedTeamText,
     currentTeamRoleVisibleInfo,
     historyNote: actionType === 'vote'
-      ? `You are voting only on the current proposed team now: ${currentProposedTeamText}. Public table history is historical context and may describe previous proposals. First check currentTeamRoleVisibleInfo/roleVisiblePlayersOnCurrentTeam for role-visible information about this exact team.`
+      ? `You are voting only on the current proposed team now: ${currentProposedTeamText}. Formal action history is historical context and may describe previous proposals or votes; public speech is ignored by design. First check currentTeamRoleVisibleInfo/roleVisiblePlayersOnCurrentTeam for role-visible information about this exact team.`
       : actionType === 'missionCard'
-        ? `You are submitting a mission card only for the current mission team now: ${currentProposedTeamText}. Public table history is historical context. First check currentTeamRoleVisibleInfo/roleVisiblePlayersOnCurrentTeam for role-visible information about this exact team. Include a brief privateReasoningSummary explaining why you chose success or fail; good players must submit success, while evil players should weigh sabotage against staying hidden. Do not reveal the chosen mission card in publicSpeech.`
+        ? `You are submitting a mission card only for the current mission team now: ${currentProposedTeamText}. Formal action history is historical context; public speech is ignored by design. First check currentTeamRoleVisibleInfo/roleVisiblePlayersOnCurrentTeam for role-visible information about this exact team. Include a brief privateReasoningSummary explaining why you chose success or fail; good players must submit success, while evil players should price sabotage against the cost of staying hidden. Do not reveal the chosen mission card in publicSpeech.`
         : actionType === 'assassinate'
-          ? 'Good completed three quests. As Assassin, choose one good player as Merlin. If you hit Merlin, Evil wins; otherwise Good wins. Use public history and your private memory only; you are not told Merlin by the orchestrator.'
-          : 'You are proposing a new team now. Public table history is historical context only.',
+          ? 'Good completed three quests. As Assassin, choose one good player as Merlin. If you hit Merlin, Evil wins; otherwise Good wins. Use formal action history and your private memory only; public speech is ignored by design and you are not told Merlin by the orchestrator.'
+          : 'You are proposing a new team now. Formal action history is historical context only; public speech is ignored by design.',
   };
 }
 
@@ -341,11 +367,11 @@ function redactExplicitMissionCardOutcome(text: string): string {
     .replace(/\b(card|mission card)\s*:\s*(success|fail)\b/gi, '$1 submitted');
 }
 
-export function mergeAiAgentMemory(current: AiAgentMemory, update: AiAvalonDecision['memoryUpdate'], fallbackNote: string, publicSpeech: string): AiAgentMemory {
+export function mergeAiAgentMemory(current: AiAgentMemory, update: AiAvalonDecision['memoryUpdate'], fallbackNote: string, _publicSpeech: string): AiAgentMemory {
   return {
     suspicion: { ...current.suspicion, ...(isRecord(update.suspicion) ? numericRecord(update.suspicion) : {}) },
     notes: [...current.notes.slice(-4), cleanText(update.note, fallbackNote)].slice(-5),
-    publicClaims: [...current.publicClaims.slice(-4), publicSpeech].slice(-5),
+    publicClaims: [...current.publicClaims].slice(-5),
     beliefAudit: current.beliefAudit?.slice(-8) ?? [],
   };
 }
@@ -440,14 +466,14 @@ export function updateAiBeliefAfterMissionResult(current: AiAgentMemory, state: 
   if (actor.role === 'Merlin') {
     uncertainty.push('Mordred is hidden from Merlin and cannot be ruled out by Merlin vision.');
   }
-  uncertainty.push('No claim extractor is available in v1; raw public speech is not converted into structured claims.');
+  uncertainty.push('Public speech is ignored by design; only verified formal actions are evidence.');
 
   const beliefAfter = normalizeSuspicionForPlayers(suspicion, allPlayerIds, actor.id);
   const audit: AiBeliefAudit = {
     eventType: 'missionResult',
     roundIndex: mission.roundIndex,
-    publicSpeechAvailableToAI: state.tableHistory.some((entry) => entry.kind === 'speech'),
-    speechSource: state.tableHistory.some((entry) => entry.kind === 'speech') ? 'demo text table history' : 'none',
+    evidenceMode: 'formal_actions_only',
+    speechPolicy: 'ignored_by_design',
     informationUsed,
     deductions,
     beliefDeltas: computeSuspicionDeltas(beliefBefore, beliefAfter),
@@ -492,6 +518,63 @@ function cloneMemory(memory: AiAgentMemory | undefined, playerIds: string[], sel
       beliefBefore: { ...entry.beliefBefore },
       beliefAfter: { ...entry.beliefAfter },
     })),
+  };
+}
+
+function buildFormalActionPolicy(): AiAvalonDecisionRequest['formalActionPolicy'] {
+  return {
+    evidenceMode: 'formal_actions_only',
+    speechPolicy: 'ignored_by_design',
+    principle: 'AI does not analyze what people said; it analyzes what they paid a game-state cost to do.',
+    allowedEvidence: [
+      'private role and role vision available to the actor',
+      'quest leaders and proposed teams',
+      'team votes and whether proposals passed or failed',
+      'mission team composition',
+      'mission success/failure',
+      'success card count, fail card count, and required fail count',
+      'the actor own submitted mission card',
+      'known evil teammates when the actor is evil',
+    ],
+    ignoredEvidence: [
+      'public speech',
+      'chat transcript',
+      'voice transcript',
+      'tone, style, persuasion, accusations, and defenses',
+      'facial expression, body language, and table atmosphere',
+    ],
+    costlySignalRules: [
+      'Treat formal actions as costly signals, not direct truth.',
+      'For each action, consider its strategic benefit and cost for good and evil players.',
+      'Never hard-clear a player only because they were on a successful mission.',
+      'Never hard-condemn a player only because they approved a failed mission.',
+      'Preserve uncertainty and update beliefs probabilistically.',
+    ],
+    evidenceStrength: [
+      { evidence: 'private role vision', strength: 'very_strong', note: 'Hard information, but only inside the actor information set.' },
+      { evidence: 'mission fail card count', strength: 'very_strong', note: 'Hard constraint on possible evil locations.' },
+      { evidence: 'mission team composition', strength: 'strong', note: 'Failed teams create a suspect set.' },
+      { evidence: 'actor own mission card', strength: 'strong', note: 'Good actors know they submitted success.' },
+      { evidence: 'proposal behavior', strength: 'medium_high', note: 'Leaders actively choose who receives mission leverage.' },
+      { evidence: 'vote behavior', strength: 'medium', note: 'Votes have cost but allow strategic feints.' },
+      { evidence: 'successful mission membership', strength: 'medium_low', note: 'Mild trust signal only; evil may submit success to build cover.' },
+      { evidence: 'public speech', strength: 'zero', note: 'Ignored by product design and never used as belief evidence.' },
+    ],
+  };
+}
+
+function summarizeBeliefForRequest(
+  suspicion: Record<string, number>,
+  players: AiTablePlayerInput[],
+  selfId: string,
+): AiAvalonDecisionRequest['beliefSummary'] {
+  const entries = players
+    .filter((player) => player.id !== selfId)
+    .map((player) => ({ playerId: player.id, displayName: player.displayName, suspicion: suspicion[player.id] ?? 0 }))
+    .sort((left, right) => right.suspicion - left.suspicion || left.displayName.localeCompare(right.displayName));
+  return {
+    topSuspicious: entries.slice(0, 3),
+    topTrusted: [...entries].sort((left, right) => left.suspicion - right.suspicion || left.displayName.localeCompare(right.displayName)).slice(0, 3),
   };
 }
 
