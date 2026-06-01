@@ -40,6 +40,7 @@ import {
   type AiAvalonDecision,
   type AiAgentMemory,
   type AiBeliefAudit,
+  type AiEvidenceItem,
   type AiFormalActionBeliefEvent,
   type AiPlayerBeliefProfile,
 } from './aiAvalon';
@@ -1059,6 +1060,13 @@ interface DemoHistoryEntry {
   kind: 'speech' | 'proposal' | 'vote' | 'mission' | 'result' | 'assassin';
   text: string;
   audit?: AiBeliefAudit;
+  data?: {
+    teamIds?: string[];
+    vote?: Vote;
+    missionCard?: MissionCard;
+    targetPlayerId?: string;
+    action?: AiAvalonDecision['action'];
+  };
 }
 
 interface DemoAssassination {
@@ -1219,6 +1227,8 @@ function DemoSimulator() {
           current.players[current.leaderIndex],
           'proposal',
           `${current.players[current.leaderIndex]?.displayName} proposed ${current.selectedTeamIds.map((id) => current.players.find((player) => player.id === id)?.displayName ?? id).join(', ')}.`,
+          undefined,
+          { teamIds: [...current.selectedTeamIds] },
         ),
       ],
       lastVote: undefined,
@@ -1235,7 +1245,7 @@ function DemoSimulator() {
       return {
         ...current,
         players: resolved.players,
-        tableHistory: [...current.tableHistory, makeHistory(current, voter, 'vote', `${voter?.displayName ?? playerId} voted ${teamVote}.`)],
+        tableHistory: [...current.tableHistory, makeHistory(current, voter, 'vote', `${voter?.displayName ?? playerId} voted ${teamVote}.`, undefined, { vote: teamVote })],
         ...resolved.statePatch,
       };
     });
@@ -1249,7 +1259,7 @@ function DemoSimulator() {
       const next = resolveDemoMissionIfReady(current, nextPlayers);
       return applyMissionResultBeliefUpdates({
         ...next,
-        tableHistory: [...next.tableHistory, makeHistory(current, actor, 'mission', `${actor?.displayName ?? playerId} submitted a mission card.`)],
+        tableHistory: [...next.tableHistory, makeHistory(current, actor, 'mission', `${actor?.displayName ?? playerId} submitted a mission card.`, undefined, { missionCard })],
       });
     });
   }
@@ -2280,7 +2290,14 @@ function resolveDemoAssassination(current: DemoState, targetPlayerId: string): D
     assassination,
     tableHistory: [
       ...current.tableHistory,
-      makeHistory(current, assassin, 'assassin', `${assassin?.displayName ?? 'Assassin'} chose ${target.displayName} as Merlin. ${hitMerlin ? 'Merlin was found; Evil wins.' : 'Merlin survived; Good wins.'}`),
+      makeHistory(
+        current,
+        assassin,
+        'assassin',
+        `${assassin?.displayName ?? 'Assassin'} chose ${target.displayName} as Merlin. ${hitMerlin ? 'Merlin was found; Evil wins.' : 'Merlin survived; Good wins.'}`,
+        undefined,
+        { targetPlayerId: target.id },
+      ),
     ],
   };
 }
@@ -2452,70 +2469,66 @@ function formatProfileUpdates(profiles?: Record<string, AiPlayerBeliefProfile>):
 
 function buildStructuredAuditExport(demo: DemoState) {
   const idFor = createCompactPlayerIdLookup(demo.players);
-  const dictionary = createCompactStringDictionary();
-  const compactEvidence = (items: AiPlayerBeliefProfile['evidenceForEvil']) => items.map((item) => ({
-    e: item.event,
-    r: dictionary.codeFor(item.reason),
-  }));
-  const compactUncertainty = (items: string[]) => items.map(dictionary.codeFor);
+  const usedRules = new Set<string>();
+  const rememberRules = (rules: string[]) => rules.forEach((rule) => usedRules.add(rule));
+  const beliefEvents = demo.aiHistory
+    .filter((entry) => entry.audit && Object.keys(entry.audit.beliefDeltas).length)
+    .map((entry, index) => {
+      const audit = entry.audit as AiBeliefAudit;
+      const rules = ruleCodesForAudit(audit);
+      rememberRules(rules);
+      return {
+        id: compactEventId('be', entry, idFor, index),
+        actor: entry.actorId ? idFor(entry.actorId) : undefined,
+        event: `q${entry.roundIndex + 1}.${compactEventKind(entry.kind, audit.eventType)}`,
+        beforeScore: compactChangedScores(audit.beliefBefore, audit.beliefDeltas, idFor),
+        delta: compactNumericPlayerMap(audit.beliefDeltas, idFor),
+        afterScore: compactChangedScores(audit.beliefAfter, audit.beliefDeltas, idFor),
+        constraintsAdded: constraintsAddedForAudit(demo, audit, entry.actorId, idFor),
+        rules,
+      };
+    });
+  const decisions = demo.aiHistory
+    .filter((entry) => entry.audit?.eventType === 'decision')
+    .map((entry, index) => {
+      const rules = ruleCodesForAudit(entry.audit as AiBeliefAudit);
+      rememberRules(rules);
+      return {
+        id: compactEventId('d', entry, idFor, index),
+        actor: entry.actorId ? idFor(entry.actorId) : undefined,
+        phase: entry.kind,
+        q: entry.roundIndex + 1,
+        action: entry.data?.action ? compactActionForExport(entry.data.action, idFor) : undefined,
+        used: ['formal_history', 'role_vision', 'belief_state'],
+        rules,
+      };
+    });
+  const finalBeliefs = buildCompactFinalBeliefs(demo, idFor, rememberRules);
 
   return {
-    schema: 'avalon-demo-audit.compact.v1',
-    exportMode: 'compact_canonical',
-    note: 'Compact JSON is the machine-auditable source of truth. Markdown above is the human-readable rendering. Verbose belief profile snapshots are intentionally not exported by default.',
-    formalActionPolicy: {
-      evidenceMode: 'formal_actions_only',
-      speechPolicy: 'ignored_by_design',
-      principle: 'AI does not analyze what people said; it analyzes what they paid a game-state cost to do.',
-      note: 'Markdown is a rendering of this structured event/audit state; do not infer private reasoning after the fact.',
+    schema: 'avalon-audit.v2',
+    exports: {
+      human: 'avalon-log.md',
+      machine: 'avalon-audit.compact.json',
+      debug: 'avalon-audit.debug.jsonl.gz',
+      debugDefault: false,
+    },
+    policy: {
+      evidence: 'formal_actions_only',
+      speech: 'ui_only',
     },
     players: Object.fromEntries(demo.players.map((player) => [idFor(player.id), {
-      sourceId: player.id,
       name: player.displayName,
-      seat: player.seatIndex + 1,
-      controller: player.controller,
       role: player.role,
       alignment: roleAllegiance(player.role),
+      controller: player.controller,
     }])),
-    missionResults: demo.missionResults.map((result) => ({
-      r: result.roundIndex + 1,
-      outcome: result.outcome,
-      successCount: result.successCount,
-      failCount: result.failCount,
-      requiredFails: result.requiredFails,
-      team: result.selectedTeamIds?.map(idFor) ?? [],
-    })),
-    beliefProfiles: demo.players
-      .filter((player) => player.controller === 'ai' && player.memory?.beliefProfiles)
-      .reduce<Record<string, Record<string, {
-        pEvil: number;
-        suspicionScore: number;
-        evidenceForEvil: Array<{ e: string; r: string }>;
-        evidenceAgainstEvil: Array<{ e: string; r: string }>;
-        uncertainty: string[];
-      }>>>((profilesByActor, player) => {
-        profilesByActor[idFor(player.id)] = Object.fromEntries(
-          Object.values(player.memory?.beliefProfiles ?? {}).map((profile) => [idFor(profile.playerId), {
-            pEvil: profile.pEvil,
-            suspicionScore: profile.suspicionScore,
-            evidenceForEvil: compactEvidence(profile.evidenceForEvil),
-            evidenceAgainstEvil: compactEvidence(profile.evidenceAgainstEvil),
-            uncertainty: compactUncertainty(profile.uncertainty),
-          }]),
-        );
-        return profilesByActor;
-      }, {}),
-    auditEvents: demo.aiHistory
-      .filter((entry) => entry.audit)
-      .map((entry) => ({
-        id: entry.id,
-        r: entry.roundIndex + 1,
-        actor: entry.actorId ? idFor(entry.actorId) : undefined,
-        kind: entry.kind,
-        summary: dictionary.codeFor(entry.text),
-        audit: entry.audit ? compactAuditForExport(entry.audit, idFor, dictionary) : undefined,
-      })),
-    reasonDictionary: dictionary.entries(),
+    vision: buildCompactVision(demo, idFor),
+    quests: buildCompactQuests(demo, idFor),
+    beliefEvents,
+    decisions,
+    finalBeliefs,
+    ruleText: Object.fromEntries([...usedRules].sort().map((rule) => [rule, COMPACT_AUDIT_RULE_TEXT[rule] ?? rule])),
   };
 }
 
@@ -2524,45 +2537,187 @@ function createCompactPlayerIdLookup(players: DemoPlayer[]) {
   return (playerId: string) => ids.get(playerId) ?? playerId;
 }
 
-function createCompactStringDictionary() {
-  const byText = new Map<string, string>();
-  const byCode: Record<string, string> = {};
-  return {
-    codeFor(text: string) {
-      const existing = byText.get(text);
-      if (existing) return existing;
-      const code = `r${byText.size + 1}`;
-      byText.set(text, code);
-      byCode[code] = text;
-      return code;
-    },
-    entries() {
-      return byCode;
-    },
-  };
-}
-
-function compactAuditForExport(
-  audit: AiBeliefAudit,
-  idFor: (playerId: string) => string,
-  dictionary: ReturnType<typeof createCompactStringDictionary>,
-) {
-  return {
-    eventType: audit.eventType,
-    evidenceMode: audit.evidenceMode,
-    speechPolicy: audit.speechPolicy,
-    informationUsed: audit.informationUsed.map(dictionary.codeFor),
-    deductions: audit.deductions.map(dictionary.codeFor),
-    beliefBefore: compactNumericPlayerMap(audit.beliefBefore, idFor),
-    beliefAfter: compactNumericPlayerMap(audit.beliefAfter, idFor),
-    beliefDeltas: compactNumericPlayerMap(audit.beliefDeltas, idFor),
-    uncertainty: audit.uncertainty.map(dictionary.codeFor),
-  };
-}
-
 function compactNumericPlayerMap(values: Record<string, number>, idFor: (playerId: string) => string): Record<string, number> {
   return Object.fromEntries(Object.entries(values).map(([playerId, value]) => [idFor(playerId), value]));
 }
+
+function compactChangedScores(values: Record<string, number>, deltas: Record<string, number>, idFor: (playerId: string) => string): Record<string, number> {
+  return Object.fromEntries(Object.keys(deltas).map((playerId) => [idFor(playerId), values[playerId] ?? 0]));
+}
+
+function buildCompactVision(demo: DemoState, idFor: (playerId: string) => string) {
+  return Object.fromEntries(
+    demo.players
+      .map((player) => {
+        const visibility = getVisibilityInfo(
+          { id: player.id, name: player.displayName, role: player.role },
+          demo.players.map((candidate) => ({ id: candidate.id, name: candidate.displayName, role: candidate.role })),
+        ).sees.map((item) => ({ target: idFor(item.playerId), label: compactVisionLabel(item.hint) }));
+        return [idFor(player.id), visibility] as const;
+      })
+      .filter(([, visibility]) => visibility.length),
+  );
+}
+
+function compactVisionLabel(hint: string): string {
+  if (hint === 'Evil player') return 'evil';
+  if (hint === 'Merlin candidate') return 'merlin_candidate';
+  if (hint === 'Evil teammate') return 'evil_teammate';
+  return hint.toLowerCase().replaceAll(' ', '_');
+}
+
+function buildCompactQuests(demo: DemoState, idFor: (playerId: string) => string) {
+  return demo.missionResults.map((result) => {
+    const entries = demo.tableHistory.filter((entry) => entry.roundIndex === result.roundIndex);
+    const proposals: Array<{ leader?: string; team: string[]; votes: Record<string, Vote>; passed?: boolean }> = [];
+    entries.forEach((entry) => {
+      if (entry.kind === 'proposal' && entry.data?.teamIds) {
+        proposals.push({ leader: entry.actorId ? idFor(entry.actorId) : undefined, team: entry.data.teamIds.map(idFor), votes: {} });
+      }
+      if (entry.kind === 'vote' && entry.actorId && entry.data?.vote && proposals.length) {
+        proposals[proposals.length - 1].votes[idFor(entry.actorId)] = entry.data.vote;
+      }
+    });
+    proposals.forEach((proposal) => {
+      const votes = Object.values(proposal.votes);
+      if (votes.length === demo.playerCount) proposal.passed = votes.filter((vote) => vote === 'approve').length > demo.playerCount / 2;
+    });
+    const finalProposal = [...proposals].reverse().find((proposal) => proposal.passed) ?? proposals.at(-1);
+    const missionCardsDebug = Object.fromEntries(
+      entries
+        .filter((entry) => entry.kind === 'mission' && entry.actorId && entry.data?.missionCard)
+        .map((entry) => [idFor(entry.actorId as string), entry.data?.missionCard as MissionCard]),
+    );
+    return {
+      q: result.roundIndex + 1,
+      leader: finalProposal?.leader,
+      team: finalProposal?.team ?? result.selectedTeamIds?.map(idFor) ?? [],
+      votes: finalProposal?.votes ?? {},
+      result: {
+        outcome: result.outcome,
+        success: result.successCount,
+        fail: result.failCount,
+        requiredFails: result.requiredFails,
+      },
+      missionCardsDebug,
+      proposals: proposals.length > 1 ? proposals : undefined,
+    };
+  });
+}
+
+function buildCompactFinalBeliefs(
+  demo: DemoState,
+  idFor: (playerId: string) => string,
+  rememberRules: (rules: string[]) => void,
+) {
+  return demo.players
+    .filter((player) => player.controller === 'ai' && player.memory?.beliefProfiles)
+    .reduce<Record<string, Record<string, { pEvil: number; score: number; reason: string[]; counter?: string[] }>>>((beliefsByActor, player) => {
+      beliefsByActor[idFor(player.id)] = Object.fromEntries(
+        Object.values(player.memory?.beliefProfiles ?? {}).map((profile) => {
+          const reason = uniqueRules(profile.evidenceForEvil.map(ruleCodeForEvidence));
+          const counter = uniqueRules(profile.evidenceAgainstEvil.map(ruleCodeForEvidence));
+          rememberRules([...reason, ...counter]);
+          return [idFor(profile.playerId), {
+            pEvil: profile.pEvil,
+            score: profile.suspicionScore,
+            reason,
+            counter: counter.length ? counter : undefined,
+          }];
+        }),
+      );
+      return beliefsByActor;
+    }, {});
+}
+
+function compactEventId(prefix: string, entry: DemoHistoryEntry, idFor: (playerId: string) => string, index: number): string {
+  return `${prefix}.${index + 1}.q${entry.roundIndex + 1}.${entry.kind}.${entry.actorId ? idFor(entry.actorId) : 'table'}`;
+}
+
+function compactEventKind(kind: DemoHistoryEntry['kind'], eventType: AiBeliefAudit['eventType']): string {
+  if (eventType === 'missionResult') return 'result';
+  if (eventType === 'decision') return `${kind}.decision`;
+  return kind;
+}
+
+function compactActionForExport(action: AiAvalonDecision['action'], idFor: (playerId: string) => string) {
+  if (action.type === 'proposeTeam') return { proposeTeam: action.teamIds.map(idFor) };
+  if (action.type === 'vote') return { vote: action.vote };
+  if (action.type === 'missionCard') return { missionCard: action.card };
+  return { assassinate: idFor(action.targetPlayerId) };
+}
+
+function constraintsAddedForAudit(demo: DemoState, audit: AiBeliefAudit, actorId: string | undefined, idFor: (playerId: string) => string) {
+  if (audit.eventType !== 'missionResult') return [];
+  const mission = demo.missionResults.find((result) => result.roundIndex === audit.roundIndex);
+  if (!mission || mission.outcome !== 'fail' || !mission.selectedTeamIds?.length) return [];
+  const rules = ruleCodesForAudit(audit);
+  const candidateIds = rules.includes('GOOD_SELF_SUCCESS') && actorId
+    ? mission.selectedTeamIds.filter((id) => id !== actorId)
+    : mission.selectedTeamIds;
+  return [{ type: 'at_least_n_evil', players: candidateIds.map(idFor), n: mission.requiredFails }];
+}
+
+function ruleCodesForAudit(audit: AiBeliefAudit): string[] {
+  const text = [...audit.informationUsed, ...audit.deductions, ...audit.uncertainty].join(' ');
+  const rules = ['FORMAL_ACTIONS_ONLY'];
+  if (audit.eventType === 'decision') rules.push('AI_DECISION');
+  if (audit.eventType === 'proposal') rules.push('PROPOSAL_BEHAVIOR');
+  if (audit.eventType === 'vote') rules.push('VOTE_BEHAVIOR');
+  if (audit.eventType === 'missionResult') rules.push(text.includes('Mission succeeded') ? 'SUCCESSFUL_MISSION' : 'FAILED_MISSION');
+  if (text.includes("Actor's own mission card: success")) rules.push('GOOD_SELF_SUCCESS');
+  if (text.includes('Role-visible players on team:') && !text.includes('Role-visible players on team: none')) rules.push('ROLE_VISION');
+  if (text.includes('hidden evil/Mordred')) rules.push('MERLIN_MORDRED_HIDDEN');
+  if (text.includes('Known evil teammate') || text.includes('evil teammates')) rules.push('EVIL_TEAM_VISION');
+  if (text.includes('Public speech is ignored')) rules.push('SPEECH_IGNORED');
+  return uniqueRules(rules);
+}
+
+function ruleCodeForEvidence(item: AiEvidenceItem): string {
+  if (item.event === 'ROLE_VISION') return 'ROLE_VISION';
+  if (item.event === 'EVIL_TEAM_VISION') return 'EVIL_TEAM_VISION';
+  if (item.reason.includes('no Merlin-visible evil') || item.reason.includes('hidden evil/Mordred')) return 'MERLIN_MORDRED_HIDDEN';
+  if (item.reason.includes('knows their own card was success')) return 'GOOD_SELF_SUCCESS';
+  if (item.reason.includes('Approved a team that later failed')) return 'APPROVED_LATER_FAILED_TEAM';
+  if (item.reason.includes('Rejected a team that later failed')) return 'REJECTED_LATER_FAILED_TEAM';
+  if (item.reason.includes('Approved a team that succeeded')) return 'APPROVED_SUCCESSFUL_TEAM';
+  if (item.reason.includes('Rejected a team that succeeded')) return 'REJECTED_SUCCESSFUL_TEAM';
+  if (item.reason.includes('Proposed a team that later failed')) return 'PROPOSED_LATER_FAILED_TEAM';
+  if (item.reason.includes('Proposed a team that succeeded')) return 'PROPOSED_SUCCESSFUL_TEAM';
+  if (item.reason.includes('role-visible evil')) return 'ROLE_VISIBLE_EVIL_ON_TEAM';
+  if (item.reason.includes('successful mission')) return 'SUCCESSFUL_MISSION';
+  if (item.reason.includes('failed mission')) return 'FAILED_MISSION';
+  if (item.reason.includes('low-risk team')) return 'LOW_RISK_TEAM_ACTION';
+  if (item.reason.includes('suspicious')) return 'SUSPICIOUS_TEAM_ACTION';
+  return item.event;
+}
+
+function uniqueRules(rules: string[]): string[] {
+  return [...new Set(rules.filter(Boolean))];
+}
+
+const COMPACT_AUDIT_RULE_TEXT: Record<string, string> = {
+  AI_DECISION: 'AI made a legal action from its current information set.',
+  APPROVED_LATER_FAILED_TEAM: 'Approved a team that later failed.',
+  APPROVED_SUCCESSFUL_TEAM: 'Approved a team that succeeded.',
+  EVIL_TEAM_VISION: 'Actor has private evil-team information.',
+  FAILED_MISSION: 'Mission failed, so at least the required number of fail cards came from the team.',
+  FORMAL_ACTIONS_ONLY: 'Only proposals, votes, mission cards/results, and private role vision are evidence.',
+  GOOD_SELF_SUCCESS: 'Good actor knows their own mission card was Success.',
+  LOW_RISK_TEAM_ACTION: 'Acted on a team that looked low-risk by current belief.',
+  MERLIN_MORDRED_HIDDEN: 'Merlin saw no visible evil on a failed team, so hidden evil/Mordred remains possible.',
+  PROPOSAL_BEHAVIOR: 'Leader chose the mission team.',
+  PROPOSED_LATER_FAILED_TEAM: 'Proposed a team that later failed.',
+  PROPOSED_SUCCESSFUL_TEAM: 'Proposed a team that succeeded.',
+  REJECTED_LATER_FAILED_TEAM: 'Rejected a team that later failed.',
+  REJECTED_SUCCESSFUL_TEAM: 'Rejected a team that succeeded.',
+  ROLE_VISIBLE_EVIL_ON_TEAM: 'Action involved a team containing role-visible evil.',
+  ROLE_VISION: 'Actor used private role vision.',
+  SPEECH_IGNORED: 'Speech is UI-only and ignored as evidence.',
+  SUCCESSFUL_MISSION: 'Mission succeeded; this is weak positive evidence only.',
+  SUSPICIOUS_TEAM_ACTION: 'Acted on a team already carrying formal-action suspicion.',
+  VOTE_BEHAVIOR: 'Player approved or rejected a proposed team.',
+};
 
 function createAgentMemory(playerIds: string[], selfId: string): AgentMemory {
   return {
@@ -2702,7 +2857,14 @@ function formatDemoRoleVision(current: DemoState, player: DemoPlayer): string {
     : 'none';
 }
 
-function makeHistory(demo: DemoState, actor: DemoPlayer | undefined, kind: DemoHistoryEntry['kind'], text: string, audit?: AiBeliefAudit): DemoHistoryEntry {
+function makeHistory(
+  demo: DemoState,
+  actor: DemoPlayer | undefined,
+  kind: DemoHistoryEntry['kind'],
+  text: string,
+  audit?: AiBeliefAudit,
+  data?: DemoHistoryEntry['data'],
+): DemoHistoryEntry {
   return {
     id: `${Date.now()}-${demo.tableHistory.length}-${demo.aiHistory.length}-${actor?.id ?? 'table'}-${kind}`,
     roundIndex: demo.roundIndex,
@@ -2711,6 +2873,7 @@ function makeHistory(demo: DemoState, actor: DemoPlayer | undefined, kind: DemoH
     kind,
     text,
     audit,
+    data,
   };
 }
 
@@ -2857,11 +3020,11 @@ function applyAiDecision(current: DemoState, actorId: string, decision: AiAvalon
       tableHistory: [
         ...current.tableHistory,
         makeHistory(current, rememberedActor, 'speech', publicSpeech),
-        makeHistory(current, rememberedActor, 'proposal', `${rememberedActor.displayName} proposed ${teamIds.map((id) => playerName(current, id)).join(', ')}.`),
+        makeHistory(current, rememberedActor, 'proposal', `${rememberedActor.displayName} proposed ${teamIds.map((id) => playerName(current, id)).join(', ')}.`, undefined, { teamIds }),
       ],
       aiHistory: [
         ...current.aiHistory,
-        makeHistory(current, rememberedActor, 'proposal', formatPrivateReasoningSummaryForHistory(decision.privateReasoningSummary), decisionAudit),
+        makeHistory(current, rememberedActor, 'proposal', formatPrivateReasoningSummaryForHistory(decision.privateReasoningSummary), decisionAudit, { action: decision.action }),
       ],
     };
     return applyFormalActionBeliefUpdates(withHistory, { type: 'proposal', roundIndex: current.roundIndex, leaderId: rememberedActor.id, teamIds });
@@ -2879,11 +3042,11 @@ function applyAiDecision(current: DemoState, actorId: string, decision: AiAvalon
       tableHistory: [
         ...current.tableHistory,
         makeHistory(current, actor, 'speech', publicSpeech),
-        makeHistory(current, actor, 'vote', `${actor.displayName} voted ${vote}.`),
+        makeHistory(current, actor, 'vote', `${actor.displayName} voted ${vote}.`, undefined, { vote }),
       ],
       aiHistory: [
         ...current.aiHistory,
-        makeHistory(current, rememberedActor, 'vote', formatPrivateReasoningSummaryForHistory(decision.privateReasoningSummary), decisionAudit),
+        makeHistory(current, rememberedActor, 'vote', formatPrivateReasoningSummaryForHistory(decision.privateReasoningSummary), decisionAudit, { action: decision.action }),
       ],
       ...resolved.statePatch,
     };
@@ -2910,11 +3073,11 @@ function applyAiDecision(current: DemoState, actorId: string, decision: AiAvalon
       tableHistory: [
         ...next.tableHistory,
         makeHistory(current, actor, 'speech', publicSpeech),
-        makeHistory(current, actor, 'mission', `${actor.displayName} submitted a mission card.`),
+        makeHistory(current, actor, 'mission', `${actor.displayName} submitted a mission card.`, undefined, { missionCard: legalCard }),
       ],
       aiHistory: [
         ...next.aiHistory,
-        makeHistory(current, actor, 'mission', formatMissionReasoningSummaryForHistory(decision.privateReasoningSummary), decisionAudit),
+        makeHistory(current, actor, 'mission', formatMissionReasoningSummaryForHistory(decision.privateReasoningSummary), decisionAudit, { action: decision.action }),
       ],
     });
   }
@@ -2930,11 +3093,11 @@ function applyAiDecision(current: DemoState, actorId: string, decision: AiAvalon
       tableHistory: [
         ...current.tableHistory,
         makeHistory(current, rememberedActor, 'speech', publicSpeech),
-        makeHistory(current, rememberedActor, 'assassin', `${rememberedActor.displayName} chose ${target.displayName} as Merlin. ${target.role === 'Merlin' ? 'Merlin was found; Evil wins.' : 'Merlin survived; Good wins.'}`),
+        makeHistory(current, rememberedActor, 'assassin', `${rememberedActor.displayName} chose ${target.displayName} as Merlin. ${target.role === 'Merlin' ? 'Merlin was found; Evil wins.' : 'Merlin survived; Good wins.'}`, undefined, { targetPlayerId: target.id }),
       ],
       aiHistory: [
         ...current.aiHistory,
-        makeHistory(current, rememberedActor, 'assassin', `Assassin reasoning: ${decision.privateReasoningSummary}`, decisionAudit),
+        makeHistory(current, rememberedActor, 'assassin', `Assassin reasoning: ${decision.privateReasoningSummary}`, decisionAudit, { action: decision.action }),
       ],
     };
   }
@@ -2981,11 +3144,11 @@ function runAiProposal(current: DemoState, language: Language = 'en'): DemoState
     tableHistory: [
       ...current.tableHistory,
       makeHistory(current, updatedLeader, 'speech', publicSpeech),
-      makeHistory(current, updatedLeader, 'proposal', `${updatedLeader.displayName} proposed ${teamIds.map((id) => playerName(current, id)).join(', ')}.`),
+      makeHistory(current, updatedLeader, 'proposal', `${updatedLeader.displayName} proposed ${teamIds.map((id) => playerName(current, id)).join(', ')}.`, undefined, { teamIds }),
     ],
     aiHistory: [
       ...current.aiHistory,
-      makeHistory(current, updatedLeader, 'proposal', formatPrivateReasoningSummaryForHistory(reasoning), decisionAudit),
+      makeHistory(current, updatedLeader, 'proposal', formatPrivateReasoningSummaryForHistory(reasoning), decisionAudit, { action: { type: 'proposeTeam', teamIds } }),
     ],
   };
   return applyFormalActionBeliefUpdates(withHistory, { type: 'proposal', roundIndex: current.roundIndex, leaderId: updatedLeader.id, teamIds });
@@ -3023,11 +3186,11 @@ function runAiVote(current: DemoState, language: Language = 'en'): DemoState {
     tableHistory: [
       ...current.tableHistory,
       makeHistory(current, voter, 'speech', publicSpeech),
-      makeHistory(current, voter, 'vote', `${voter.displayName} voted ${vote}.`),
+      makeHistory(current, voter, 'vote', `${voter.displayName} voted ${vote}.`, undefined, { vote }),
     ],
     aiHistory: [
       ...current.aiHistory,
-      makeHistory(current, voter, 'vote', formatPrivateReasoningSummaryForHistory(reasoning), decisionAudit),
+      makeHistory(current, voter, 'vote', formatPrivateReasoningSummaryForHistory(reasoning), decisionAudit, { action: { type: 'vote', vote } }),
     ],
     ...resolved.statePatch,
   };
@@ -3062,11 +3225,11 @@ function runAiMission(current: DemoState, language: Language = 'en'): DemoState 
     tableHistory: [
       ...next.tableHistory,
       makeHistory(current, actor, 'speech', publicSpeech),
-      makeHistory(current, actor, 'mission', `${actor.displayName} submitted a mission card.`),
+      makeHistory(current, actor, 'mission', `${actor.displayName} submitted a mission card.`, undefined, { missionCard: card }),
     ],
     aiHistory: [
       ...next.aiHistory,
-      makeHistory(current, actor, 'mission', formatMissionReasoningSummaryForHistory(reasoning), decisionAudit),
+      makeHistory(current, actor, 'mission', formatMissionReasoningSummaryForHistory(reasoning), decisionAudit, { action: { type: 'missionCard', card } }),
     ],
   });
 }
@@ -3086,11 +3249,11 @@ function runAiAssassination(current: DemoState, language: Language = 'en'): Demo
     tableHistory: [
       ...current.tableHistory,
       makeHistory(current, rememberedAssassin, 'speech', publicSpeech),
-      makeHistory(current, rememberedAssassin, 'assassin', `${rememberedAssassin.displayName} chose ${target.displayName} as Merlin. ${target.role === 'Merlin' ? 'Merlin was found; Evil wins.' : 'Merlin survived; Good wins.'}`),
+      makeHistory(current, rememberedAssassin, 'assassin', `${rememberedAssassin.displayName} chose ${target.displayName} as Merlin. ${target.role === 'Merlin' ? 'Merlin was found; Evil wins.' : 'Merlin survived; Good wins.'}`, undefined, { targetPlayerId: target.id }),
     ],
     aiHistory: [
       ...current.aiHistory,
-      makeHistory(current, rememberedAssassin, 'assassin', reasoning, decisionAudit),
+      makeHistory(current, rememberedAssassin, 'assassin', reasoning, decisionAudit, { action: { type: 'assassinate', targetPlayerId: target.id } }),
     ],
   };
 }
