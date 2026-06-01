@@ -81,6 +81,25 @@ import './styles.css';
 
 type Screen = EntryScreen | 'room';
 
+const ROOM_AI_INITIAL_DELAY_MS = 250;
+const ROOM_AI_RETRY_DELAY_MS = 3500;
+const ROOM_AI_REQUEST_TIMEOUT_MS = 10000;
+const ROOM_AI_RETRY_TICK_MS = 1000;
+
+type RoomAiAutomationState = {
+  actionKey: string;
+  attempt: number;
+  lastError?: string;
+  waitingForRetry: boolean;
+};
+
+type RoomAiAttemptState = {
+  actionKey: string;
+  attempt: number;
+  nextAttemptAt: number;
+  lastError?: string;
+};
+
 function LanguageSwitcher() {
   const { language, setLanguage, t } = useI18n();
   return (
@@ -105,7 +124,10 @@ function App() {
   const [joinCode, setJoinCode] = useState(() => parseJoinCodeFromUrl(window.location.href));
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const aiActionKeyRef = useRef('');
+  const [aiRetryTick, setAiRetryTick] = useState(0);
+  const [aiAutomation, setAiAutomation] = useState<RoomAiAutomationState>();
+  const aiActionAttemptRef = useRef<RoomAiAttemptState | undefined>(undefined);
+  const aiActionInFlightRef = useRef('');
   const [restorableSnapshot, setRestorableSnapshot] = useState<RoomSnapshot>();
   const [restorablePlayerId, setRestorablePlayerId] = useState('');
 
@@ -188,19 +210,89 @@ function App() {
   }, [currentPlayerId, snapshot?.room.id]);
 
   useEffect(() => {
-    if (!snapshot || isDemoMode || !currentPlayer?.isHost) return;
+    if (!snapshot || isDemoMode || !currentPlayer?.isHost) return undefined;
+    const timer = window.setInterval(() => setAiRetryTick((current) => current + 1), ROOM_AI_RETRY_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, [currentPlayer?.isHost, isDemoMode, snapshot?.room.id]);
+
+  useEffect(() => {
+    if (!snapshot || isDemoMode || !currentPlayer?.isHost) {
+      aiActionAttemptRef.current = undefined;
+      aiActionInFlightRef.current = '';
+      setAiAutomation((current) => current ? undefined : current);
+      return;
+    }
     const action = getNextRoomAiAction(snapshot);
-    if (!action) return;
-    const actionKey = `${snapshot.room.id}:${snapshot.room.updatedAt ?? ''}:${getRoomAiActionKey(action)}`;
-    if (aiActionKeyRef.current === actionKey) return;
-    aiActionKeyRef.current = actionKey;
-    const timer = window.setTimeout(() => {
-      void executeRoomAiAction(snapshot.room.id, action)
-        .then(setSnapshot)
-        .catch((error) => setMessage(error instanceof Error ? error.message : t('Could not run AI action.')));
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [currentPlayer?.id, currentPlayer?.isHost, isDemoMode, snapshot]);
+    if (!action) {
+      aiActionAttemptRef.current = undefined;
+      aiActionInFlightRef.current = '';
+      setAiAutomation((current) => current ? undefined : current);
+      return;
+    }
+
+    const actionKey = getRoomAiAutomationActionKey(snapshot, action);
+    const now = Date.now();
+    let attemptState = aiActionAttemptRef.current;
+    if (attemptState?.actionKey !== actionKey) {
+      attemptState = {
+        actionKey,
+        attempt: 0,
+        nextAttemptAt: now + ROOM_AI_INITIAL_DELAY_MS,
+      };
+      aiActionAttemptRef.current = attemptState;
+      setAiAutomation({ actionKey, attempt: 0, waitingForRetry: false });
+    }
+
+    if (aiActionInFlightRef.current === actionKey || now < attemptState.nextAttemptAt) return;
+
+    attemptState.attempt += 1;
+    attemptState.nextAttemptAt = now + ROOM_AI_REQUEST_TIMEOUT_MS + ROOM_AI_RETRY_DELAY_MS;
+    aiActionInFlightRef.current = actionKey;
+    setAiAutomation({
+      actionKey,
+      attempt: attemptState.attempt,
+      lastError: attemptState.lastError,
+      waitingForRetry: false,
+    });
+
+    void withTimeout(
+      executeRoomAiAction(snapshot.room.id, action),
+      ROOM_AI_REQUEST_TIMEOUT_MS,
+      t('AI action timed out.'),
+    )
+      .then((nextSnapshot) => {
+        if (aiActionAttemptRef.current?.actionKey === actionKey) {
+          aiActionAttemptRef.current = undefined;
+          setAiAutomation(undefined);
+        }
+        setSnapshot(nextSnapshot);
+      })
+      .catch((error) => {
+        const errorMessage = error instanceof Error ? error.message : t('Could not run AI action.');
+        const currentAttemptState = aiActionAttemptRef.current;
+        if (currentAttemptState?.actionKey === actionKey) {
+          currentAttemptState.lastError = errorMessage;
+          currentAttemptState.nextAttemptAt = Date.now() + ROOM_AI_RETRY_DELAY_MS;
+          setAiAutomation({
+            actionKey,
+            attempt: currentAttemptState.attempt,
+            lastError: errorMessage,
+            waitingForRetry: true,
+          });
+        }
+        setMessage(t('AI action stalled. Retrying automatically.'));
+        void getRoomById(snapshot.room.id)
+          .then((refreshedSnapshot) => {
+            if (refreshedSnapshot) setSnapshot(refreshedSnapshot);
+          })
+          .catch(() => {
+            // The retry loop will keep trying the pending AI action.
+          });
+      })
+      .finally(() => {
+        if (aiActionInFlightRef.current === actionKey) aiActionInFlightRef.current = '';
+      });
+  }, [aiRetryTick, currentPlayer?.id, currentPlayer?.isHost, isDemoMode, snapshot, t]);
 
   async function handleCreateRoom(event: React.FormEvent) {
     event.preventDefault();
@@ -755,6 +847,7 @@ function App() {
           onAssassination={handleAssassination}
           onReadyForNextGame={handleReadyForNextGame}
           isDemoMode={isDemoMode}
+          aiAutomation={aiAutomation}
           busy={busy}
         />
       )}
@@ -3450,6 +3543,7 @@ function RoomView({
   onAssassination,
   onReadyForNextGame,
   isDemoMode,
+  aiAutomation,
   busy,
 }: {
   snapshot: RoomSnapshot;
@@ -3471,6 +3565,7 @@ function RoomView({
   onAssassination: (targetPlayerId: string) => void;
   onReadyForNextGame: () => void;
   isDemoMode: boolean;
+  aiAutomation?: RoomAiAutomationState;
   busy: boolean;
 }) {
   const { t } = useI18n();
@@ -3673,6 +3768,7 @@ function RoomView({
           currentPlayer={currentPlayer}
           currentTeamSize={currentTeamSize}
           onMissionStateChange={onMissionStateChange}
+          aiAutomation={aiAutomation}
         />
       )}
     </section>
@@ -3831,12 +3927,14 @@ function MissionPanel({
   currentPlayer,
   currentTeamSize,
   onMissionStateChange,
+  aiAutomation,
 }: {
   missionState?: MissionState;
   players: RoomPlayer[];
   currentPlayer?: RoomPlayer;
   currentTeamSize: number;
   onMissionStateChange: (missionState: MissionState) => void;
+  aiAutomation?: RoomAiAutomationState;
 }) {
   const { t, language } = useI18n();
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
@@ -4051,6 +4149,15 @@ function MissionPanel({
             <div>
               <strong>{t('AI in progress')}</strong>
               <p>{pendingAiAction}</p>
+              {aiAutomation && (
+                <small>
+                  {aiAutomation.waitingForRetry
+                    ? `${t('AI action stalled. Retrying automatically.')} ${t('Attempt')} ${Math.max(1, aiAutomation.attempt + 1)}`
+                    : aiAutomation.attempt > 1
+                      ? `${t('Retrying AI action.')} ${t('Attempt')} ${aiAutomation.attempt}`
+                      : t('Usually completes in a few seconds.')}
+                </small>
+              )}
             </div>
           </div>
         )}
@@ -4202,6 +4309,30 @@ async function executeRoomAiAction(roomId: string, action: RoomAiAction): Promis
   if (action.type === 'submitTeamVote') return submitTeamVote(roomId, action.playerId, action.vote);
   if (action.type === 'submitMissionCard') return submitMissionCard(roomId, action.playerId, action.card);
   return submitAssassination(roomId, action.assassinPlayerId, action.targetPlayerId);
+}
+
+function getRoomAiAutomationActionKey(snapshot: RoomSnapshot, action: RoomAiAction): string {
+  const missionState = snapshot.room.settings.missionState;
+  return [
+    snapshot.room.id,
+    missionState?.phase ?? 'none',
+    missionState?.roundIndex ?? 'none',
+    missionState?.proposalIndex ?? 'none',
+    missionState?.selectedTeamIds.join('|') ?? 'none',
+    Object.entries(missionState?.teamVotes ?? {}).map(([playerId, vote]) => `${playerId}:${vote}`).sort().join('|'),
+    missionState?.missionCardSubmissions?.submittedPlayerIds.join('|') ?? '',
+    getRoomAiActionKey(action),
+  ].join(':');
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: number | undefined;
+  const timeout = new Promise<T>((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer !== undefined) window.clearTimeout(timer);
+  });
 }
 
 const root = createRoot(document.getElementById('root')!);
