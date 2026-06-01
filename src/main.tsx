@@ -1608,7 +1608,8 @@ function PlayerPhone({
   const onTeam = selectedTeamIds.includes(player.id);
   const playerMeta = [
     `${t('Seat')} ${player.seatIndex + 1}`,
-    isLeader ? t('Current Leader') : mode === 'live' ? t('Your phone') : undefined,
+    t('Leader rotation order'),
+    isLeader ? t('Current Leader') : undefined,
   ].filter(Boolean).join(' · ');
   const outcomeClass = [
     winner && player.role ? (roleAllegiance(player.role) === winner ? 'phone-winner' : 'phone-loser') : '',
@@ -1622,7 +1623,7 @@ function PlayerPhone({
           <strong>{player.displayName}</strong>
           <small>{playerMeta}</small>
         </div>
-        {onTeam && <span className="phone-team-pill">{t('Mission team')}</span>}
+        {onTeam && <span className="phone-team-pill">{t('Selected for this quest')}</span>}
       </div>
       {player.role && (
         <PrivateSwipeReveal
