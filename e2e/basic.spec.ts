@@ -8,6 +8,21 @@ test('home page shows Veiled Roundtable entry actions', async ({ page }) => {
   await expect(page.getByAltText(/Phones around a candlelit Avalon round table/i)).toBeVisible();
 });
 
+test('create room allows one human with AI fill seats', async ({ page }) => {
+  await page.goto('/?devSession=one-human-create');
+  await page.getByRole('button', { name: /Host the round/i }).click();
+
+  await expect(page.getByLabel(/Human player count/i).getByRole('button', { name: '1', exact: true })).toBeVisible();
+  await page.getByLabel(/Your nickname/i).fill('Solo Host');
+  await page.getByLabel(/Human player count/i).getByRole('button', { name: '1', exact: true }).click();
+  await expect(page.getByText(/1 human \+ 4 AI/i)).toBeVisible();
+  await page.getByRole('button', { name: /^Create Room$/i }).click();
+
+  await expect(page.getByRole('heading', { name: /Current Room/i })).toBeVisible();
+  await expect(page.locator('.players li').filter({ hasText: /AI Seat 4/i }).getByText(/^AI$/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Start Game$/i })).toBeEnabled();
+});
+
 test('demo setup uses table size and manual seats instead of separate modes', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Try demo/i }).click();

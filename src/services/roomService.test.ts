@@ -106,14 +106,14 @@ describe('room service rules', () => {
 
   it('splits human count from table size and creates ready AI fill seats', () => {
     const settings = buildCreateRoomSettings({
-      humanPlayerCount: 2,
+      humanPlayerCount: 1,
       plannedPlayerCount: 5,
       roleOptions: { includePercival: true, includeMorgana: true },
     });
     const aiPlayers = buildAiPlayers('r1', settings, 1, () => `ai-${Math.random()}`);
 
-    expect(settings).toMatchObject({ humanPlayerCount: 2, plannedPlayerCount: 5 });
-    expect(aiPlayers).toHaveLength(3);
+    expect(settings).toMatchObject({ humanPlayerCount: 1, plannedPlayerCount: 5 });
+    expect(aiPlayers).toHaveLength(4);
     expect(aiPlayers.every((player) => player.isAi && player.isReady)).toBe(true);
   });
 

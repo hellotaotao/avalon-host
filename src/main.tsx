@@ -826,7 +826,7 @@ function CreateRoomRoleConfig({
       <div>
         <h3>{t('Human players')}</h3>
         <div className="segmented" aria-label={t('Human player count')}>
-          {Array.from({ length: 9 }, (_, index) => index + 2).map((count) => (
+          {Array.from({ length: 10 }, (_, index) => index + 1).map((count) => (
             <button
               key={count}
               type="button"
@@ -857,7 +857,7 @@ function CreateRoomRoleConfig({
         <p className="create-role-summary">{rule.goodCount} {t('Good')} / {rule.evilCount} {t('Evil')}</p>
         {aiCount > 0 && (
           <div className="ai-fill-note">
-            <strong>{humanPlayerCount} {t('humans')} + {aiCount} {t('AI')}</strong>
+            <strong>{humanPlayerCount} {t(humanPlayerCount === 1 ? 'human' : 'humans')} + {aiCount} {t('AI')}</strong>
             <span>{t('AI will fill empty seats and auto-ready/vote/play mission cards.')}</span>
           </div>
         )}

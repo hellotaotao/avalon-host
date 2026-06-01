@@ -505,7 +505,7 @@ function makeDemoPlayer(roomId: string, id: string, displayName: string, seatInd
 }
 
 function sanitizeHumanPlayerCount(value: number | undefined): number {
-  if (Number.isInteger(value) && value! >= 2 && value! <= 10) return value!;
+  if (Number.isInteger(value) && value! >= 1 && value! <= 10) return value!;
   return 5;
 }
 
