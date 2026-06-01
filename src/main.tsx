@@ -127,12 +127,14 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [aiRetryTick, setAiRetryTick] = useState(0);
   const [aiAutomation, setAiAutomation] = useState<RoomAiAutomationState>();
+  const hostNameInputRef = useRef<HTMLInputElement>(null);
   const aiActionAttemptRef = useRef<RoomAiAttemptState | undefined>(undefined);
   const aiActionInFlightRef = useRef('');
   const [restorableSnapshot, setRestorableSnapshot] = useState<RoomSnapshot>();
   const [restorablePlayerId, setRestorablePlayerId] = useState('');
 
   const currentPlayer = snapshot?.players.find((player) => player.id === currentPlayerId);
+  const isHostNameMissing = !hostName.trim();
   const isDemoMode = Boolean(snapshot?.room.settings.createdInDemoMode);
   const startValidation = snapshot ? getStartValidation(snapshot.players, snapshot.room.settings) : undefined;
   const privateInfo = useMemo(
@@ -297,7 +299,11 @@ function App() {
 
   async function handleCreateRoom(event: React.FormEvent) {
     event.preventDefault();
-    if (!hostName.trim()) return setMessage(t('Enter your nickname first.'));
+    if (isHostNameMissing) {
+      hostNameInputRef.current?.focus();
+      setMessage('');
+      return;
+    }
     setBusy(true);
     setMessage('');
     try {
@@ -776,9 +782,19 @@ function App() {
           <button type="button" className="back-button" onClick={() => navigateEntry('home')}>{t('Back')}</button>
           <h2>{t('Create Room')}</h2>
           <form className="stack" onSubmit={handleCreateRoom}>
-            <label>
-              {t('Your nickname')}
-              <input value={hostName} onChange={(event) => setHostName(event.target.value)} maxLength={24} autoFocus />
+            <label className={`field-label ${isHostNameMissing ? 'field-label-error' : ''}`}>
+              <span>{t('Your nickname')}</span>
+              <input
+                ref={hostNameInputRef}
+                value={hostName}
+                onChange={(event) => setHostName(event.target.value)}
+                maxLength={24}
+                autoFocus
+                required
+                aria-invalid={isHostNameMissing}
+                aria-describedby={isHostNameMissing ? 'host-name-error' : undefined}
+              />
+              {isHostNameMissing && <small id="host-name-error" className="field-error">{t('Enter a nickname before creating the room.')}</small>}
             </label>
             <CreateRoomRoleConfig
               humanPlayerCount={humanPlayerCount}
@@ -788,7 +804,9 @@ function App() {
               onPlayerCountChange={handlePlannedPlayerCount}
               onToggleRole={handleHostRoleToggle}
             />
-            <button type="submit" className="primary" disabled={busy}>{busy ? t('Creating...') : t('Create Room')}</button>
+            <button type="submit" className="primary" disabled={busy || isHostNameMissing} title={isHostNameMissing ? t('Enter a nickname before creating the room.') : undefined}>
+              {busy ? t('Creating...') : t('Create Room')}
+            </button>
           </form>
         </section>
       )}

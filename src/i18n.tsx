@@ -92,6 +92,7 @@ const zh: Record<string, string> = {
   'Back': '返回',
   'Create Room': '创建房间',
   'Your nickname': '你的昵称',
+  'Enter a nickname before creating the room.': '必须填写昵称才能创建房间。',
   'Include Percival and Morgana when 7+ players join': '7 人及以上时加入派西维尔和莫甘娜',
   'Roles use the recommended Avalon setup by player count: 5–6 include Percival + Morgana; 7+ also adds Mordred.': '身份默认按推荐阿瓦隆配置：5–6 人包含派西维尔 + 莫甘娜；7 人及以上额外加入莫德雷德。',
   'Role configuration': '身份配置',

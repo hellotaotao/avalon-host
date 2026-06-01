@@ -26,6 +26,21 @@ test('create room allows one human with AI fill seats', async ({ page }) => {
   await expect(page.getByRole('button', { name: /^Start Game$/i })).toBeEnabled();
 });
 
+test('create room requires a visible host nickname before submit', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Host the round/i }).click();
+
+  const nickname = page.getByLabel(/Your nickname/i);
+  const createButton = page.getByRole('button', { name: /^Create Room$/i });
+  await expect(createButton).toBeDisabled();
+  await expect(page.getByText(/Enter a nickname before creating the room/i)).toBeVisible();
+  await expect(nickname).toHaveAttribute('aria-invalid', 'true');
+
+  await nickname.fill('Morgan');
+  await expect(createButton).toBeEnabled();
+  await expect(page.getByText(/Enter a nickname before creating the room/i)).toHaveCount(0);
+});
+
 test('demo setup uses table size and manual seats instead of separate modes', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Try demo/i }).click();

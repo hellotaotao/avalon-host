@@ -88,6 +88,37 @@ label {
   font-weight: 800;
 }
 
+.field-label {
+  gap: 0.35rem;
+}
+
+.field-label > span {
+  color: inherit;
+}
+
+.field-label-error {
+  color: #8e261a;
+}
+
+.field-label-error input {
+  border-color: #b83224;
+  background: #fff3ec;
+  box-shadow: inset 0 1px 4px rgba(59, 30, 11, 0.14), 0 0 0 3px rgba(184, 50, 36, 0.14);
+}
+
+.field-error {
+  display: block;
+  width: fit-content;
+  border: 1px solid rgba(184, 50, 36, 0.46);
+  border-radius: 8px;
+  background: #ffe0d4;
+  color: #7a1d14;
+  padding: 0.28rem 0.45rem;
+  font-size: 0.8rem;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
 .shell {
   position: relative;
   width: min(820px, 100%);
