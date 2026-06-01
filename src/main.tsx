@@ -725,11 +725,11 @@ function App() {
               <button type="submit" className="primary" disabled={busy}>{busy ? t('Joining...') : t('Join Room')}</button>
             </form>
             <div className="secondary-entry-actions" aria-label={t('Other options')}>
-              <button type="button" className="path-card secondary-path" onClick={() => navigateEntry('create')}>
+              <button type="button" className="path-card secondary-path create-room-action" onClick={() => navigateEntry('create')}>
                 <span>{t('Host the round')}</span>
                 <small>{t('Create a live 5-digit code for the table.')}</small>
               </button>
-              <button type="button" className="path-card secondary-path demo-button" onClick={() => navigateEntry('demo')}>
+              <button type="button" className="path-card secondary-path demo-button demo-entry-action" onClick={() => navigateEntry('demo')}>
                 <span>{t('Try demo')}</span>
                 <small>{t('Simulate 5-10 phone screens on this laptop.')}</small>
               </button>

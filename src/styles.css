@@ -377,7 +377,79 @@ label {
 
 .secondary-entry-actions {
   display: grid;
-  gap: 0.65rem;
+  grid-template-columns: minmax(0, 1fr) minmax(7rem, 0.62fr);
+  gap: 0.55rem;
+  align-items: stretch;
+  margin-top: 0.1rem;
+}
+
+.secondary-entry-actions .path-card {
+  min-height: 64px;
+  padding: 0.72rem 0.8rem;
+}
+
+.secondary-entry-actions .path-card span {
+  font-family: "Trebuchet MS", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.02rem;
+  font-weight: 900;
+  line-height: 1.12;
+}
+
+.secondary-entry-actions .path-card small {
+  display: none;
+}
+
+.secondary-entry-actions .create-room-action {
+  border-color: #6f311f;
+  background:
+    linear-gradient(180deg, rgba(255, 226, 150, 0.18), rgba(120, 50, 30, 0.06)),
+    linear-gradient(180deg, #8e4028, #5a2230);
+  color: #fff7de;
+  box-shadow: inset 0 0 0 1px rgba(255, 231, 168, 0.38), inset 0 -2px 0 rgba(40, 16, 8, 0.28), 0 3px 0 rgba(0, 0, 0, 0.22);
+}
+
+.secondary-entry-actions .create-room-action span,
+.secondary-entry-actions .create-room-action small {
+  color: #fff7de;
+}
+
+.secondary-entry-actions .create-room-action:hover:not(:disabled) {
+  border-color: #f0c76b;
+  background:
+    linear-gradient(180deg, rgba(255, 226, 150, 0.26), rgba(120, 50, 30, 0.06)),
+    linear-gradient(180deg, #a64b2d, #662632);
+  color: #fff7de;
+}
+
+.secondary-entry-actions .demo-entry-action {
+  position: relative;
+  border-color: #9d7a42;
+  border-style: dashed;
+  background:
+    repeating-linear-gradient(-45deg, rgba(124, 63, 42, 0.07) 0 6px, transparent 6px 12px),
+    rgba(255, 248, 221, 0.58);
+  color: #5a3118;
+  box-shadow: inset 0 0 0 1px rgba(255, 248, 221, 0.58);
+}
+
+.demo-entry-action::after {
+  content: "DEMO";
+  justify-self: start;
+  border: 1px solid rgba(124, 63, 42, 0.3);
+  border-radius: 999px;
+  background: rgba(47, 73, 56, 0.12);
+  color: #5f4424;
+  padding: 0.08rem 0.32rem;
+  font-size: 0.58rem;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.secondary-entry-actions .demo-entry-action:hover:not(:disabled) {
+  border-color: #b48645;
+  background:
+    repeating-linear-gradient(-45deg, rgba(124, 63, 42, 0.09) 0 6px, transparent 6px 12px),
+    rgba(255, 248, 221, 0.72);
 }
 
 .learn-more {
@@ -3540,7 +3612,38 @@ label {
   }
 
   .secondary-entry-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(230px, 1fr) minmax(128px, 0.42fr);
+    justify-self: end;
+    width: min(100%, 560px);
+    gap: 0.65rem;
+  }
+
+  .secondary-entry-actions .path-card {
+    min-height: 72px;
+    padding: 0.76rem 0.9rem;
+  }
+
+  .secondary-entry-actions .path-card small {
+    display: block;
+    font-size: 0.82rem;
+  }
+
+  .create-room-action span {
+    font-size: 1.08rem;
+  }
+
+  .demo-entry-action {
+    align-self: center;
+    min-height: 60px;
+  }
+
+  .demo-entry-action span {
+    font-size: 0.96rem;
+  }
+
+  .demo-entry-action small {
+    font-size: 0.74rem;
+    line-height: 1.22;
   }
 
   .workflow-grid {
