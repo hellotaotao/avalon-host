@@ -78,6 +78,8 @@ test('five-player Good reaches three successful quests, Assassin hits Merlin, an
     await expect(assassin.page.getByRole('dialog').getByRole('heading', { name: /You won this game/i })).toBeVisible();
     await expect(merlin.page.getByRole('dialog').getByRole('heading', { name: /You lost this game/i })).toBeVisible();
     await expect(merlin.page.getByRole('dialog').getByText(/Your role/i)).toBeVisible();
+    await expect(merlin.page.locator('.mission-progress-sticky')).toHaveCSS('z-index', '10');
+    await expect(merlin.page.locator('.result-modal-backdrop')).toHaveCSS('z-index', '100');
 
     for (const player of players) {
       await player.page.getByRole('button', { name: /^Play Again$/i }).click();

@@ -63,7 +63,7 @@ test('demo setup uses table size and manual seats instead of separate modes', as
 
   const progress = page.locator('.demo-progress-sticky');
   await expect(progress).toHaveCSS('position', 'sticky');
-  await expect(progress).toHaveCSS('z-index', '30');
+  await expect(progress).toHaveCSS('z-index', '10');
 
   const firstQuest = progress.locator('.quest-track span').first();
   await firstQuest.evaluate((node) => node.classList.add('fail'));
@@ -86,6 +86,7 @@ test('pure AI demo can pause between quest rounds', async ({ page }) => {
   await page.getByRole('switch', { name: /Pause after AI quests/i }).click();
 
   await expect(page.getByRole('dialog', { name: /Review this round/i })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('dialog', { name: /Review this round/i })).toHaveCSS('z-index', '80');
   await expect(page.getByText(/Quest result is public\. Review the table history/i)).toBeVisible();
   await expect(page.getByText(/Quest: 1 needs/i)).toBeVisible();
 

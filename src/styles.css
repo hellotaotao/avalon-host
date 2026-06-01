@@ -936,7 +936,7 @@ label {
 .demo-progress-sticky {
   position: sticky;
   top: max(0.5rem, env(safe-area-inset-top));
-  z-index: 30;
+  z-index: 10;
 }
 
 .demo-board .mission-step p {
@@ -1188,7 +1188,7 @@ label {
   position: fixed;
   left: 50%;
   bottom: max(1rem, env(safe-area-inset-bottom));
-  z-index: 18;
+  z-index: 80;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.85rem;
@@ -2397,7 +2397,7 @@ label {
 .result-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: 100;
   display: grid;
   place-items: center;
   background: rgba(26, 16, 10, 0.72);
@@ -2781,7 +2781,7 @@ label {
 .mission-progress-sticky {
   position: sticky;
   top: max(0.5rem, env(safe-area-inset-top));
-  z-index: 25;
+  z-index: 10;
   border-color: rgba(211, 177, 95, 0.76);
   background:
     linear-gradient(145deg, rgba(48, 36, 28, 0.97), rgba(72, 49, 28, 0.96)),
