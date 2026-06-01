@@ -12,7 +12,7 @@ type VercelResponse = {
   end(): void;
 };
 
-const DEFAULT_OPENAI_MODEL = 'gpt-5.5';
+const DEFAULT_OPENAI_MODEL = 'gpt-5.4-mini';
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -67,7 +67,7 @@ function getProviderConfig() {
       name: 'openrouter',
       url: OPENROUTER_URL,
       key: process.env.OPENROUTER_API_KEY,
-      model: process.env.OPENROUTER_MODEL || process.env.OPENAI_MODEL || 'openai/gpt-4o-mini',
+      model: process.env.OPENROUTER_MODEL || process.env.OPENAI_MODEL || 'openai/gpt-5.4-mini',
       headers: {
         'HTTP-Referer': process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5173',
         'X-Title': 'Veiled Roundtable AI Table',
