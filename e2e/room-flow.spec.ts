@@ -165,6 +165,11 @@ test('lobby room controls are scoped to host and guests', async ({ browser }) =>
     await expect(host.getByRole('button', { name: /^Leave Room$/i })).toBeVisible();
     await expect(host.getByRole('button', { name: /^Dissolve Room$/i })).toBeVisible();
     await expect(host.getByRole('button', { name: /^Start Game$/i })).toBeEnabled();
+    await expect(host.locator('.host-authority-panel').getByText(/Enough players are ready\. You can start now\./i)).toBeVisible();
+    const hostStartActionHeight = await host.locator('.host-start-action').evaluate((node) => node.getBoundingClientRect().height);
+    const hostDangerActionHeight = await host.locator('.compact-danger-zone').evaluate((node) => node.getBoundingClientRect().height);
+    expect(hostStartActionHeight).toBeLessThan(80);
+    expect(hostDangerActionHeight).toBeLessThan(90);
 
     await expect(guest.getByRole('button', { name: /^Leave Room$/i })).toBeVisible();
     await expect(guest.getByRole('button', { name: /^Dissolve Room$/i })).toHaveCount(0);

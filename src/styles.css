@@ -1965,38 +1965,75 @@ label {
 }
 
 .host-authority-panel {
-  gap: 0.85rem;
+  gap: 0.45rem;
+  padding: 0.75rem;
 }
 
 .host-authority-heading {
-  display: grid;
-  gap: 0.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.6rem;
 }
 
-.host-authority-heading p:last-child,
 .host-action-group p {
   margin: 0;
   color: #4b2e18;
-  line-height: 1.35;
+  font-size: 0.86rem;
+  line-height: 1.22;
   font-weight: 800;
+}
+
+.host-authority-heading h2 {
+  font-size: clamp(1.35rem, 5vw, 1.75rem);
+  line-height: 1.05;
 }
 
 .host-action-group {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.35rem;
   border: 1px solid #ad7a36;
   border-radius: 8px;
   background: #fff2ca;
-  padding: 0.75rem;
+  padding: 0.5rem 0.55rem;
+}
+
+.host-action-group h3 {
+  font-size: 1rem;
+  line-height: 1.1;
+}
+
+.host-start-action,
+.compact-danger-zone {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.6rem;
 }
 
 .host-action-group.danger-zone {
-  border-color: #a64a39;
-  background: #ffe1c9;
+  border-color: #d59b88;
+  background: #fff1e8;
+}
+
+.compact-danger-zone p {
+  font-size: 0.86rem;
 }
 
 .host-action-group button {
   justify-self: start;
+}
+
+.host-start-action button,
+.compact-danger-zone button {
+  justify-self: end;
+}
+
+.host-action-group .primary,
+.host-action-group .secondary-control,
+.host-action-group .small-danger {
+  min-height: 34px;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.86rem;
 }
 
 .host-player-actions {
@@ -2028,8 +2065,8 @@ label {
 
 .dissolve-room {
   min-height: 38px;
-  border-color: #8f2119;
-  background: #e58c75;
+  border-color: #a64a39;
+  background: #ffd0c0;
   color: #4e100b;
 }
 
@@ -3415,8 +3452,7 @@ label {
   }
 
   .room-code,
-  .private-room-panel,
-  .host-authority-panel {
+  .private-room-panel {
     min-height: 100%;
   }
 

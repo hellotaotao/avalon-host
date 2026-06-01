@@ -3695,15 +3695,15 @@ function HostAuthorityPanel({
   return (
     <section className="panel host-authority-panel" aria-labelledby="host-authority-title">
       <div className="host-authority-heading">
-        <p className="eyebrow">{t('Room owner')}</p>
         <h2 id="host-authority-title">{t('Host permissions')}</h2>
-        <p>{t('You are the room host on this device.')}</p>
       </div>
 
       {!started && (
-        <div className="host-action-group">
-          <h3>{t('Start this game')}</h3>
-          <p>{canStart ? t('Ready players can start.') : startValidationCopy}</p>
+        <div className="host-action-group host-start-action">
+          <div>
+            <h3>{t('Start this game')}</h3>
+            <p>{canStart ? t('Enough players are ready. You can start now.') : startValidationCopy}</p>
+          </div>
           <button
             type="button"
             className="primary"
@@ -3714,15 +3714,17 @@ function HostAuthorityPanel({
               onStart();
             }}
           >
-            {canStart ? t('Start Game') : startValidationCopy}
+            {canStart ? t('Start Game') : t('Waiting to start')}
           </button>
         </div>
       )}
 
       {started && (
-        <div className="host-action-group">
-          <h3>{t('Current game')}</h3>
-          <p>{t('Use this only when this round should be cancelled for everyone.')}</p>
+        <div className="host-action-group host-start-action">
+          <div>
+            <h3>{t('Current game')}</h3>
+            <p>{t('Use this only when this round should be cancelled for everyone.')}</p>
+          </div>
           <button type="button" className="secondary-control" onClick={onResetRoomToLobby} disabled={busy}>{t('Abandon Game')}</button>
         </div>
       )}
@@ -3744,9 +3746,11 @@ function HostAuthorityPanel({
         </div>
       )}
 
-      <div className="host-action-group danger-zone">
-        <h3>{t('Room controls')}</h3>
-        <p>{t('Dissolve the room only when the table is done or created by mistake.')}</p>
+      <div className="host-action-group danger-zone compact-danger-zone">
+        <div>
+          <h3>{t('Room controls')}</h3>
+          <p>{t('Dissolve the room only when the table is done or created by mistake.')}</p>
+        </div>
         <button type="button" className="small-danger dissolve-room" onClick={onDissolveRoom} disabled={busy}>{t('Dissolve Room')}</button>
       </div>
     </section>
