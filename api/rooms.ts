@@ -12,6 +12,7 @@ import type { MissionCard, Vote } from '../src/domain/avalon.js';
 import {
   applyMissionStateToSnapshot,
   assertDeletedRows,
+  autoStartReadyRoom,
   buildAiPlayers,
   buildCreateRoomSettings,
   findPlayerByDisplayName,
@@ -222,7 +223,10 @@ async function setReady(roomId: string, playerId: string, isReady: boolean) {
   `;
   assertDeletedRows(rows, 'Player not found.');
   await touchRoom(roomId);
-  return fetchSnapshot(roomId);
+  const snapshot = await fetchSnapshot(roomId);
+  const nextSnapshot = autoStartReadyRoom(snapshot);
+  if (nextSnapshot === snapshot) return snapshot;
+  return persistStartedSnapshot(roomId, nextSnapshot);
 }
 
 async function startGame(roomId: string, hostPlayerId: string): Promise<StartResult> {
@@ -232,16 +236,21 @@ async function startGame(roomId: string, hostPlayerId: string): Promise<StartRes
   const result = startDemoSnapshot(snapshot, hostPlayerId);
   if (!result.ok || !result.snapshot) return result;
 
+  const nextSnapshot = await persistStartedSnapshot(roomId, result.snapshot, snapshot);
+  return { ok: true, snapshot: nextSnapshot };
+}
+
+async function persistStartedSnapshot(roomId: string, nextSnapshot: RoomSnapshot, previousSnapshot?: RoomSnapshot): Promise<RoomSnapshot> {
   const sql = getSql();
-  const activePlayerIds = new Set(result.snapshot.players.map((player) => player.id));
-  const removedPlayerIds = snapshot.players.filter((player) => !activePlayerIds.has(player.id)).map((player) => player.id);
+  const activePlayerIds = new Set(nextSnapshot.players.map((player) => player.id));
+  const removedPlayerIds = (previousSnapshot?.players ?? []).filter((player) => !activePlayerIds.has(player.id)).map((player) => player.id);
   await Promise.all(removedPlayerIds.map((playerId) => sql`delete from players where id = ${playerId} and room_id = ${roomId}`));
   await sql`
     update rooms
-    set status = 'reveal', settings = ${JSON.stringify(result.snapshot.room.settings)}::jsonb
+    set status = ${nextSnapshot.room.status}, settings = ${JSON.stringify(nextSnapshot.room.settings)}::jsonb
     where id = ${roomId}
   `;
-  for (const player of result.snapshot.players) {
+  for (const player of nextSnapshot.players) {
     await sql`
       update players
       set seat_index = ${player.seatIndex},
@@ -252,7 +261,7 @@ async function startGame(roomId: string, hostPlayerId: string): Promise<StartRes
       where id = ${player.id} and room_id = ${roomId}
     `;
   }
-  return { ok: true, snapshot: await fetchSnapshot(roomId) };
+  return fetchSnapshot(roomId);
 }
 
 async function updateMissionState(roomId: string, hostPlayerId: string, missionState: MissionState) {
@@ -296,14 +305,14 @@ async function submitAssassination(roomId: string, assassinPlayerId: string, tar
 
 async function readyForNextGame(roomId: string, playerId: string) {
   const snapshot = await fetchSnapshot(roomId);
-  readyForNextGameInSnapshot(snapshot, playerId);
+  const nextSnapshot = readyForNextGameInSnapshot(snapshot, playerId);
   const sql = getSql();
   await sql`
     update rooms
-    set status = ${snapshot.room.status}, settings = ${JSON.stringify(snapshot.room.settings)}::jsonb
+    set status = ${nextSnapshot.room.status}, settings = ${JSON.stringify(nextSnapshot.room.settings)}::jsonb
     where id = ${roomId}
   `;
-  for (const player of snapshot.players) {
+  for (const player of nextSnapshot.players) {
     await sql`
       update players
       set seat_index = ${player.seatIndex},

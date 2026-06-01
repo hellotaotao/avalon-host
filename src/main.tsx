@@ -48,7 +48,6 @@ import { getNextRoomAiAction, getRoomAiActionKey, type RoomAiAction } from './se
 import { buildJoinUrl, buildStepUrl, parseEntryStep, parseJoinCodeFromUrl, type EntryScreen } from './navigationState';
 import {
   applyMissionStateToSnapshot,
-  canStartGame,
   createRoom,
   getRoomById,
   getPrivateRoleInfo,
@@ -64,7 +63,6 @@ import {
   readyForNextGameInSnapshot,
   removePlayer,
   setReady,
-  startGame,
   submitAssassination,
   submitMissionCard,
   submitTeamVote,
@@ -127,9 +125,11 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [aiRetryTick, setAiRetryTick] = useState(0);
   const [aiAutomation, setAiAutomation] = useState<RoomAiAutomationState>();
+  const [showGameStartNotice, setShowGameStartNotice] = useState(false);
   const hostNameInputRef = useRef<HTMLInputElement>(null);
   const aiActionAttemptRef = useRef<RoomAiAttemptState | undefined>(undefined);
   const aiActionInFlightRef = useRef('');
+  const previousRoomStatusRef = useRef(snapshot?.room.status);
   const [restorableSnapshot, setRestorableSnapshot] = useState<RoomSnapshot>();
   const [restorablePlayerId, setRestorablePlayerId] = useState('');
 
@@ -211,6 +211,19 @@ function App() {
       setSnapshot(nextSnapshot);
     });
   }, [currentPlayerId, snapshot?.room.id]);
+
+  useEffect(() => {
+    const previousStatus = previousRoomStatusRef.current;
+    const nextStatus = snapshot?.room.status;
+    previousRoomStatusRef.current = nextStatus;
+    if (!previousStatus || !nextStatus) return undefined;
+    if ((previousStatus === 'lobby' || previousStatus === 'setup') && nextStatus !== 'lobby' && nextStatus !== 'setup') {
+      setShowGameStartNotice(true);
+      const timer = window.setTimeout(() => setShowGameStartNotice(false), 1800);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [snapshot?.room.status]);
 
   useEffect(() => {
     if (!snapshot || isDemoMode || !currentPlayer?.isHost) return undefined;
@@ -404,22 +417,6 @@ function App() {
       setSnapshot(await updateNickname(snapshot.room.id, currentPlayer.id, name));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t('Could not update nickname.'));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleStartGame() {
-    if (!snapshot || !currentPlayer || startValidation || busy) return;
-    if (!currentPlayer.isHost) return setMessage(t('Only the host can start the game.'));
-    setBusy(true);
-    setMessage('');
-    try {
-      const result = await startGame(snapshot.room.id, currentPlayer.id);
-      if (result.snapshot) setSnapshot(result.snapshot);
-      setMessage(result.ok ? '' : result.reason ?? t('Could not start game.'));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not start game.'));
     } finally {
       setBusy(false);
     }
@@ -852,7 +849,6 @@ function App() {
           privateInfo={privateInfo}
           startValidation={startValidation}
           onReady={handleReady}
-          onStart={handleStartGame}
           onRename={handleRename}
           onRemovePlayer={handleRemovePlayer}
           onTransferHost={handleTransferHost}
@@ -867,6 +863,7 @@ function App() {
           onReadyForNextGame={handleReadyForNextGame}
           isDemoMode={isDemoMode}
           aiAutomation={aiAutomation}
+          showGameStartNotice={showGameStartNotice}
           busy={busy}
         />
       )}
@@ -3784,13 +3781,25 @@ function getEndReasonLabel(reason: string) {
   }[reason] ?? 'Game finished';
 }
 
+function GameStartOverlay() {
+  const { t } = useI18n();
+  return (
+    <div className="game-start-backdrop" role="status" aria-live="polite">
+      <div className="game-start-card">
+        <span className="game-start-sigil" aria-hidden="true" />
+        <p>{t('Everyone is ready')}</p>
+        <h2>{t('The game begins')}</h2>
+      </div>
+    </div>
+  );
+}
+
 function RoomView({
   snapshot,
   currentPlayer,
   privateInfo,
   startValidation,
   onReady,
-  onStart,
   onRename,
   onRemovePlayer,
   onTransferHost,
@@ -3805,6 +3814,7 @@ function RoomView({
   onReadyForNextGame,
   isDemoMode,
   aiAutomation,
+  showGameStartNotice,
   busy,
 }: {
   snapshot: RoomSnapshot;
@@ -3812,7 +3822,6 @@ function RoomView({
   privateInfo?: ReturnType<typeof getPrivateRoleInfo>;
   startValidation?: string;
   onReady: () => void;
-  onStart: () => void;
   onRename: (event: React.FormEvent<HTMLFormElement>) => void;
   onRemovePlayer: (targetPlayerId: string) => void;
   onTransferHost: (targetPlayerId: string) => void;
@@ -3827,6 +3836,7 @@ function RoomView({
   onReadyForNextGame: () => void;
   isDemoMode: boolean;
   aiAutomation?: RoomAiAutomationState;
+  showGameStartNotice: boolean;
   busy: boolean;
 }) {
   const { t } = useI18n();
@@ -3836,7 +3846,7 @@ function RoomView({
   const currentTeamSize = missionState ? getTeamSize(snapshot.players.length, missionState.roundIndex) : 0;
   const [assassinationTargetId, setAssassinationTargetId] = useState('');
   const readyCount = snapshot.players.filter((player) => player.isReady).length;
-  const canStart = Boolean(currentPlayer?.isHost) && canStartGame(snapshot.players, snapshot.room.settings);
+  const allPlayersReady = readyCount === snapshot.players.length;
   const isFinished = snapshot.room.status === 'finished' || missionState?.phase === 'finished';
   const showJoinPanel = !started;
   const joinLinkPath = buildJoinUrl(window.location.href, snapshot.room.code);
@@ -3867,6 +3877,7 @@ function RoomView({
       started ? 'started-room-grid' : 'lobby-room-grid',
       currentPlayer?.isHost ? 'has-host-authority' : 'guest-room-grid',
     ].join(' ')}>
+      {showGameStartNotice && <GameStartOverlay />}
       {missionState?.phase === 'finished' && currentPlayer && (
         <GameResultModal
           missionState={missionState}
@@ -3948,11 +3959,9 @@ function RoomView({
         {!started && (
           <>
             <div className="next-step">
-              <strong>{canStart ? t('Ready players can start.') : t('Waiting to start')}</strong>
+              <strong>{allPlayersReady ? t('All players are ready.') : t('Waiting for everyone to get ready')}</strong>
               <span>
-                {canStart
-                  ? t('Starting now will leave unready players out of this game.')
-                  : startValidationCopy}
+                {allPlayersReady ? t('Starting the game now.') : startValidationCopy}
               </span>
             </div>
           </>
@@ -3986,11 +3995,8 @@ function RoomView({
         players={snapshot.players}
         currentPlayer={currentPlayer}
         started={started}
-        canStart={canStart}
-        startValidation={startValidation}
         isDemoMode={isDemoMode}
         busy={busy}
-        onStart={onStart}
         onResetRoomToLobby={onResetRoomToLobby}
         onDissolveRoom={onDissolveRoom}
         onRemovePlayer={onRemovePlayer}
@@ -4017,7 +4023,7 @@ function RoomView({
             })}
           </ol>
           {!currentPlayer?.isHost && (
-            <p className="hint">{t('Waiting for the host to start the game.')}</p>
+            <p className="hint">{t('The game starts automatically when everyone is ready.')}</p>
           )}
         </section>
       )}
@@ -4040,11 +4046,8 @@ function HostAuthorityPanel({
   players,
   currentPlayer,
   started,
-  canStart,
-  startValidation,
   isDemoMode,
   busy,
-  onStart,
   onResetRoomToLobby,
   onDissolveRoom,
   onRemovePlayer,
@@ -4053,11 +4056,8 @@ function HostAuthorityPanel({
   players: RoomPlayer[];
   currentPlayer?: RoomPlayer;
   started: boolean;
-  canStart: boolean;
-  startValidation?: string;
   isDemoMode: boolean;
   busy: boolean;
-  onStart: () => void;
   onResetRoomToLobby: () => void;
   onDissolveRoom: () => void;
   onRemovePlayer: (targetPlayerId: string) => void;
@@ -4067,34 +4067,12 @@ function HostAuthorityPanel({
   if (!currentPlayer?.isHost) return null;
 
   const manageablePlayers = players.filter((player) => !player.isHost && !player.isAi && !isDemoMode);
-  const startValidationCopy = formatStartValidation(startValidation, t);
 
   return (
     <section className="panel host-authority-panel" aria-labelledby="host-authority-title">
       <div className="host-authority-heading">
         <h2 id="host-authority-title">{t('Host permissions')}</h2>
       </div>
-
-      {!started && (
-        <div className="host-action-group host-start-action">
-          <div>
-            <h3>{t('Start this game')}</h3>
-            <p>{canStart ? t('Enough players are ready. You can start now.') : startValidationCopy}</p>
-          </div>
-          <button
-            type="button"
-            className="primary"
-            disabled={!canStart || busy}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onStart();
-            }}
-          >
-            {canStart ? t('Start Game') : t('Waiting to start')}
-          </button>
-        </div>
-      )}
 
       {started && (
         <div className="host-action-group host-start-action">

@@ -5,6 +5,8 @@ import {
   assertDeletedRows,
   buildAiPlayers,
   buildCreateRoomSettings,
+  autoStartReadyRoom,
+  canAutoStartGame,
   canStartGame,
   createHostDemoRoom,
   createJoinDemoRoom,
@@ -62,6 +64,28 @@ describe('room service rules', () => {
     expect(canStartGame(players)).toBe(true);
     expect(canStartGame(makePlayers(6, [3]))).toBe(true);
     expect(canStartGame(makePlayers(5, [3]))).toBe(false);
+  });
+
+  it('auto-starts only when the fixed table is full and every player is ready', () => {
+    const notFullSnapshot = makeSnapshot(4);
+    notFullSnapshot.room.settings = { plannedPlayerCount: 5 };
+    expect(canAutoStartGame(notFullSnapshot.players, notFullSnapshot.room.settings)).toBe(false);
+    expect(autoStartReadyRoom(notFullSnapshot).room.status).toBe('lobby');
+
+    const unreadySnapshot = makeSnapshot(5);
+    unreadySnapshot.players[0].isReady = false;
+    unreadySnapshot.room.settings = { plannedPlayerCount: 5 };
+    expect(canAutoStartGame(unreadySnapshot.players, unreadySnapshot.room.settings)).toBe(false);
+    expect(autoStartReadyRoom(unreadySnapshot).room.status).toBe('lobby');
+
+    const readySnapshot = makeSnapshot(5);
+    readySnapshot.room.settings = { plannedPlayerCount: 5 };
+    const started = autoStartReadyRoom(readySnapshot);
+
+    expect(canAutoStartGame(readySnapshot.players, readySnapshot.room.settings)).toBe(true);
+    expect(started.room.status).toBe('reveal');
+    expect(started.players).toHaveLength(5);
+    expect(started.players.every((player) => player.role)).toBe(true);
   });
 
   it('excludes unready non-host players and compacts seats for start', () => {
@@ -253,7 +277,7 @@ describe('room service rules', () => {
     expect(snapshot.players.map((player) => player.id)).toEqual(['p1', 'p2', 'p4', 'p5']);
   });
 
-  it('counts AI players as ready when a finished game resets for play again', () => {
+  it('auto-starts the next game when every player is ready to play again', () => {
     const snapshot = makeSnapshot(5);
     const roles = ['Merlin', 'Assassin', 'Loyal Servant', 'Loyal Servant', 'Loyal Servant'] as const;
     snapshot.players = snapshot.players.map((player, index) => ({
@@ -275,11 +299,13 @@ describe('room service rules', () => {
 
     readyForNextGameInSnapshot(snapshot, 'p1');
     expect(snapshot.room.status).toBe('finished');
-    readyForNextGameInSnapshot(snapshot, 'p2');
+    const nextSnapshot = readyForNextGameInSnapshot(snapshot, 'p2');
 
-    expect(snapshot.room.status).toBe('lobby');
-    expect(snapshot.players.filter((player) => player.isAi).every((player) => player.isReady)).toBe(true);
-    expect(snapshot.players.every((player) => !player.role)).toBe(true);
+    expect(nextSnapshot.room.status).toBe('reveal');
+    expect(nextSnapshot.players.filter((player) => player.isAi).every((player) => player.isReady)).toBe(true);
+    expect(nextSnapshot.players.every((player) => player.role)).toBe(true);
+    expect(nextSnapshot.room.settings.missionState?.phase).toBe('proposal');
+    expect(nextSnapshot.room.settings.gameHistory).toHaveLength(1);
   });
 
   it('finds an existing same-device player for rejoin', () => {

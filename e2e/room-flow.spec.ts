@@ -81,12 +81,10 @@ test('five-player Good reaches three successful quests, Assassin hits Merlin, an
     await expect(merlin.page.locator('.mission-progress-sticky')).toHaveCSS('z-index', '10');
     await expect(merlin.page.locator('.result-modal-backdrop')).toHaveCSS('z-index', '100');
 
-    for (const player of players) {
+    for (const player of players.slice(0, -1)) {
       await player.page.getByRole('button', { name: /^Play Again$/i }).click();
     }
 
-    await expect(host.getByRole('heading', { name: /Current Room/i })).toBeVisible();
-    await expect(host.getByRole('button', { name: /^Start Game$/i })).toBeEnabled();
     await expect(host.getByRole('heading', { name: /Room history/i })).toBeVisible();
     await expect(host.getByText(/Game 1: Evil won/i)).toBeVisible();
     const assassinationHistoryReason = host.locator('.game-history-end-reason.prominent').filter({ hasText: /Assassin found Merlin/i });
@@ -95,8 +93,10 @@ test('five-player Good reaches three successful quests, Assassin hits Merlin, an
     expect(assassinationReasonFontSize).toBeGreaterThan(17);
     await expect(merlin.page.getByText(/You were Good · Merlin · Defeat/i)).toBeVisible();
 
-    await host.getByRole('button', { name: /^Start Game$/i }).click();
-    await expect(host.getByRole('heading', { name: /Game Progress/i })).toBeVisible();
+    await players.at(-1)!.page.getByRole('button', { name: /^Play Again$/i }).click();
+    for (const player of players) {
+      await expect(player.page.getByRole('heading', { name: /Game Progress/i })).toBeVisible();
+    }
     await expect(host.getByRole('heading', { name: /Room history/i })).toHaveCount(0);
   });
 });
@@ -161,24 +161,18 @@ test('lobby room controls are scoped to host and guests', async ({ browser }) =>
   try {
     const { host, players } = room;
     const guest = players[1].page;
-    for (const player of players) {
-      const readyButton = player.page.getByRole('button', { name: /^Set Ready$/i });
-      if (await readyButton.isVisible()) await readyButton.click();
-    }
+    await players[1].page.getByRole('button', { name: /^Set Ready$/i }).click();
 
     await expect(host.getByRole('button', { name: /^Leave Room$/i })).toBeVisible();
     await expect(host.getByRole('button', { name: /^Dissolve Room$/i })).toBeVisible();
-    await expect(host.getByRole('button', { name: /^Start Game$/i })).toBeEnabled();
-    await expect(host.locator('.host-authority-panel').getByText(/Enough players are ready\. You can start now\./i)).toBeVisible();
-    const hostStartActionHeight = await host.locator('.host-start-action').evaluate((node) => node.getBoundingClientRect().height);
+    await expect(host.getByRole('button', { name: /^Start Game$/i })).toHaveCount(0);
     const hostDangerActionHeight = await host.locator('.compact-danger-zone').evaluate((node) => node.getBoundingClientRect().height);
-    expect(hostStartActionHeight).toBeLessThan(80);
     expect(hostDangerActionHeight).toBeLessThan(90);
 
     await expect(guest.getByRole('button', { name: /^Leave Room$/i })).toBeVisible();
     await expect(guest.getByRole('button', { name: /^Dissolve Room$/i })).toHaveCount(0);
     await expect(guest.getByRole('button', { name: /^Start Game$/i })).toHaveCount(0);
-    await expect(guest.getByText(/Waiting for the host to start the game/i)).toBeVisible();
+    await expect(guest.getByText(/The game starts automatically when everyone is ready/i)).toBeVisible();
   } finally {
     await room.context.close();
   }
@@ -203,6 +197,7 @@ test('private reveal swipe area shows each side only while held or dragged', asy
     await expect(nightInfoPanel).toHaveCSS('opacity', '1');
     await expect(neutralCover).toHaveCSS('opacity', '1');
 
+    await swipeArea.scrollIntoViewIfNeeded();
     const box = await swipeArea.boundingBox();
     const initialRoleBox = await rolePanel.boundingBox();
     const initialNightInfoBox = await nightInfoPanel.boundingBox();
@@ -213,9 +208,11 @@ test('private reveal swipe area shows each side only while held or dragged', asy
     expect(initialSliderBox).not.toBeNull();
     if (!box || !initialRoleBox || !initialNightInfoBox || !initialSliderBox) return;
 
-    await players[0].page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    const dragY = box.y + Math.min(16, box.height / 4);
+    await players[0].page.mouse.move(box.x + box.width / 2, dragY);
     await players[0].page.mouse.down();
-    await players[0].page.mouse.move(box.x + box.width * 0.88, box.y + box.height / 2, { steps: 5 });
+    await players[0].page.mouse.move(box.x + box.width * 0.88, dragY, { steps: 5 });
+    await expect(slider).not.toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
     const rightDraggedRoleBox = await rolePanel.boundingBox();
     const rightDraggedSliderBox = await slider.boundingBox();
     expect(rightDraggedRoleBox).not.toBeNull();
@@ -227,9 +224,10 @@ test('private reveal swipe area shows each side only while held or dragged', asy
     await players[0].page.mouse.up();
     await expect(slider).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
 
-    await players[0].page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await players[0].page.mouse.move(box.x + box.width / 2, dragY);
     await players[0].page.mouse.down();
-    await players[0].page.mouse.move(box.x + box.width * 0.12, box.y + box.height / 2, { steps: 5 });
+    await players[0].page.mouse.move(box.x + box.width * 0.12, dragY, { steps: 5 });
+    await expect(slider).not.toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
     const leftDraggedNightInfoBox = await nightInfoPanel.boundingBox();
     const leftDraggedSliderBox = await slider.boundingBox();
     expect(leftDraggedNightInfoBox).not.toBeNull();
@@ -262,8 +260,8 @@ test('create-room shows default roles and custom role config affects assignment'
       if (await readyButton.isVisible()) await readyButton.click();
     }
 
-    await expect(host.getByRole('button', { name: /^Start Game$/i })).toBeEnabled();
-    await host.getByRole('button', { name: /^Start Game$/i }).click();
+    await expect(host.getByRole('button', { name: /^Start Game$/i })).toHaveCount(0);
+    await expect(host.getByRole('heading', { name: /Game Progress/i })).toBeVisible();
     await revealRoles(players);
 
     const roles = players.map((player) => player.role);
@@ -310,8 +308,7 @@ test('create-room teaches AI fill and a two-human five-seat room progresses with
       if (await readyButton.isVisible()) await readyButton.click();
     }
 
-    await expect(host.getByRole('button', { name: /^Start Game$/i })).toBeEnabled();
-    await host.getByRole('button', { name: /^Start Game$/i }).click();
+    await expect(host.getByRole('button', { name: /^Start Game$/i })).toHaveCount(0);
     await expect(host.getByText(/Table Quest/i)).toBeVisible();
     await expect(guest.getByText(/Table Quest/i)).toBeVisible();
 
@@ -372,13 +369,13 @@ async function createStartedRoom(browser: Browser, playerCount: number): Promise
     if (await readyButton.isVisible()) await readyButton.click();
   }
 
-  await expect(host.getByRole('button', { name: /^Start Game$/i })).toBeEnabled();
-  await host.getByRole('button', { name: /^Start Game$/i }).click();
+  await expect(host.getByRole('button', { name: /^Start Game$/i })).toHaveCount(0);
 
   for (const player of players) {
     await expect(player.page.getByRole('heading', { name: /Game Progress/i })).toBeVisible();
     await expect(player.page.getByRole('heading', { name: /Your Player Area/i })).toBeVisible();
     await expect(player.page.getByText(/Table Quest/i)).toBeVisible();
+    await expect(player.page.locator('.game-start-backdrop')).toHaveCount(0);
   }
 
   return room;

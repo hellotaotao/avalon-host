@@ -23,7 +23,10 @@ test('create room allows one human with AI fill seats', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: /Current Room/i })).toBeVisible();
   await expect(page.locator('.players li').filter({ hasText: /AI Seat 4/i }).getByText(/^AI$/)).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Start Game$/i })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Start Game$/i })).toHaveCount(0);
+  await page.getByRole('button', { name: /^Set Ready$/i }).click();
+  await expect(page.getByRole('status').getByText(/Everyone is ready/i)).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Game Progress/i })).toBeVisible();
 });
 
 test('create room requires a visible host nickname before submit', async ({ page }) => {

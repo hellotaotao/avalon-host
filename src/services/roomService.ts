@@ -10,6 +10,7 @@ import type { MissionCard, Vote } from '../domain/avalon';
 import { isDevSessionActive } from '../sessionKeys';
 import {
   applyMissionStateToSnapshot,
+  autoStartReadyRoom,
   buildCreateRoomSettings,
   buildAiPlayers,
   findPlayerByDeviceToken,
@@ -35,8 +36,10 @@ import {
 export {
   applyMissionStateToSnapshot,
   assertDeletedRows,
+  autoStartReadyRoom,
   buildAiPlayers,
   buildCreateRoomSettings,
+  canAutoStartGame,
   canStartGame,
   createHostDemoRoom,
   createJoinDemoRoom,
@@ -250,8 +253,13 @@ const localRepository: RoomRepository = {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
     requireLocalPlayer(snapshot, playerId).isReady = isReady;
-    writeRooms(data, snapshot.room.id);
-    return snapshot;
+    const nextSnapshot = autoStartReadyRoom(snapshot);
+    if (nextSnapshot !== snapshot) {
+      const index = data.rooms.findIndex((item) => item.room.id === roomId);
+      data.rooms[index] = nextSnapshot;
+    }
+    writeRooms(data, roomId);
+    return nextSnapshot;
   },
 
   async startGame(roomId: string, hostPlayerId: string) {
@@ -336,9 +344,13 @@ const localRepository: RoomRepository = {
   async readyForNextGame(roomId: string, playerId: string) {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
-    readyForNextGameInSnapshot(snapshot, playerId);
-    writeRooms(data, snapshot.room.id);
-    return snapshot;
+    const nextSnapshot = readyForNextGameInSnapshot(snapshot, playerId);
+    if (nextSnapshot !== snapshot) {
+      const index = data.rooms.findIndex((item) => item.room.id === roomId);
+      data.rooms[index] = nextSnapshot;
+    }
+    writeRooms(data, roomId);
+    return nextSnapshot;
   },
 
   async removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string) {

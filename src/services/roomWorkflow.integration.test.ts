@@ -8,7 +8,6 @@ import {
   proposeMissionTeam,
   readyForNextGame,
   setReady,
-  startGame,
   submitAssassination,
   submitMissionCard,
   submitTeamVote,
@@ -83,11 +82,11 @@ describe('room workflow integration', () => {
     }
 
     snapshot = await readyForNextGame(snapshot.room.id, snapshot.players.at(-1)!.id);
-    expect(snapshot.room.status).toBe('lobby');
-    expect(snapshot.room.settings.missionState).toBeUndefined();
+    expect(snapshot.room.status).toBe('reveal');
+    expect(snapshot.room.settings.missionState?.phase).toBe('proposal');
     expect(snapshot.room.settings.nextGameReadyPlayerIds).toBeUndefined();
     expect(snapshot.room.settings.gameHistory).toHaveLength(1);
-    expect(snapshot.players.every((player) => player.isReady && !player.role)).toBe(true);
+    expect(snapshot.players.every((player) => player.isReady && player.role)).toBe(true);
   });
 
   it('enters assassin phase after three good mission wins, then evil wins if Merlin is hit', async () => {
@@ -177,9 +176,7 @@ describe('room workflow integration', () => {
     snapshot = await setReady(snapshot.room.id, host.currentPlayerId, true);
     snapshot = await setReady(snapshot.room.id, joined.currentPlayerId, true);
 
-    const started = await startGame(snapshot.room.id, host.currentPlayerId);
-    expect(started.ok).toBe(true);
-    snapshot = started.snapshot!;
+    expect(snapshot.room.status).toBe('reveal');
     expect(snapshot.players).toHaveLength(5);
 
     const leaderId = snapshot.room.settings.missionState!.leaderPlayerId;
@@ -245,9 +242,8 @@ async function startReadyFivePlayerRoom(): Promise<RoomSnapshot> {
     snapshot = await setReady(snapshot.room.id, playerId, true);
   }
 
-  const started = await startGame(snapshot.room.id, host.currentPlayerId);
-  if (!started.snapshot) throw new Error('Game did not start.');
-  return started.snapshot;
+  if (snapshot.room.status === 'lobby') throw new Error('Game did not start.');
+  return snapshot;
 }
 
 function selectTeamIncluding(snapshot: RoomSnapshot, requiredPlayerId: string, teamSize: number): string[] {

@@ -130,6 +130,20 @@ export function canStartGame(players: RoomPlayer[], settings?: RoomSettings): bo
   return !getStartValidationForSettings(players, settings);
 }
 
+export function canAutoStartGame(players: RoomPlayer[], settings?: RoomSettings): boolean {
+  const requiredCount = settings?.plannedPlayerCount ?? 5;
+  return players.length === requiredCount
+    && players.length >= 5
+    && players.length <= 10
+    && players.every((player) => player.isReady);
+}
+
+export function autoStartReadyRoom(snapshot: RoomSnapshot): RoomSnapshot {
+  if (snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup') return snapshot;
+  if (!canAutoStartGame(snapshot.players, snapshot.room.settings)) return snapshot;
+  return startDemoSnapshot(snapshot).snapshot ?? snapshot;
+}
+
 export function validateHostCanStart(snapshot: RoomSnapshot, hostPlayerId: string): string | undefined {
   const player = snapshot.players.find((item) => item.id === hostPlayerId);
   if (!player) return 'Player not found.';
@@ -285,18 +299,21 @@ export function readyForNextGameInSnapshot(snapshot: RoomSnapshot, playerId: str
   }
 
   const { missionState: _missionState, nextGameReadyPlayerIds: _nextGameReadyPlayerIds, ...settings } = snapshot.room.settings;
-  snapshot.room = {
-    ...snapshot.room,
-    status: 'lobby',
-    settings,
+  const nextSnapshot: RoomSnapshot = {
+    ...snapshot,
+    room: {
+      ...snapshot.room,
+      status: 'lobby',
+      settings,
+    },
+    players: snapshot.players.map((player, index) => ({
+      ...player,
+      seatIndex: index,
+      isReady: true,
+      role: undefined,
+    })),
   };
-  snapshot.players = snapshot.players.map((player, index) => ({
-    ...player,
-    seatIndex: index,
-    isReady: true,
-    role: undefined,
-  }));
-  return snapshot;
+  return autoStartReadyRoom(nextSnapshot);
 }
 
 function buildGameHistoryEntry(snapshot: RoomSnapshot, missionState: MissionState, endedAt: string): RoomGameHistoryEntry {

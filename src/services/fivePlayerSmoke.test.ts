@@ -7,7 +7,6 @@ import {
   joinRoom,
   proposeMissionTeam,
   setReady,
-  startGame,
   submitAssassination,
   submitMissionCard,
   submitTeamVote,
@@ -51,15 +50,12 @@ describe('five-player local room smoke', () => {
     }
 
     expect(snapshot.players.every((player) => player.isReady)).toBe(true);
+    expect(snapshot.room.status).toBe('reveal');
+    expect(snapshot.players).toHaveLength(5);
+    expect(snapshot.players.every((player) => Boolean(player.role))).toBe(true);
 
-    const started = await startGame(snapshot.room.id, host.currentPlayerId);
-    expect(started.ok).toBe(true);
-    expect(started.snapshot?.room.status).toBe('reveal');
-    expect(started.snapshot?.players).toHaveLength(5);
-    expect(started.snapshot?.players.every((player) => Boolean(player.role))).toBe(true);
-
-    for (const player of started.snapshot?.players ?? []) {
-      const privateInfo = getPrivateRoleInfo(player, started.snapshot!.players);
+    for (const player of snapshot.players) {
+      const privateInfo = getPrivateRoleInfo(player, snapshot.players);
       expect(privateInfo?.role).toBe(player.role);
     }
   });
@@ -161,9 +157,8 @@ async function startReadyFivePlayerRoom(): Promise<RoomSnapshot> {
     snapshot = await setReady(snapshot.room.id, playerId, true);
   }
 
-  const started = await startGame(snapshot.room.id, host.currentPlayerId);
-  if (!started.snapshot) throw new Error('Game did not start.');
-  return started.snapshot;
+  if (snapshot.room.status === 'lobby') throw new Error('Game did not start.');
+  return snapshot;
 }
 
 function installLocalBrowserStorage() {
