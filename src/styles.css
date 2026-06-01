@@ -1666,6 +1666,16 @@ label {
   text-transform: uppercase;
 }
 
+.role-face .role-summary {
+  max-width: 100%;
+  margin: 0.08rem 0 0;
+  color: #6a4b30;
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 .peek-cover {
   position: absolute;
   inset: 0;

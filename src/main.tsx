@@ -76,7 +76,7 @@ import {
   type RoomSnapshot,
 } from './services/roomService';
 import { getSessionStorageKeys, isDevSessionActive } from './sessionKeys';
-import { I18nProvider, formatAllegiance, formatHint, formatRole, useI18n, type Language } from './i18n';
+import { I18nProvider, formatAllegiance, formatHint, formatRole, formatRoleDescription, useI18n, type Language } from './i18n';
 import './styles.css';
 
 type Screen = EntryScreen | 'room';
@@ -2045,6 +2045,7 @@ function PrivateSwipeReveal({
         <div className="role-face">
           <strong>{formatRole(role, language)}</strong>
           <span>{formatAllegiance(allegiance, language)}</span>
+          <p className="role-summary">{formatRoleDescription(role, language)}</p>
         </div>
       </div>
 

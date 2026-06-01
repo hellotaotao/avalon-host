@@ -475,6 +475,45 @@ export function formatRole(role: string, language: Language): string {
   }[role] ?? role;
 }
 
+export function formatRoleDescription(role: string, language: Language): string {
+  const descriptions: Record<string, { en: string; zh: string }> = {
+    Merlin: {
+      en: 'Good. Sees evil players except Mordred; stay hidden from the Assassin.',
+      zh: '好人。能看见大多数坏人，但看不见莫德雷德；结局要躲开刺客。',
+    },
+    Assassin: {
+      en: 'Evil. Help fail quests; after three Good quests, guess Merlin to win.',
+      zh: '坏人。配合破坏任务；好人三次任务成功后，可以刺杀梅林翻盘。',
+    },
+    'Loyal Servant': {
+      en: 'Good. No night info; judge from teams, votes, and quest results.',
+      zh: '好人。没有额外夜晚信息，主要靠组队、投票和任务结果判断。',
+    },
+    Minion: {
+      en: 'Evil. Knows most evil teammates and can play Fail on quests.',
+      zh: '坏人。通常知道坏人队友；上任务时可以出失败票。',
+    },
+    Percival: {
+      en: 'Good. Sees Merlin candidates, but one may be Morgana.',
+      zh: '好人。能看见梅林候选，但其中可能混着莫甘娜。',
+    },
+    Morgana: {
+      en: 'Evil. Appears to Percival as a Merlin candidate.',
+      zh: '坏人。会在派西维尔眼里伪装成梅林候选。',
+    },
+    Mordred: {
+      en: 'Evil. Hidden from Merlin, making you harder for Good to identify.',
+      zh: '坏人。梅林看不见你，所以更适合隐藏和误导好人。',
+    },
+    Oberon: {
+      en: 'Evil. Hidden from other evil players and does not see them.',
+      zh: '坏人。其他坏人看不见你，你也看不见他们。',
+    },
+  };
+  const description = descriptions[role];
+  return description ? description[language] : '';
+}
+
 export function formatAllegiance(allegiance: string, language: Language): string {
   if (language !== 'zh') return allegiance === 'good' ? 'Good' : 'Evil';
   return allegiance === 'good' ? '好人' : '坏人';
