@@ -89,6 +89,10 @@ test('five-player Good reaches three successful quests, Assassin hits Merlin, an
     await expect(host.getByRole('button', { name: /^Start Game$/i })).toBeEnabled();
     await expect(host.getByRole('heading', { name: /Room history/i })).toBeVisible();
     await expect(host.getByText(/Game 1: Evil won/i)).toBeVisible();
+    const assassinationHistoryReason = host.locator('.game-history-end-reason.prominent').filter({ hasText: /Assassin found Merlin/i });
+    await expect(assassinationHistoryReason).toBeVisible();
+    const assassinationReasonFontSize = await assassinationHistoryReason.evaluate((node) => parseFloat(getComputedStyle(node).fontSize));
+    expect(assassinationReasonFontSize).toBeGreaterThan(17);
     await expect(merlin.page.getByText(/You were Good · Merlin · Defeat/i)).toBeVisible();
   });
 });

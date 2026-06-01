@@ -3374,12 +3374,16 @@ function RoomHistoryPanel({ snapshot, currentPlayerId }: { snapshot: RoomSnapsho
       <ol className="game-history-list">
         {history.map((entry) => {
           const playerResult = entry.playerResults.find((result) => result.playerId === currentPlayerId);
+          const isAssassinationEnd = entry.endReason === 'assassination_hit' || entry.endReason === 'assassination_miss';
           return (
-            <li key={entry.gameNumber}>
-              <div>
+            <li key={entry.gameNumber} className={isAssassinationEnd ? 'assassination-endgame' : undefined}>
+              <div className="game-history-title-row">
                 <strong>{t('Game')} {entry.gameNumber}: {formatAllegiance(entry.winner, language)} {t('won')}</strong>
-                <small>{t(getEndReasonLabel(entry.endReason))}</small>
               </div>
+              <p className={`game-history-end-reason ${isAssassinationEnd ? 'prominent' : ''}`}>
+                <span>{isAssassinationEnd ? t('Assassination endgame') : t('End reason')}</span>
+                {t(getEndReasonLabel(entry.endReason))}
+              </p>
               {playerResult && (
                 <p>
                   {t('You were')} {formatAllegiance(playerResult.allegiance, language)}

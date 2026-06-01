@@ -192,6 +192,8 @@ const zh: Record<string, string> = {
   'Game': '第',
   'won': '获胜',
   'You were': '你当时是',
+  'Assassination endgame': '刺杀终局',
+  'End reason': '结束原因',
   'Assassin found Merlin': '刺客找到了梅林',
   'Assassin missed Merlin': '刺客刺错了梅林',
   'Three failed quests': '三轮任务失败',
