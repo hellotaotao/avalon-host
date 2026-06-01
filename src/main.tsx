@@ -2451,37 +2451,117 @@ function formatProfileUpdates(profiles?: Record<string, AiPlayerBeliefProfile>):
 }
 
 function buildStructuredAuditExport(demo: DemoState) {
+  const idFor = createCompactPlayerIdLookup(demo.players);
+  const dictionary = createCompactStringDictionary();
+  const compactEvidence = (items: AiPlayerBeliefProfile['evidenceForEvil']) => items.map((item) => ({
+    e: item.event,
+    r: dictionary.codeFor(item.reason),
+  }));
+  const compactUncertainty = (items: string[]) => items.map(dictionary.codeFor);
+
   return {
-    schema: 'avalon-demo-audit.v1',
+    schema: 'avalon-demo-audit.compact.v1',
+    exportMode: 'compact_canonical',
+    note: 'Compact JSON is the machine-auditable source of truth. Markdown above is the human-readable rendering. Verbose belief profile snapshots are intentionally not exported by default.',
     formalActionPolicy: {
       evidenceMode: 'formal_actions_only',
       speechPolicy: 'ignored_by_design',
       principle: 'AI does not analyze what people said; it analyzes what they paid a game-state cost to do.',
       note: 'Markdown is a rendering of this structured event/audit state; do not infer private reasoning after the fact.',
     },
+    players: Object.fromEntries(demo.players.map((player) => [idFor(player.id), {
+      sourceId: player.id,
+      name: player.displayName,
+      seat: player.seatIndex + 1,
+      controller: player.controller,
+      role: player.role,
+      alignment: roleAllegiance(player.role),
+    }])),
     missionResults: demo.missionResults.map((result) => ({
-      ...result,
-      selectedTeamNames: result.selectedTeamIds?.map((id) => playerName(demo, id)) ?? [],
+      r: result.roundIndex + 1,
+      outcome: result.outcome,
+      successCount: result.successCount,
+      failCount: result.failCount,
+      requiredFails: result.requiredFails,
+      team: result.selectedTeamIds?.map(idFor) ?? [],
     })),
     beliefProfiles: demo.players
       .filter((player) => player.controller === 'ai' && player.memory?.beliefProfiles)
-      .map((player) => ({
-        actorId: player.id,
-        actorName: player.displayName,
-        profiles: Object.values(player.memory?.beliefProfiles ?? {}),
-      })),
+      .reduce<Record<string, Record<string, {
+        pEvil: number;
+        suspicionScore: number;
+        evidenceForEvil: Array<{ e: string; r: string }>;
+        evidenceAgainstEvil: Array<{ e: string; r: string }>;
+        uncertainty: string[];
+      }>>>((profilesByActor, player) => {
+        profilesByActor[idFor(player.id)] = Object.fromEntries(
+          Object.values(player.memory?.beliefProfiles ?? {}).map((profile) => [idFor(profile.playerId), {
+            pEvil: profile.pEvil,
+            suspicionScore: profile.suspicionScore,
+            evidenceForEvil: compactEvidence(profile.evidenceForEvil),
+            evidenceAgainstEvil: compactEvidence(profile.evidenceAgainstEvil),
+            uncertainty: compactUncertainty(profile.uncertainty),
+          }]),
+        );
+        return profilesByActor;
+      }, {}),
     auditEvents: demo.aiHistory
       .filter((entry) => entry.audit)
       .map((entry) => ({
         id: entry.id,
-        roundIndex: entry.roundIndex,
-        actorId: entry.actorId,
-        actorName: entry.actorName,
+        r: entry.roundIndex + 1,
+        actor: entry.actorId ? idFor(entry.actorId) : undefined,
         kind: entry.kind,
-        text: entry.text,
-        audit: entry.audit,
+        summary: dictionary.codeFor(entry.text),
+        audit: entry.audit ? compactAuditForExport(entry.audit, idFor, dictionary) : undefined,
       })),
+    reasonDictionary: dictionary.entries(),
   };
+}
+
+function createCompactPlayerIdLookup(players: DemoPlayer[]) {
+  const ids = new Map(players.map((player) => [player.id, `p${player.seatIndex + 1}`]));
+  return (playerId: string) => ids.get(playerId) ?? playerId;
+}
+
+function createCompactStringDictionary() {
+  const byText = new Map<string, string>();
+  const byCode: Record<string, string> = {};
+  return {
+    codeFor(text: string) {
+      const existing = byText.get(text);
+      if (existing) return existing;
+      const code = `r${byText.size + 1}`;
+      byText.set(text, code);
+      byCode[code] = text;
+      return code;
+    },
+    entries() {
+      return byCode;
+    },
+  };
+}
+
+function compactAuditForExport(
+  audit: AiBeliefAudit,
+  idFor: (playerId: string) => string,
+  dictionary: ReturnType<typeof createCompactStringDictionary>,
+) {
+  return {
+    eventType: audit.eventType,
+    evidenceMode: audit.evidenceMode,
+    speechPolicy: audit.speechPolicy,
+    informationUsed: audit.informationUsed.map(dictionary.codeFor),
+    deductions: audit.deductions.map(dictionary.codeFor),
+    beliefBefore: compactNumericPlayerMap(audit.beliefBefore, idFor),
+    beliefAfter: compactNumericPlayerMap(audit.beliefAfter, idFor),
+    beliefDeltas: compactNumericPlayerMap(audit.beliefDeltas, idFor),
+    uncertainty: audit.uncertainty.map(dictionary.codeFor),
+  };
+}
+
+function compactNumericPlayerMap(values: Record<string, number>, idFor: (playerId: string) => string): Record<string, number> {
+  return Object.fromEntries(Object.entries(values).map(([playerId, value]) => [idFor(playerId), value]));
 }
 
 function createAgentMemory(playerIds: string[], selfId: string): AgentMemory {

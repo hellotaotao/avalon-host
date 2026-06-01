@@ -138,12 +138,17 @@ test('finished AI demo can copy a complete analysis log', async ({ page }) => {
   expect(copied).toContain('- Belief before:');
   expect(copied).toContain('- Belief after:');
   expect(copied).toContain('## Structured audit events');
-  expect(copied).toContain('"schema": "avalon-demo-audit.v1"');
+  expect(copied).toContain('"schema": "avalon-demo-audit.compact.v1"');
+  expect(copied).toContain('"exportMode": "compact_canonical"');
   expect(copied).toContain('"formalActionPolicy"');
   expect(copied).toContain('"beliefProfiles"');
   expect(copied).toContain('"pEvil"');
+  expect(copied).toContain('"reasonDictionary"');
+  expect(copied).not.toContain('"beliefProfilesBefore"');
+  expect(copied).not.toContain('"beliefProfilesAfter"');
   expect(copied).toContain('"speechPolicy": "ignored_by_design"');
   expect(copied).toContain('"evidenceMode": "formal_actions_only"');
+  expect(copied.length).toBeLessThan(360000);
 });
 
 test('demo phone result styling does not enlarge cards into neighbors', async ({ page }) => {
