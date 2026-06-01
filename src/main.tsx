@@ -3380,7 +3380,11 @@ function GameResultModal({
 function RoomHistoryPanel({ snapshot, currentPlayerId }: { snapshot: RoomSnapshot; currentPlayerId?: string }) {
   const { t, language } = useI18n();
   const history = snapshot.room.settings.gameHistory ?? [];
-  if (history.length === 0) return null;
+  const isBetweenGames = snapshot.room.status === 'lobby'
+    || snapshot.room.status === 'setup'
+    || snapshot.room.status === 'finished'
+    || snapshot.room.settings.missionState?.phase === 'finished';
+  if (history.length === 0 || !isBetweenGames) return null;
   return (
     <section className="panel room-history-panel" aria-labelledby="room-history-title">
       <div className="panel-header">
