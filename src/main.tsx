@@ -3765,6 +3765,37 @@ function getRoomPlayerNames(players: RoomPlayer[], playerIds: string[] = []): st
   });
 }
 
+function sortRoomPlayersBySeat(players: RoomPlayer[]): RoomPlayer[] {
+  return [...players].sort((left, right) => left.seatIndex - right.seatIndex);
+}
+
+function getPendingAiMissionActor(missionState: MissionState, players: RoomPlayer[]): RoomPlayer | undefined {
+  const orderedPlayers = sortRoomPlayersBySeat(players);
+  if (missionState.phase === 'proposal') {
+    const leader = orderedPlayers.find((player) => player.id === missionState.leaderPlayerId);
+    return leader?.isAi ? leader : undefined;
+  }
+  if (missionState.phase === 'vote') {
+    return orderedPlayers.find((player) => player.isAi && !missionState.teamVotes?.[player.id]);
+  }
+  if (missionState.phase === 'mission') {
+    const submittedPlayerIds = missionState.missionCardSubmissions?.submittedPlayerIds ?? [];
+    return orderedPlayers.find((player) => player.isAi && missionState.selectedTeamIds.includes(player.id) && !submittedPlayerIds.includes(player.id));
+  }
+  if (missionState.phase === 'assassin') {
+    return orderedPlayers.find((player) => player.isAi && player.role === 'Assassin');
+  }
+  return undefined;
+}
+
+function formatPendingAiMissionAction(missionState: MissionState, player: RoomPlayer, t: (text: string) => string): string {
+  if (missionState.phase === 'proposal') return `${player.displayName} ${t('is choosing the crew.')}`;
+  if (missionState.phase === 'vote') return `${player.displayName} ${t('is thinking about the vote.')}`;
+  if (missionState.phase === 'mission') return `${player.displayName} ${t('is preparing a mission card.')}`;
+  if (missionState.phase === 'assassin') return `${player.displayName} ${t('is choosing Merlin.')}`;
+  return '';
+}
+
 function MissionPanel({
   missionState,
   players,
@@ -3804,6 +3835,11 @@ function MissionPanel({
   const selectedTeamNames = missionState.selectedTeamIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id);
   const visibleTeamIds = missionState.phase === 'proposal' && selectedTeamIds.length > 0 ? selectedTeamIds : missionState.selectedTeamIds;
   const visibleTeamNames = visibleTeamIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id);
+  const orderedPlayers = sortRoomPlayersBySeat(players);
+  const votedPlayers = missionState.phase === 'vote' ? orderedPlayers.filter((player) => Boolean(missionState.teamVotes?.[player.id])) : [];
+  const waitingVotePlayers = missionState.phase === 'vote' ? orderedPlayers.filter((player) => !missionState.teamVotes?.[player.id]) : [];
+  const pendingAiActor = getPendingAiMissionActor(missionState, players);
+  const pendingAiAction = pendingAiActor ? formatPendingAiMissionAction(missionState, pendingAiActor, t) : '';
   const roleSummary = summarizePublicRoleLineup(players);
   const phaseLabel = t(getMissionPhaseLabel(missionState));
   const currentFailThreshold = getMissionFailThreshold(players.length, missionState.roundIndex);
@@ -3942,6 +3978,51 @@ function MissionPanel({
           <div className="progress-rune" aria-label={t('Vote progress')}>
             <span style={{ width: `${Math.round((submittedVoteCount / players.length) * 100)}%` }} />
             <strong>{submittedVoteCount}/{players.length} {t('phones voted')}</strong>
+          </div>
+        )}
+        {missionState.phase === 'vote' && (
+          <div className="vote-submission-card" aria-label={t('Team vote players')}>
+            <div className="vote-submission-group">
+              <div className="vote-submission-heading">
+                <span>{t('Voted')}</span>
+                <strong>{votedPlayers.length}</strong>
+              </div>
+              {votedPlayers.length > 0 ? (
+                <div className="vote-player-chips">
+                  {votedPlayers.map((player) => (
+                    <span key={player.id} className={player.isAi ? 'ai' : ''}>
+                      {player.displayName}
+                      {player.isAi && <em>{t('AI')}</em>}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p>{t('No one yet')}</p>
+              )}
+            </div>
+            <div className="vote-submission-group waiting">
+              <div className="vote-submission-heading">
+                <span>{t('Waiting to vote')}</span>
+                <strong>{waitingVotePlayers.length}</strong>
+              </div>
+              <div className="vote-player-chips">
+                {waitingVotePlayers.map((player) => (
+                  <span key={player.id} className={player.isAi ? 'ai waiting-ai' : ''}>
+                    {player.displayName}
+                    {player.isAi && <em>{t('AI')}</em>}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        {pendingAiAction && (
+          <div className="ai-action-status" aria-live="polite">
+            <span aria-hidden="true" />
+            <div>
+              <strong>{t('AI in progress')}</strong>
+              <p>{pendingAiAction}</p>
+            </div>
           </div>
         )}
         {missionState.phase === 'mission' && (

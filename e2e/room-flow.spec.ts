@@ -288,6 +288,8 @@ test('create-room teaches AI fill and a two-human five-seat room progresses with
     await expect(guest.getByText(/Table Quest/i)).toBeVisible();
 
     await proposeTeam(players, players);
+    await expect(host.getByText('Waiting to vote')).toBeVisible();
+    await expect(host.locator('.vote-submission-card')).toBeVisible();
     await submitVotes(players, () => 'approve');
     await expect(host.getByText('Mission card', { exact: true }).first().or(host.getByText('Mission', { exact: true }).first())).toBeVisible();
     await submitMissionCards(players, () => 'success');
