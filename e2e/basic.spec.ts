@@ -2,8 +2,11 @@ import { test, expect } from '@playwright/test';
 
 test('home page shows Veiled Roundtable entry actions', async ({ page }) => {
   await page.goto('/');
+  await expect(page.getByRole('heading', { name: /Join a room/i })).toBeVisible();
+  await expect(page.getByLabel(/5-digit room code/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Join Room$/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /Host the round/i })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Join by rune/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Join by rune/i })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: /AI fill-ins for short tables/i })).toBeVisible();
   await expect(page.getByAltText(/Phones around a candlelit Avalon round table/i)).toBeVisible();
 });

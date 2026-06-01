@@ -607,20 +607,36 @@ function App() {
       {screen === 'home' && (
         <section className="entry">
           <section className="path-section" aria-labelledby="choose-path-title">
-            <div>
+            <div className="home-join-copy">
               <p className="eyebrow">{t('Start here')}</p>
-              <h2 id="choose-path-title">{t('Create / Join / Demo')}</h2>
+              <h2 id="choose-path-title">{t('Join a room')}</h2>
+              <p>{t('Enter the host code here and join the table directly.')}</p>
             </div>
-            <div className="path-grid" aria-label={t('Primary actions')}>
-              <button type="button" className="path-card primary-path" onClick={() => navigateEntry('create')}>
+            <form className="home-join-form" onSubmit={handleJoinRoom}>
+              <label>
+                {t('5-digit room code')}
+                <input
+                  value={joinCode}
+                  onChange={(event) => setJoinCode(normalizeRoomCode(event.target.value))}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={5}
+                  placeholder="12345"
+                  autoComplete="one-time-code"
+                />
+              </label>
+              <label>
+                {t('Your nickname')}
+                <input value={joinName} onChange={(event) => setJoinName(event.target.value)} maxLength={24} />
+              </label>
+              <button type="submit" className="primary" disabled={busy}>{busy ? t('Joining...') : t('Join Room')}</button>
+            </form>
+            <div className="secondary-entry-actions" aria-label={t('Other options')}>
+              <button type="button" className="path-card secondary-path" onClick={() => navigateEntry('create')}>
                 <span>{t('Host the round')}</span>
                 <small>{t('Create a live 5-digit code for the table.')}</small>
               </button>
-              <button type="button" className="path-card" onClick={() => navigateEntry('join')}>
-                <span>{t('Join by rune')}</span>
-                <small>{t("Enter a host's 5-digit code and ready up.")}</small>
-              </button>
-              <button type="button" className="path-card demo-button" onClick={() => navigateEntry('demo')}>
+              <button type="button" className="path-card secondary-path demo-button" onClick={() => navigateEntry('demo')}>
                 <span>{t('Try demo')}</span>
                 <small>{t('Simulate 5-10 phone screens on this laptop.')}</small>
               </button>

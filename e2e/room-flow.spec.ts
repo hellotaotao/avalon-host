@@ -403,7 +403,8 @@ async function createLobbyRoom(browser: Browser, playerCount: number, configureH
 
   for (let index = 1; index < players.length; index += 1) {
     const player = players[index];
-    await player.page.goto(`/?devSession=${runId}-p${index + 1}&step=join&code=${roomCode}`);
+    await player.page.goto(`/?devSession=${runId}-p${index + 1}&code=${roomCode}`);
+    await player.page.getByLabel(/5-digit room code/i).fill(roomCode);
     await player.page.getByLabel(/Your nickname/i).fill(player.name);
     await player.page.getByRole('button', { name: /^Join Room$/i }).click();
     await expect(player.page.getByRole('heading', { name: /Current Room/i })).toBeVisible();
