@@ -41,6 +41,19 @@ test('live UI creates a room, joins five players, starts, proposes, votes, and s
   });
 });
 
+test('live player area drops the simulated phone frame on mobile screens', async ({ browser }) => {
+  await withStartedRoom(browser, 5, async ({ players }) => {
+    const phone = players[0].page.locator('.live-player-phone');
+
+    await expect(phone).toHaveCSS('border-top-width', '9px');
+    await players[0].page.setViewportSize({ width: 390, height: 844 });
+    await expect(phone).toHaveCSS('border-top-width', '0px');
+    await expect(phone).toHaveCSS('border-radius', '0px');
+    await expect(phone).toHaveCSS('box-shadow', 'none');
+    await expect(phone.locator('.phone-action')).toBeVisible();
+  });
+});
+
 test('live quest track shows the official fail threshold for every quest', async ({ browser }) => {
   await withStartedRoom(browser, 7, async ({ host }) => {
     const questTrack = host.locator('.mission-quest-track');

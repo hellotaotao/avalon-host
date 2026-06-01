@@ -2059,6 +2059,20 @@ label {
     gap: 0.7rem;
   }
 
+  .live-player-phone {
+    gap: 0.65rem;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  .live-player-phone.leader-phone:not(.mission-success-phone):not(.mission-fail-phone):not(.phone-winner):not(.phone-loser) {
+    box-shadow: none;
+  }
+
   .room-code {
     gap: 0.5rem;
     padding: 0.7rem;
