@@ -11,6 +11,61 @@ test('home page shows Veiled Roundtable entry actions', async ({ page }) => {
   await expect(page.getByAltText(/Phones around a candlelit Avalon round table/i)).toBeVisible();
 });
 
+test('home join layout stays compact on phone and full width on desktop', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+
+  const code = page.getByLabel(/5-digit room code/i);
+  const nickname = page.getByLabel(/Your nickname/i);
+  const joinButton = page.getByRole('button', { name: /^Join Room$/i });
+
+  const phoneMetrics = await page.evaluate(() => {
+    const codeInput = document.querySelector<HTMLInputElement>('.join-code-field input');
+    const nicknameInput = document.querySelector<HTMLInputElement>('.join-name-field input');
+    const join = document.querySelector<HTMLButtonElement>('.home-join-form button');
+    if (!codeInput || !nicknameInput || !join) throw new Error('Missing home join controls');
+    const codeRect = codeInput.getBoundingClientRect();
+    const nicknameRect = nicknameInput.getBoundingClientRect();
+    const joinRect = join.getBoundingClientRect();
+    const codeStyle = getComputedStyle(codeInput);
+    return {
+      codeTop: Math.round(codeRect.top),
+      nicknameTop: Math.round(nicknameRect.top),
+      joinTop: Math.round(joinRect.top),
+      codeRight: Math.round(codeRect.right),
+      joinLeft: Math.round(joinRect.left),
+      codeHeight: Math.round(codeRect.height),
+      codeFont: codeStyle.fontFamily,
+    };
+  });
+
+  await expect(code).toBeVisible();
+  await expect(nickname).toBeVisible();
+  await expect(joinButton).toBeVisible();
+  expect(Math.abs(phoneMetrics.codeTop - phoneMetrics.joinTop)).toBeLessThanOrEqual(2);
+  expect(phoneMetrics.nicknameTop).toBeGreaterThan(phoneMetrics.codeTop + 48);
+  expect(phoneMetrics.joinLeft).toBeGreaterThan(phoneMetrics.codeRight);
+  expect(phoneMetrics.codeHeight).toBeGreaterThanOrEqual(56);
+  expect(phoneMetrics.codeFont).toContain('Georgia');
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  const desktopMetrics = await page.evaluate(() => {
+    const form = document.querySelector<HTMLElement>('.home-join-form');
+    const actions = document.querySelector<HTMLElement>('.secondary-entry-actions');
+    if (!form || !actions) throw new Error('Missing home entry layout');
+    const formRect = form.getBoundingClientRect();
+    const actionRect = actions.getBoundingClientRect();
+    return {
+      leftGap: Math.abs(Math.round(actionRect.left - formRect.left)),
+      widthRatio: actionRect.width / formRect.width,
+    };
+  });
+
+  expect(desktopMetrics.leftGap).toBeLessThanOrEqual(2);
+  expect(desktopMetrics.widthRatio).toBeGreaterThan(0.98);
+});
+
 test('create room allows one human with AI fill seats', async ({ page }) => {
   await page.goto('/?devSession=one-human-create');
   await page.getByRole('button', { name: /Host the round/i }).click();

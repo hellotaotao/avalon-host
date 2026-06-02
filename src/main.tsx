@@ -709,7 +709,7 @@ function App() {
               <p>{t('Enter the host code here and join the table directly.')}</p>
             </div>
             <form className="home-join-form" onSubmit={handleJoinRoom}>
-              <label>
+              <label className="join-code-field">
                 {t('5-digit room code')}
                 <input
                   value={joinCode}
@@ -721,7 +721,7 @@ function App() {
                   autoComplete="one-time-code"
                 />
               </label>
-              <label>
+              <label className="join-name-field">
                 {t('Your nickname')}
                 <input value={joinName} onChange={(event) => setJoinName(event.target.value)} maxLength={24} />
               </label>
