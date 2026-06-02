@@ -3858,6 +3858,11 @@ function RoomView({
   const nextGameReadyPlayerIds = snapshot.room.settings.nextGameReadyPlayerIds ?? [];
   const currentPlayerReadyForNextGame = Boolean(currentPlayer && nextGameReadyPlayerIds.includes(currentPlayer.id));
   const startValidationCopy = formatStartValidation(startValidation, t);
+  const visibleMissionTeamIds = missionState?.phase === 'proposal'
+    && currentPlayer?.id === missionState.leaderPlayerId
+    && liveSelectedTeamIds.length > 0
+    ? liveSelectedTeamIds
+    : missionState?.selectedTeamIds ?? [];
 
   useEffect(() => {
     setAssassinationTargetId('');
@@ -3932,6 +3937,13 @@ function RoomView({
 
       <RoomHistoryPanel snapshot={snapshot} currentPlayerId={currentPlayer?.id} />
 
+      {started && missionState && (
+        <>
+          <TableMakeupSection players={snapshot.players} />
+          <QuestTrackSection missionState={missionState} players={snapshot.players} visibleTeamIds={visibleMissionTeamIds} />
+        </>
+      )}
+
       <section className={`panel private-room-panel ${started ? 'started' : 'lobby'}`}>
         <div className="panel-header">
           <h2>{started ? t('Your Player Area') : t('Current Room')}</h2>
@@ -3968,26 +3980,37 @@ function RoomView({
         )}
 
         {started && currentPlayer && privateInfo && (
-          <PlayerPhone
-            mode="live"
-            player={currentPlayer}
-            privateInfo={privateInfo}
-            leaderId={missionState?.leaderPlayerId}
-            selectedTeamIds={missionState?.selectedTeamIds}
-            winner={missionState?.winner}
-            result={missionState?.phase === 'finished' ? missionState.missionResults.at(-1) : undefined}
-            action={getLivePhoneAction({
-              player: currentPlayer,
-              players: snapshot.players,
-              missionState,
-              currentTeamSize,
-              draftSelectedTeamIds: liveSelectedTeamIds,
-              onToggleTeamPlayer: toggleLiveTeamPlayer,
-              onProposeTeam: () => onProposeMissionTeam(liveSelectedTeamIds),
-              onVote: onSubmitTeamVote,
-              onPlayMissionCard: onSubmitMissionCard,
-            })}
-          />
+          <>
+            {missionState && (
+              <CurrentExpeditionPanel
+                missionState={missionState}
+                players={snapshot.players}
+                currentTeamSize={currentTeamSize}
+                visibleTeamIds={visibleMissionTeamIds}
+                aiAutomation={aiAutomation}
+              />
+            )}
+            <PlayerPhone
+              mode="live"
+              player={currentPlayer}
+              privateInfo={privateInfo}
+              leaderId={missionState?.leaderPlayerId}
+              selectedTeamIds={missionState?.selectedTeamIds}
+              winner={missionState?.winner}
+              result={missionState?.phase === 'finished' ? missionState.missionResults.at(-1) : undefined}
+              action={getLivePhoneAction({
+                player: currentPlayer,
+                players: snapshot.players,
+                missionState,
+                currentTeamSize,
+                draftSelectedTeamIds: liveSelectedTeamIds,
+                onToggleTeamPlayer: toggleLiveTeamPlayer,
+                onProposeTeam: () => onProposeMissionTeam(liveSelectedTeamIds),
+                onVote: onSubmitTeamVote,
+                onPlayMissionCard: onSubmitMissionCard,
+              })}
+            />
+          </>
         )}
       </section>
 
@@ -4035,7 +4058,6 @@ function RoomView({
           currentPlayer={currentPlayer}
           currentTeamSize={currentTeamSize}
           onMissionStateChange={onMissionStateChange}
-          aiAutomation={aiAutomation}
         />
       )}
     </section>
@@ -4160,22 +4182,236 @@ function formatPendingAiMissionAction(missionState: MissionState, player: RoomPl
   return '';
 }
 
+function TableMakeupSection({ players }: { players: RoomPlayer[] }) {
+  const { t, language } = useI18n();
+  const roleSummary = summarizePublicRoleLineup(players);
+  return (
+    <section className="mission-board-section table-makeup started-table-makeup" aria-label={t('Game setup and table makeup')}>
+      <div className="mission-section-heading">
+        <h3>{t('Table Makeup')}</h3>
+        <span>{players.length} {t('players')}</span>
+      </div>
+      <div className="role-lineup" aria-label={t('Public role lineup')}>
+        <span>{t('Roles in play')}</span>
+        <div>
+          {roleSummary.map((item) => (
+            <span key={item.role} className={`role-chip ${roleAllegiance(item.role)}`}>
+              {formatRoleCount(item.role, item.count, language)}
+            </span>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function QuestTrackSection({
+  missionState,
+  players,
+  visibleTeamIds,
+}: {
+  missionState: MissionState;
+  players: RoomPlayer[];
+  visibleTeamIds: string[];
+}) {
+  const { t, language } = useI18n();
+  return (
+    <section className="mission-board-section mission-progress-sticky" aria-label={t('Quest track')}>
+      <div className="mission-section-heading">
+        <h3>{t('Quest Track')}</h3>
+        <span>{t('First side to three wins')}</span>
+      </div>
+      <div className="quest-track mission-quest-track">
+        {[0, 1, 2, 3, 4].map((roundIndex) => {
+          const result = missionState.missionResults.find((item) => item.roundIndex === roundIndex);
+          const state = result?.outcome ?? (roundIndex === missionState.roundIndex && missionState.phase !== 'finished' ? 'current' : 'pending');
+          const questTeamNames = getRoomPlayerNames(players, result?.selectedTeamIds ?? (state === 'current' ? visibleTeamIds : []));
+          const failThreshold = result?.requiredFails ?? getMissionFailThreshold(players.length, roundIndex);
+          return (
+            <div key={roundIndex} className={`quest-card ${state}`}>
+              <span>{formatQuestLabel(roundIndex, language)}</span>
+              <strong>{getTeamSize(players.length, roundIndex)}</strong>
+              <small className="quest-fail-threshold">{formatFailThresholdRule(failThreshold, language)}</small>
+              <small>
+                {result
+                  ? result.outcome === 'success' ? t('Good won') : t('Evil won')
+                  : roundIndex === missionState.roundIndex && missionState.phase !== 'finished' ? t('Current') : t('Pending')}
+              </small>
+              {questTeamNames.length > 0 && (
+                <div className="quest-team-chips" aria-label={t('Quest team')}>
+                  {questTeamNames.map((name) => <span key={name}>{name}</span>)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function CurrentExpeditionPanel({
+  missionState,
+  players,
+  currentTeamSize,
+  visibleTeamIds,
+  aiAutomation,
+}: {
+  missionState: MissionState;
+  players: RoomPlayer[];
+  currentTeamSize: number;
+  visibleTeamIds: string[];
+  aiAutomation?: RoomAiAutomationState;
+}) {
+  const { t, language } = useI18n();
+  const submittedVoteCount = Object.keys(missionState.teamVotes ?? {}).length;
+  const submittedCardCount = missionState.missionCardSubmissions?.submittedPlayerIds.length ?? 0;
+  const leaderName = players.find((player) => player.id === missionState.leaderPlayerId)?.displayName ?? t('Unknown captain');
+  const visibleTeamNames = visibleTeamIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id);
+  const orderedPlayers = sortRoomPlayersBySeat(players);
+  const votedPlayers = missionState.phase === 'vote' ? orderedPlayers.filter((player) => Boolean(missionState.teamVotes?.[player.id])) : [];
+  const waitingVotePlayers = missionState.phase === 'vote' ? orderedPlayers.filter((player) => !missionState.teamVotes?.[player.id]) : [];
+  const pendingAiActor = getPendingAiMissionActor(missionState, players);
+  const pendingAiAction = pendingAiActor ? formatPendingAiMissionAction(missionState, pendingAiActor, t) : '';
+  const phaseLabel = t(getMissionPhaseLabel(missionState));
+  const currentFailThreshold = getMissionFailThreshold(players.length, missionState.roundIndex);
+  const phaseCopy = getMissionPhaseCopy({
+    missionState,
+    currentTeamSize,
+    submittedVoteCount,
+    submittedCardCount,
+    playerCount: players.length,
+    t,
+  });
+
+  return (
+    <section className="mission-board-section expedition-board" aria-label={t('Current expedition')}>
+      <div className="mission-section-heading">
+        <h3>{t('Current Expedition')}</h3>
+        <span>{t('Quest')} {missionState.roundIndex + 1} {t('of 5')}</span>
+      </div>
+      <div className="expedition-summary">
+        <div className="captain-card">
+          <span>{t('Captain')}</span>
+          <strong>{leaderName}</strong>
+        </div>
+        <div className="expedition-state-card">
+          <span>{phaseLabel}</span>
+          <p>{phaseCopy}</p>
+          <small>{formatFailThresholdRule(currentFailThreshold, language)}</small>
+        </div>
+      </div>
+      <div className="team-roster">
+        <div className="team-roster-heading">
+          <span>{missionState.phase === 'proposal' ? t('Proposed crew') : t('Locked crew')}</span>
+          <strong>{visibleTeamNames.length}/{currentTeamSize}</strong>
+        </div>
+        {visibleTeamNames.length > 0 ? (
+          <div className="member-chips">
+            {visibleTeamNames.map((name) => <span key={name}>{name}</span>)}
+          </div>
+        ) : (
+          <p className="empty-team">{t('No crew is on the board yet.')}</p>
+        )}
+      </div>
+      {missionState.phase === 'vote' && (
+        <div className="progress-rune" aria-label={t('Vote progress')}>
+          <span style={{ width: `${Math.round((submittedVoteCount / players.length) * 100)}%` }} />
+          <strong>{submittedVoteCount}/{players.length} {t('phones voted')}</strong>
+        </div>
+      )}
+      {missionState.phase === 'vote' && (
+        <div className="vote-submission-card" aria-label={t('Team vote players')}>
+          <div className="vote-submission-group">
+            <div className="vote-submission-heading">
+              <span>{t('Voted')}</span>
+              <strong>{votedPlayers.length}</strong>
+            </div>
+            {votedPlayers.length > 0 ? (
+              <div className="vote-player-chips">
+                {votedPlayers.map((player) => (
+                  <span key={player.id} className={player.isAi ? 'ai' : ''}>
+                    {player.displayName}
+                    {player.isAi && <em>{t('AI')}</em>}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p>{t('No one yet')}</p>
+            )}
+          </div>
+          <div className="vote-submission-group waiting">
+            <div className="vote-submission-heading">
+              <span>{t('Waiting to vote')}</span>
+              <strong>{waitingVotePlayers.length}</strong>
+            </div>
+            <div className="vote-player-chips">
+              {waitingVotePlayers.map((player) => (
+                <span key={player.id} className={player.isAi ? 'ai waiting-ai' : ''}>
+                  {player.displayName}
+                  {player.isAi && <em>{t('AI')}</em>}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {pendingAiAction && (
+        <div className="ai-action-status" aria-live="polite">
+          <span aria-hidden="true" />
+          <div>
+            <strong>{t('AI in progress')}</strong>
+            <p>{pendingAiAction}</p>
+            {aiAutomation && (
+              <small>
+                {aiAutomation.waitingForRetry
+                  ? `${t('AI action stalled. Retrying automatically.')} ${t('Attempt')} ${Math.max(1, aiAutomation.attempt + 1)}`
+                  : aiAutomation.attempt > 1
+                    ? `${t('Retrying AI action.')} ${t('Attempt')} ${aiAutomation.attempt}`
+                    : t('Usually completes in a few seconds.')}
+              </small>
+            )}
+          </div>
+        </div>
+      )}
+      {missionState.phase === 'mission' && (
+        <div className="progress-rune" aria-label={t('Mission card progress')}>
+          <span style={{ width: `${Math.round((submittedCardCount / Math.max(1, missionState.selectedTeamIds.length)) * 100)}%` }} />
+          <strong>{submittedCardCount}/{missionState.selectedTeamIds.length} {t('cards submitted')}</strong>
+        </div>
+      )}
+      {missionState.teamVote && missionState.phase !== 'vote' && missionState.phase !== 'mission' && (
+        <p className="hint">
+          {t('Last proposal')}: {missionState.teamVote.approveCount} {t('approve')}, {missionState.teamVote.rejectCount} {t('reject')}.
+          {' '}
+          {t('Crew')} {t(missionState.teamVote.passed ? 'approved' : 'rejected')}.
+        </p>
+      )}
+      {missionState.phase === 'finished' && missionState.assassination && (
+        <p className="hint">
+          {t('Assassin target')}: {players.find((player) => player.id === missionState.assassination?.targetPlayerId)?.displayName ?? t('Unknown')}.
+          {' '}
+          {missionState.assassination.hitMerlin ? t('Merlin was found.') : t('Merlin survived.')}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function MissionPanel({
   missionState,
   players,
   currentPlayer,
   currentTeamSize,
   onMissionStateChange,
-  aiAutomation,
 }: {
   missionState?: MissionState;
   players: RoomPlayer[];
   currentPlayer?: RoomPlayer;
   currentTeamSize: number;
   onMissionStateChange: (missionState: MissionState) => void;
-  aiAutomation?: RoomAiAutomationState;
 }) {
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [approveCount, setApproveCount] = useState('');
   const [rejectCount, setRejectCount] = useState('');
@@ -4184,8 +4420,6 @@ function MissionPanel({
   const [flowError, setFlowError] = useState('');
   const canEdit = Boolean(currentPlayer?.isHost && missionState && missionState.phase !== 'assassin' && missionState.phase !== 'finished');
   const playerIds = players.map((player) => player.id);
-  const submittedVoteCount = Object.keys(missionState?.teamVotes ?? {}).length;
-  const submittedCardCount = missionState?.missionCardSubmissions?.submittedPlayerIds.length ?? 0;
 
   useEffect(() => {
     setSelectedTeamIds(missionState?.selectedTeamIds ?? []);
@@ -4197,26 +4431,8 @@ function MissionPanel({
 
   if (!missionState) return null;
 
-  const leaderName = players.find((player) => player.id === missionState.leaderPlayerId)?.displayName ?? t('Unknown captain');
   const selectedTeamNames = missionState.selectedTeamIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id);
-  const visibleTeamIds = missionState.phase === 'proposal' && selectedTeamIds.length > 0 ? selectedTeamIds : missionState.selectedTeamIds;
-  const visibleTeamNames = visibleTeamIds.map((id) => players.find((player) => player.id === id)?.displayName ?? id);
-  const orderedPlayers = sortRoomPlayersBySeat(players);
-  const votedPlayers = missionState.phase === 'vote' ? orderedPlayers.filter((player) => Boolean(missionState.teamVotes?.[player.id])) : [];
-  const waitingVotePlayers = missionState.phase === 'vote' ? orderedPlayers.filter((player) => !missionState.teamVotes?.[player.id]) : [];
-  const pendingAiActor = getPendingAiMissionActor(missionState, players);
-  const pendingAiAction = pendingAiActor ? formatPendingAiMissionAction(missionState, pendingAiActor, t) : '';
-  const roleSummary = summarizePublicRoleLineup(players);
   const phaseLabel = t(getMissionPhaseLabel(missionState));
-  const currentFailThreshold = getMissionFailThreshold(players.length, missionState.roundIndex);
-  const phaseCopy = getMissionPhaseCopy({
-    missionState,
-    currentTeamSize,
-    submittedVoteCount,
-    submittedCardCount,
-    playerCount: players.length,
-    t,
-  });
 
   function togglePlayer(playerId: string) {
     setSelectedTeamIds((current) => (current.includes(playerId) ? current.filter((id) => id !== playerId) : [...current, playerId]));
@@ -4261,166 +4477,6 @@ function MissionPanel({
         </div>
         <span className={`phase-badge phase-${missionState.phase}`}>{phaseLabel}</span>
       </div>
-
-      <section className="mission-board-section table-makeup" aria-label={t('Game setup and table makeup')}>
-        <div className="mission-section-heading">
-          <h3>{t('Table Makeup')}</h3>
-          <span>{players.length} {t('players')}</span>
-        </div>
-        <div className="role-lineup" aria-label={t('Public role lineup')}>
-          <span>{t('Roles in play')}</span>
-          <div>
-            {roleSummary.map((item) => (
-              <span key={item.role} className={`role-chip ${roleAllegiance(item.role)}`}>
-                {formatRoleCount(item.role, item.count, language)}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="mission-board-section mission-progress-sticky" aria-label={t('Quest track')}>
-        <div className="mission-section-heading">
-          <h3>{t('Quest Track')}</h3>
-          <span>{t('First side to three wins')}</span>
-        </div>
-        <div className="quest-track mission-quest-track">
-          {[0, 1, 2, 3, 4].map((roundIndex) => {
-            const result = missionState.missionResults.find((item) => item.roundIndex === roundIndex);
-            const state = result?.outcome ?? (roundIndex === missionState.roundIndex && missionState.phase !== 'finished' ? 'current' : 'pending');
-            const questTeamNames = getRoomPlayerNames(players, result?.selectedTeamIds ?? (state === 'current' ? visibleTeamIds : []));
-            const failThreshold = result?.requiredFails ?? getMissionFailThreshold(players.length, roundIndex);
-            return (
-              <div key={roundIndex} className={`quest-card ${state}`}>
-                <span>{formatQuestLabel(roundIndex, language)}</span>
-                <strong>{getTeamSize(players.length, roundIndex)}</strong>
-                <small className="quest-fail-threshold">{formatFailThresholdRule(failThreshold, language)}</small>
-                <small>
-                  {result
-                    ? result.outcome === 'success' ? t('Good won') : t('Evil won')
-                    : roundIndex === missionState.roundIndex && missionState.phase !== 'finished' ? t('Current') : t('Pending')}
-                </small>
-                {questTeamNames.length > 0 && (
-                  <div className="quest-team-chips" aria-label={t('Quest team')}>
-                    {questTeamNames.map((name) => <span key={name}>{name}</span>)}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="mission-board-section expedition-board" aria-label={t('Current expedition')}>
-        <div className="mission-section-heading">
-          <h3>{t('Current Expedition')}</h3>
-          <span>{t('Quest')} {missionState.roundIndex + 1} {t('of 5')}</span>
-        </div>
-        <div className="expedition-summary">
-          <div className="captain-card">
-            <span>{t('Captain')}</span>
-            <strong>{leaderName}</strong>
-          </div>
-          <div className="expedition-state-card">
-            <span>{phaseLabel}</span>
-            <p>{phaseCopy}</p>
-            <small>{formatFailThresholdRule(currentFailThreshold, language)}</small>
-          </div>
-        </div>
-        <div className="team-roster">
-          <div className="team-roster-heading">
-            <span>{missionState.phase === 'proposal' ? t('Proposed crew') : t('Locked crew')}</span>
-            <strong>{visibleTeamNames.length}/{currentTeamSize}</strong>
-          </div>
-          {visibleTeamNames.length > 0 ? (
-            <div className="member-chips">
-              {visibleTeamNames.map((name) => <span key={name}>{name}</span>)}
-            </div>
-          ) : (
-            <p className="empty-team">{t('No crew is on the board yet.')}</p>
-          )}
-        </div>
-        {missionState.phase === 'vote' && (
-          <div className="progress-rune" aria-label={t('Vote progress')}>
-            <span style={{ width: `${Math.round((submittedVoteCount / players.length) * 100)}%` }} />
-            <strong>{submittedVoteCount}/{players.length} {t('phones voted')}</strong>
-          </div>
-        )}
-        {missionState.phase === 'vote' && (
-          <div className="vote-submission-card" aria-label={t('Team vote players')}>
-            <div className="vote-submission-group">
-              <div className="vote-submission-heading">
-                <span>{t('Voted')}</span>
-                <strong>{votedPlayers.length}</strong>
-              </div>
-              {votedPlayers.length > 0 ? (
-                <div className="vote-player-chips">
-                  {votedPlayers.map((player) => (
-                    <span key={player.id} className={player.isAi ? 'ai' : ''}>
-                      {player.displayName}
-                      {player.isAi && <em>{t('AI')}</em>}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p>{t('No one yet')}</p>
-              )}
-            </div>
-            <div className="vote-submission-group waiting">
-              <div className="vote-submission-heading">
-                <span>{t('Waiting to vote')}</span>
-                <strong>{waitingVotePlayers.length}</strong>
-              </div>
-              <div className="vote-player-chips">
-                {waitingVotePlayers.map((player) => (
-                  <span key={player.id} className={player.isAi ? 'ai waiting-ai' : ''}>
-                    {player.displayName}
-                    {player.isAi && <em>{t('AI')}</em>}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-        {pendingAiAction && (
-          <div className="ai-action-status" aria-live="polite">
-            <span aria-hidden="true" />
-            <div>
-              <strong>{t('AI in progress')}</strong>
-              <p>{pendingAiAction}</p>
-              {aiAutomation && (
-                <small>
-                  {aiAutomation.waitingForRetry
-                    ? `${t('AI action stalled. Retrying automatically.')} ${t('Attempt')} ${Math.max(1, aiAutomation.attempt + 1)}`
-                    : aiAutomation.attempt > 1
-                      ? `${t('Retrying AI action.')} ${t('Attempt')} ${aiAutomation.attempt}`
-                      : t('Usually completes in a few seconds.')}
-                </small>
-              )}
-            </div>
-          </div>
-        )}
-        {missionState.phase === 'mission' && (
-          <div className="progress-rune" aria-label={t('Mission card progress')}>
-            <span style={{ width: `${Math.round((submittedCardCount / Math.max(1, missionState.selectedTeamIds.length)) * 100)}%` }} />
-            <strong>{submittedCardCount}/{missionState.selectedTeamIds.length} {t('cards submitted')}</strong>
-          </div>
-        )}
-        {missionState.teamVote && missionState.phase !== 'vote' && missionState.phase !== 'mission' && (
-          <p className="hint">
-            {t('Last proposal')}: {missionState.teamVote.approveCount} {t('approve')}, {missionState.teamVote.rejectCount} {t('reject')}.
-            {' '}
-            {t('Crew')} {t(missionState.teamVote.passed ? 'approved' : 'rejected')}.
-          </p>
-        )}
-        {missionState.phase === 'finished' && missionState.assassination && (
-          <p className="hint">
-            {t('Assassin target')}: {players.find((player) => player.id === missionState.assassination?.targetPlayerId)?.displayName ?? t('Unknown')}.
-            {' '}
-            {missionState.assassination.hitMerlin ? t('Merlin was found.') : t('Merlin survived.')}
-          </p>
-        )}
-      </section>
 
       {flowError && <p className="notice">{flowError}</p>}
 

@@ -21,6 +21,10 @@ test('live UI creates a room, joins five players, starts, proposes, votes, and s
       await expect(page.getByText(/Table Quest/i)).toBeVisible();
     }
 
+    await expect(host.locator('.started-table-makeup')).toBeVisible();
+    await expect(host.locator('.mission-progress-sticky')).toBeVisible();
+    await expect(host.locator('.private-room-panel .expedition-board')).toBeVisible();
+    await expect(host.locator('.mission-panel .expedition-board')).toHaveCount(0);
     await expect(host.locator('.mission-panel-heading .phase-badge')).toHaveCSS('border-top-width', '0px');
     await expect(host.locator('.mission-panel-heading .phase-badge')).toHaveCSS('box-shadow', 'none');
     await expect(host.locator('.mission-section-heading').filter({ hasText: 'First side to three wins' }).locator('span')).toHaveCSS('border-top-width', '0px');
@@ -50,6 +54,7 @@ test('live player area drops the simulated phone frame on mobile screens', async
     await expect(phone).toHaveCSS('border-top-width', '0px');
     await expect(phone).toHaveCSS('border-radius', '0px');
     await expect(phone).toHaveCSS('box-shadow', 'none');
+    await expect(players[0].page.locator('.private-room-panel .expedition-board')).toBeVisible();
     await expect(phone.locator('.phone-action')).toBeVisible();
   });
 });

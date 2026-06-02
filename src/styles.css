@@ -2945,10 +2945,25 @@ label {
 }
 
 .table-makeup {
+  grid-column: 1 / -1;
   gap: 0.65rem;
   background:
     linear-gradient(135deg, rgba(255, 240, 189, 0.17), rgba(48, 71, 45, 0.18)),
     rgba(24, 20, 16, 0.28);
+}
+
+.private-room-panel .expedition-board {
+  margin: 0.1rem 0 0;
+}
+
+.started-table-makeup,
+.mission-progress-sticky {
+  color: #fff7de;
+}
+
+.started-table-makeup h3,
+.mission-progress-sticky h3 {
+  color: #ffe39b;
 }
 
 .captain-card,
@@ -3070,8 +3085,10 @@ label {
 }
 
 .mission-progress-sticky {
+  grid-column: 1 / -1;
+  align-self: start;
   position: sticky;
-  top: max(0.5rem, env(safe-area-inset-top));
+  top: max(0rem, env(safe-area-inset-top));
   z-index: 10;
   border-color: rgba(211, 177, 95, 0.76);
   background:
