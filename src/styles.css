@@ -2162,6 +2162,35 @@ label {
   line-height: 1.05;
 }
 
+.host-authority-disclosure {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.host-authority-disclosure > summary {
+  justify-content: space-between;
+  cursor: pointer;
+  list-style: none;
+}
+
+.host-authority-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.host-authority-disclosure .disclosure-hint {
+  color: #7a4a24;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.host-authority-disclosure .disclosure-hint::after {
+  content: " +";
+}
+
+.host-authority-disclosure[open] .disclosure-hint::after {
+  content: " –";
+}
+
 .host-action-group {
   display: grid;
   gap: 0.35rem;
@@ -3112,7 +3141,25 @@ label {
   position: sticky;
   top: max(0rem, env(safe-area-inset-top));
   z-index: 10;
+  gap: 0.28rem;
+  padding: 0.5rem 0.6rem;
   border-color: rgba(211, 177, 95, 0.76);
+  transition: margin 0.24s ease, border-radius 0.24s ease, padding 0.24s ease, border-color 0.24s ease;
+}
+
+/* Once it pins to the top edge, break out of the centered shell so it spans the
+   full viewport width — the negative margins animate the expansion. */
+.mission-progress-sticky.stuck {
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  padding-left: max(0.85rem, env(safe-area-inset-left));
+  padding-right: max(0.85rem, env(safe-area-inset-right));
+  border-radius: 0;
+  border-left-width: 0;
+  border-right-width: 0;
+}
+
+.mission-progress-sticky {
   background:
     linear-gradient(145deg, rgba(48, 36, 28, 0.97), rgba(72, 49, 28, 0.96)),
     url("/art/parchment-rune-texture.jpg"),
@@ -3123,19 +3170,22 @@ label {
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(255, 230, 157, 0.14);
 }
 
+.mission-progress-sticky .mission-section-heading {
+  gap: 0.25rem;
+}
+
 .mission-quest-track .quest-card {
   position: relative;
   display: grid;
-  min-height: 92px;
   align-content: center;
-  gap: 0.25rem;
+  gap: 0.15rem;
   border: 1px solid #ac7b38;
   border-radius: 8px;
   background:
     linear-gradient(180deg, rgba(255, 246, 223, 0.95), rgba(228, 196, 132, 0.96)),
     #fff0bd;
   color: #321a0c;
-  padding: 0.65rem 0.45rem;
+  padding: 0.45rem 0.3rem;
   text-align: center;
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.24), 0 4px 0 rgba(34, 16, 8, 0.18);
 }
@@ -3152,7 +3202,7 @@ label {
 
 .mission-quest-track .quest-card strong {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 2rem;
+  font-size: 1.6rem;
   line-height: 1;
 }
 
@@ -3225,10 +3275,10 @@ label {
   border: 1px solid rgba(106, 75, 48, 0.35);
   border-radius: 999px;
   background: rgba(255, 248, 221, 0.55);
-  padding: 0.12rem 0.28rem;
+  padding: 0.06rem 0.24rem;
   color: #4b2e18;
-  font-size: 0.68rem;
-  line-height: 1.1;
+  font-size: 0.62rem;
+  line-height: 1.05;
 }
 
 .expedition-summary {
@@ -3675,12 +3725,11 @@ label {
   }
 
   .mission-quest-track .quest-card {
-    min-height: 76px;
-    padding: 0.5rem 0.25rem;
+    padding: 0.4rem 0.22rem;
   }
 
   .mission-quest-track .quest-card strong {
-    font-size: 1.45rem;
+    font-size: 1.3rem;
   }
 
   .mission-quest-track .quest-card small {

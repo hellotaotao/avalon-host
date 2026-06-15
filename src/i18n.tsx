@@ -270,6 +270,7 @@ const zh: Record<string, string> = {
   'Only the host can dissolve the room.': '只有房主可以解散房间。',
   'Room owner': '房主',
   'Host permissions': '房主管理',
+  'Tap to manage': '点击管理',
   'You are the room host on this device.': '你当前是这个房间的房主，拥有以下管理权限。',
   'Start this game': '开始本局',
   'Current game': '当前本局',

@@ -80,10 +80,33 @@ import './styles.css';
 
 type Screen = EntryScreen | 'room';
 
-const ROOM_AI_INITIAL_DELAY_MS = 250;
 const ROOM_AI_RETRY_DELAY_MS = 3500;
 const ROOM_AI_REQUEST_TIMEOUT_MS = 10000;
 const ROOM_AI_RETRY_TICK_MS = 1000;
+
+// AI players pause before acting so a human host can follow the table instead of
+// seeing every bot resolve at once. Each action type gets its own "thinking"
+// base, plus jitter so several AIs in a row stagger naturally rather than firing
+// in lockstep.
+const ROOM_AI_THINK_BASE_MS: Record<RoomAiAction['type'], number> = {
+  proposeTeam: 1000,
+  submitTeamVote: 650,
+  submitMissionCard: 800,
+  submitAssassination: 1400,
+};
+const ROOM_AI_THINK_JITTER_MS = 600;
+
+function getRoomAiThinkingDelay(action: RoomAiAction): number {
+  const base = ROOM_AI_THINK_BASE_MS[action.type] ?? 800;
+  return base + Math.round(Math.random() * ROOM_AI_THINK_JITTER_MS);
+}
+
+function clearAiThinkTimer(ref: { current: number | undefined }) {
+  if (ref.current !== undefined) {
+    window.clearTimeout(ref.current);
+    ref.current = undefined;
+  }
+}
 
 type RoomAiAutomationState = {
   actionKey: string;
@@ -129,6 +152,7 @@ function App() {
   const hostNameInputRef = useRef<HTMLInputElement>(null);
   const aiActionAttemptRef = useRef<RoomAiAttemptState | undefined>(undefined);
   const aiActionInFlightRef = useRef('');
+  const aiThinkTimerRef = useRef<number | undefined>(undefined);
   const previousRoomStatusRef = useRef(snapshot?.room.status);
   const [restorableSnapshot, setRestorableSnapshot] = useState<RoomSnapshot>();
   const [restorablePlayerId, setRestorablePlayerId] = useState('');
@@ -233,6 +257,7 @@ function App() {
 
   useEffect(() => {
     if (!snapshot || isDemoMode || !currentPlayer?.isHost) {
+      clearAiThinkTimer(aiThinkTimerRef);
       aiActionAttemptRef.current = undefined;
       aiActionInFlightRef.current = '';
       setAiAutomation((current) => current ? undefined : current);
@@ -240,6 +265,7 @@ function App() {
     }
     const action = getNextRoomAiAction(snapshot);
     if (!action) {
+      clearAiThinkTimer(aiThinkTimerRef);
       aiActionAttemptRef.current = undefined;
       aiActionInFlightRef.current = '';
       setAiAutomation((current) => current ? undefined : current);
@@ -250,13 +276,21 @@ function App() {
     const now = Date.now();
     let attemptState = aiActionAttemptRef.current;
     if (attemptState?.actionKey !== actionKey) {
+      const thinkingDelay = getRoomAiThinkingDelay(action);
       attemptState = {
         actionKey,
         attempt: 0,
-        nextAttemptAt: now + ROOM_AI_INITIAL_DELAY_MS,
+        nextAttemptAt: now + thinkingDelay,
       };
       aiActionAttemptRef.current = attemptState;
       setAiAutomation({ actionKey, attempt: 0, waitingForRetry: false });
+      // Wake the loop exactly when the thinking pause ends, so the delay is
+      // honored precisely instead of waiting for the next 1s retry tick.
+      clearAiThinkTimer(aiThinkTimerRef);
+      aiThinkTimerRef.current = window.setTimeout(() => {
+        aiThinkTimerRef.current = undefined;
+        setAiRetryTick((current) => current + 1);
+      }, thinkingDelay);
     }
 
     if (aiActionInFlightRef.current === actionKey || now < attemptState.nextAttemptAt) return;
@@ -3507,7 +3541,7 @@ function formatRoleCount(role: Role, count: number, language: ReturnType<typeof 
 }
 
 function formatQuestLabel(roundIndex: number, language: ReturnType<typeof useI18n>['language']): string {
-  return language === 'zh' ? `第${roundIndex + 1}轮任务` : `Q${roundIndex + 1}`;
+  return language === 'zh' ? `第${roundIndex + 1}轮` : `Q${roundIndex + 1}`;
 }
 
 function formatFailThresholdLabel(threshold: number, language: ReturnType<typeof useI18n>['language']): string {
@@ -4090,12 +4124,8 @@ function HostAuthorityPanel({
 
   const manageablePlayers = players.filter((player) => !player.isHost && !player.isAi && !isDemoMode);
 
-  return (
-    <section className="panel host-authority-panel" aria-labelledby="host-authority-title">
-      <div className="host-authority-heading">
-        <h2 id="host-authority-title">{t('Host permissions')}</h2>
-      </div>
-
+  const controls = (
+    <>
       {started && (
         <div className="host-action-group host-start-action">
           <div>
@@ -4130,6 +4160,29 @@ function HostAuthorityPanel({
         </div>
         <button type="button" className="small-danger dissolve-room" onClick={onDissolveRoom} disabled={busy}>{t('Dissolve Room')}</button>
       </div>
+    </>
+  );
+
+  // In-game the host panel is rarely needed, so collapse it to keep the play
+  // surface short. In the lobby it stays open — space is not tight there.
+  if (started) {
+    return (
+      <details className="panel host-authority-panel host-authority-disclosure">
+        <summary className="host-authority-heading">
+          <h2 id="host-authority-title">{t('Host permissions')}</h2>
+          <span className="disclosure-hint">{t('Tap to manage')}</span>
+        </summary>
+        {controls}
+      </details>
+    );
+  }
+
+  return (
+    <section className="panel host-authority-panel" aria-labelledby="host-authority-title">
+      <div className="host-authority-heading">
+        <h2 id="host-authority-title">{t('Host permissions')}</h2>
+      </div>
+      {controls}
     </section>
   );
 }
@@ -4215,8 +4268,33 @@ function QuestTrackSection({
   visibleTeamIds: string[];
 }) {
   const { t, language } = useI18n();
+  const sectionRef = useRef<HTMLElement>(null);
+  const [stuck, setStuck] = useState(false);
+
+  useEffect(() => {
+    const node = sectionRef.current;
+    if (!node) return undefined;
+    const stickyTop = parseFloat(window.getComputedStyle(node).top) || 0;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      setStuck(node.getBoundingClientRect().top <= stickyTop + 0.5);
+    };
+    const onScroll = () => {
+      if (!frame) frame = window.requestAnimationFrame(measure);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    measure();
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, []);
+
   return (
-    <section className="mission-board-section mission-progress-sticky" aria-label={t('Quest track')}>
+    <section ref={sectionRef} className={`mission-board-section mission-progress-sticky ${stuck ? 'stuck' : ''}`} aria-label={t('Quest track')}>
       <div className="mission-section-heading">
         <h3>{t('Quest Track')}</h3>
         <span>{t('First side to three wins')}</span>
@@ -4226,12 +4304,10 @@ function QuestTrackSection({
           const result = missionState.missionResults.find((item) => item.roundIndex === roundIndex);
           const state = result?.outcome ?? (roundIndex === missionState.roundIndex && missionState.phase !== 'finished' ? 'current' : 'pending');
           const questTeamNames = getRoomPlayerNames(players, result?.selectedTeamIds ?? (state === 'current' ? visibleTeamIds : []));
-          const failThreshold = result?.requiredFails ?? getMissionFailThreshold(players.length, roundIndex);
           return (
             <div key={roundIndex} className={`quest-card ${state}`}>
               <span>{formatQuestLabel(roundIndex, language)}</span>
               <strong>{getTeamSize(players.length, roundIndex)}</strong>
-              <small className="quest-fail-threshold">{formatFailThresholdRule(failThreshold, language)}</small>
               <small>
                 {result
                   ? result.outcome === 'success' ? t('Good won') : t('Evil won')
