@@ -73,6 +73,7 @@ import {
   isRoomStaleForExit,
   type RoomPlayer,
   type RoomSnapshot,
+  type RoomGamePlayerResult,
 } from './services/roomService';
 import { getSessionStorageKeys, isDevSessionActive } from './sessionKeys';
 import { I18nProvider, formatAllegiance, formatHint, formatRole, formatRoleDescription, useI18n, type Language } from './i18n';
@@ -3717,6 +3718,7 @@ function GameResultModal({
   alreadyReady,
   busy,
   onReadyForNextGame,
+  onDismiss,
 }: {
   missionState: MissionState;
   currentPlayer: RoomPlayer;
@@ -3726,13 +3728,23 @@ function GameResultModal({
   alreadyReady: boolean;
   busy: boolean;
   onReadyForNextGame: () => void;
+  onDismiss: () => void;
 }) {
   const { t, language } = useI18n();
   const winner = missionState.winner;
   const won = playerResult?.won ?? Boolean(winner && currentPlayer.role && roleAllegiance(currentPlayer.role) === winner);
   return (
-    <div className="result-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="game-result-title">
+    <div
+      className="result-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="game-result-title"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onDismiss();
+      }}
+    >
       <section className={`result-modal ${won ? 'won' : 'lost'}`}>
+        <button type="button" className="result-modal-close" onClick={onDismiss} aria-label={t('Close result summary')}>×</button>
         <p className="eyebrow">{won ? t('Victory') : t('Defeat')}</p>
         <h2 id="game-result-title">{won ? t('You won this game') : t('You lost this game')}</h2>
         <div className="result-summary-grid">
@@ -3754,9 +3766,14 @@ function GameResultModal({
             ? `${t('Waiting for everyone to play again.')} ${readyCount}/${playerCount}`
             : t('Stay in this room and ready up for another game.')}
         </p>
-        <button type="button" className="primary" disabled={busy || alreadyReady} onClick={onReadyForNextGame}>
-          {alreadyReady ? t('Ready for next game') : t('Play Again')}
-        </button>
+        <div className="result-modal-actions">
+          <button type="button" className="primary" disabled={busy || alreadyReady} onClick={onReadyForNextGame}>
+            {alreadyReady ? t('Ready for next game') : t('Play Again')}
+          </button>
+          <button type="button" className="result-modal-secondary" onClick={onDismiss}>
+            {t('View full results')}
+          </button>
+        </div>
       </section>
     </div>
   );
@@ -3879,6 +3896,7 @@ function RoomView({
   const missionState = started && snapshot.players.length >= 5 ? ensureMissionState(snapshot.room.settings.missionState, playerIds) : undefined;
   const currentTeamSize = missionState ? getTeamSize(snapshot.players.length, missionState.roundIndex) : 0;
   const [assassinationTargetId, setAssassinationTargetId] = useState('');
+  const [resultModalDismissed, setResultModalDismissed] = useState(false);
   const readyCount = snapshot.players.filter((player) => player.isReady).length;
   const allPlayersReady = readyCount === snapshot.players.length;
   const isFinished = snapshot.room.status === 'finished' || missionState?.phase === 'finished';
@@ -3903,6 +3921,10 @@ function RoomView({
   }, [missionState?.phase, currentPlayer?.id]);
 
   useEffect(() => {
+    if (missionState?.phase !== 'finished') setResultModalDismissed(false);
+  }, [missionState?.phase]);
+
+  useEffect(() => {
     if (missionState?.phase !== 'proposal') setLiveSelectedTeamIds([]);
   }, [missionState?.phase, missionState?.roundIndex, missionState?.proposalIndex]);
 
@@ -3917,7 +3939,7 @@ function RoomView({
       currentPlayer?.isHost ? 'has-host-authority' : 'guest-room-grid',
     ].join(' ')}>
       {showGameStartNotice && <GameStartOverlay />}
-      {missionState?.phase === 'finished' && currentPlayer && (
+      {missionState?.phase === 'finished' && currentPlayer && !resultModalDismissed && (
         <GameResultModal
           missionState={missionState}
           currentPlayer={currentPlayer}
@@ -3927,6 +3949,7 @@ function RoomView({
           alreadyReady={currentPlayerReadyForNextGame}
           busy={busy}
           onReadyForNextGame={onReadyForNextGame}
+          onDismiss={() => setResultModalDismissed(true)}
         />
       )}
       {missionState?.phase === 'assassin' && (
@@ -3971,6 +3994,10 @@ function RoomView({
 
       <RoomHistoryPanel snapshot={snapshot} currentPlayerId={currentPlayer?.id} />
 
+      {isFinished && latestGame && (
+        <FinalRevealPanel playerResults={latestGame.playerResults} currentPlayerId={currentPlayer?.id} />
+      )}
+
       {started && missionState && (
         <>
           <TableMakeupSection players={snapshot.players} />
@@ -4013,9 +4040,25 @@ function RoomView({
           </>
         )}
 
+        {started && isFinished && currentPlayer && (
+          <div className="finished-actions">
+            <button
+              type="button"
+              className="primary"
+              disabled={busy || currentPlayerReadyForNextGame}
+              onClick={onReadyForNextGame}
+            >
+              {currentPlayerReadyForNextGame ? t('Ready for next game') : t('Play Again')}
+            </button>
+            {currentPlayerReadyForNextGame && (
+              <p className="hint">{t('Waiting for everyone to play again.')} {nextGameReadyPlayerIds.length}/{snapshot.players.length}</p>
+            )}
+          </div>
+        )}
+
         {started && currentPlayer && privateInfo && (
           <>
-            {missionState && (
+            {missionState && !isFinished && (
               <CurrentExpeditionPanel
                 missionState={missionState}
                 players={snapshot.players}
@@ -4233,6 +4276,34 @@ function formatPendingAiMissionAction(missionState: MissionState, player: RoomPl
   if (missionState.phase === 'mission') return `${player.displayName} ${t('is preparing a mission card.')}`;
   if (missionState.phase === 'assassin') return `${player.displayName} ${t('is choosing Merlin.')}`;
   return '';
+}
+
+function FinalRevealPanel({ playerResults, currentPlayerId }: { playerResults: RoomGamePlayerResult[]; currentPlayerId?: string }) {
+  const { t, language } = useI18n();
+  if (playerResults.length === 0) return null;
+  return (
+    <section className="mission-board-section final-reveal" aria-label={t('Final role reveal')}>
+      <div className="mission-section-heading">
+        <h3>{t('Who was who')}</h3>
+        <span>{playerResults.length} {t('players')}</span>
+      </div>
+      <p className="final-reveal-caption">{t('Every player\'s secret role this game.')}</p>
+      <ul className="final-reveal-list">
+        {playerResults.map((result) => (
+          <li key={result.playerId} className={`final-reveal-row ${result.allegiance} ${result.playerId === currentPlayerId ? 'me' : ''}`}>
+            <div className="final-reveal-identity">
+              <strong>{result.displayName}</strong>
+              {result.playerId === currentPlayerId && <em className="final-reveal-you">{t('You')}</em>}
+            </div>
+            <div className="final-reveal-role">
+              <span className={`role-chip ${result.allegiance}`}>{formatRole(result.role, language)}</span>
+              <small>{formatAllegiance(result.allegiance, language)}</small>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 function TableMakeupSection({ players }: { players: RoomPlayer[] }) {
