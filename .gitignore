@@ -8,6 +8,7 @@ vite.config.d.ts
 .env.*
 !.env.example
 .codex-*.md
+.claude/
 .vercel
 
 # Playwright artifacts
