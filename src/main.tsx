@@ -140,6 +140,7 @@ function App() {
   const [currentPlayerId, setCurrentPlayerId] = useState(localStorage.getItem(getSessionStorageKeys().currentPlayerId) ?? '');
   const [deviceToken] = useState(() => getOrCreateDeviceToken());
   const [hostName, setHostName] = useState('');
+  const [hostNameTouched, setHostNameTouched] = useState(false);
   const [humanPlayerCount, setHumanPlayerCount] = useState(5);
   const [plannedPlayerCount, setPlannedPlayerCount] = useState<(typeof playerCountRange)[number]>(5);
   const [hostRoleOptions, setHostRoleOptions] = useState<RolePresetOptions>(() => getRecommendedRolePresetOptions(5));
@@ -160,6 +161,7 @@ function App() {
 
   const currentPlayer = snapshot?.players.find((player) => player.id === currentPlayerId);
   const isHostNameMissing = !hostName.trim();
+  const showHostNameError = hostNameTouched && isHostNameMissing;
   const isDemoMode = Boolean(snapshot?.room.settings.createdInDemoMode);
   const startValidation = snapshot ? getStartValidation(snapshot.players, snapshot.room.settings) : undefined;
   const privateInfo = useMemo(
@@ -348,6 +350,7 @@ function App() {
   async function handleCreateRoom(event: React.FormEvent) {
     event.preventDefault();
     if (isHostNameMissing) {
+      setHostNameTouched(true);
       hostNameInputRef.current?.focus();
       setMessage('');
       return;
@@ -813,20 +816,21 @@ function App() {
         <section className="panel">
           <button type="button" className="back-button" onClick={() => navigateEntry('home')}>{t('Back')}</button>
           <h2>{t('Create Room')}</h2>
-          <form className="stack" onSubmit={handleCreateRoom}>
-            <label className={`field-label ${isHostNameMissing ? 'field-label-error' : ''}`}>
+          <form className="stack" onSubmit={handleCreateRoom} noValidate>
+            <label className={`field-label ${showHostNameError ? 'field-label-error' : ''}`}>
               <span>{t('Your nickname')}</span>
               <input
                 ref={hostNameInputRef}
                 value={hostName}
                 onChange={(event) => setHostName(event.target.value)}
+                onBlur={() => setHostNameTouched(true)}
                 maxLength={24}
                 autoFocus
                 required
-                aria-invalid={isHostNameMissing}
-                aria-describedby={isHostNameMissing ? 'host-name-error' : undefined}
+                aria-invalid={showHostNameError}
+                aria-describedby={showHostNameError ? 'host-name-error' : undefined}
               />
-              {isHostNameMissing && <small id="host-name-error" className="field-error">{t('Enter a nickname before creating the room.')}</small>}
+              {showHostNameError && <small id="host-name-error" className="field-error">{t('Enter a nickname before creating the room.')}</small>}
             </label>
             <CreateRoomRoleConfig
               humanPlayerCount={humanPlayerCount}
@@ -836,7 +840,7 @@ function App() {
               onPlayerCountChange={handlePlannedPlayerCount}
               onToggleRole={handleHostRoleToggle}
             />
-            <button type="submit" className="primary" disabled={busy || isHostNameMissing} title={isHostNameMissing ? t('Enter a nickname before creating the room.') : undefined}>
+            <button type="submit" className="primary" disabled={busy}>
               {busy ? t('Creating...') : t('Create Room')}
             </button>
           </form>
@@ -918,6 +922,7 @@ function App() {
     }
     setScreen(nextScreen);
     setMessage('');
+    if (nextScreen === 'create') setHostNameTouched(false);
   }
 }
 
@@ -1242,7 +1247,7 @@ function DemoSimulator() {
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || body?.ok !== true) {
-        throw new Error(typeof body?.error?.message === 'string' ? body.error.message : 'AI provider unavailable; using heuristic fallback.');
+        throw new Error(typeof body?.error?.message === 'string' ? body.error.message : t('AI provider unavailable.'));
       }
       setDemo((current) => applyAiDecision(current, actor.id, body.decision));
       setAiStatus(`${t('AI move from')} ${body.provider ?? 'AI'}${body.model ? ` (${body.model})` : ''}.`);

@@ -59,11 +59,10 @@ test('live player area drops the simulated phone frame on mobile screens', async
   });
 });
 
-test('live quest track shows the official fail threshold for every quest', async ({ browser }) => {
+test('live expedition panel shows the official fail threshold for the current quest', async ({ browser }) => {
   await withStartedRoom(browser, 7, async ({ host }) => {
-    const questTrack = host.locator('.mission-quest-track');
-    await expect(questTrack.getByText(/1 Fail card to fail/i).first()).toBeVisible();
-    await expect(questTrack.getByText(/2 Fail cards to fail/i)).toBeVisible();
+    const expeditionState = host.locator('.private-room-panel .expedition-state-card');
+    await expect(expeditionState.getByText(/1 Fail card to fail/i)).toBeVisible();
   });
 });
 
@@ -87,7 +86,7 @@ test('five-player Good reaches three successful quests, Assassin hits Merlin, an
     await expect(merlin.page.locator('.result-modal-backdrop')).toHaveCSS('z-index', '100');
 
     for (const player of players.slice(0, -1)) {
-      await player.page.getByRole('button', { name: /^Play Again$/i }).click();
+      await player.page.getByRole('dialog').getByRole('button', { name: /^Play Again$/i }).click();
     }
 
     await expect(host.getByRole('heading', { name: /Room history/i })).toBeVisible();
@@ -98,7 +97,7 @@ test('five-player Good reaches three successful quests, Assassin hits Merlin, an
     expect(assassinationReasonFontSize).toBeGreaterThan(17);
     await expect(merlin.page.getByText(/You were Good · Merlin · Defeat/i)).toBeVisible();
 
-    await players.at(-1)!.page.getByRole('button', { name: /^Play Again$/i }).click();
+    await players.at(-1)!.page.getByRole('dialog').getByRole('button', { name: /^Play Again$/i }).click();
     for (const player of players) {
       await expect(player.page.getByRole('heading', { name: /Game Progress/i })).toBeVisible();
     }
@@ -134,8 +133,11 @@ test('five-player Evil wins through three failed quests', async ({ browser }) =>
       await playApprovedMission(players, team, (player) => (player === saboteur ? 'fail' : 'success'));
     }
 
-    await expect(host.getByText(/Evil wins after three failed quests/i)).toBeVisible();
-    await expect(host.getByText(/Quest Failed/i).first()).toBeVisible();
+    const resultDialog = host.getByRole('dialog');
+    await expect(resultDialog.getByRole('heading', { name: /You (won|lost) this game/i })).toBeVisible();
+    await resultDialog.getByRole('button', { name: /Close result summary/i }).click();
+    await expect(host.getByText(/Game 1: Evil won/i)).toBeVisible();
+    await expect(host.getByText(/Three failed quests/i).first()).toBeVisible();
   });
 });
 

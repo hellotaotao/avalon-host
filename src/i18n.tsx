@@ -399,6 +399,7 @@ const zh: Record<string, string> = {
   'is thinking…': '正在思考…',
   'AI move from': 'AI 决策来自',
   'AI failed.': 'AI 失败。',
+  'AI provider unavailable.': 'AI 服务暂不可用。',
   'Used local heuristic fallback.': '已使用本地启发式兜底。',
   'Demo roundtable': '演示圆桌',
   'Choose the table size and manual seats. AI fills the rest; set manual seats to 0 to watch a full AI table play itself.': '选择圆桌人数和手动座位数，剩下的位置由 AI 自动补齐。手动座位为 0 时，可以直接观战一整桌 AI 对局。',
