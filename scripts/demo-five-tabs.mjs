@@ -57,10 +57,8 @@ async function main() {
     if (await readyButton.isVisible()) await readyButton.click();
   }
 
-  await expect(host.getByRole('button', { name: /^Start Game$/i })).toBeEnabled();
   await host.bringToFront();
-  await pauseForViewing('All five players are ready. Starting game.');
-  await host.getByRole('button', { name: /^Start Game$/i }).click();
+  await pauseForViewing('All five players are ready. The game starts automatically.');
 
   for (const player of players) {
     await expect(player.page.getByText(/Table Quest/i)).toBeVisible();

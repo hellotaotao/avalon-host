@@ -250,12 +250,14 @@ test('private reveal swipe area shows each side only while held or dragged', asy
 
 test('create-room shows default roles and custom role config affects assignment', async ({ browser }) => {
   const room = await createLobbyRoom(browser, 7, async (host) => {
-    await expect(host.getByLabel(/Table size/i).getByRole('button', { name: '7' })).toHaveClass(/selected/);
+    await expect(host.getByLabel(/Player count/i).getByRole('button', { name: '7' })).toHaveClass(/selected/);
     await expect(host.getByText('Good roles')).toBeVisible();
     await expect(host.locator('.create-role-list').filter({ hasText: 'Good roles' }).getByText('Percival')).toBeVisible();
     await expect(host.locator('.create-role-list').filter({ hasText: 'Evil roles' }).getByText('Morgana')).toBeVisible();
     await expect(host.locator('.create-role-list').filter({ hasText: 'Evil roles' }).getByText('Mordred')).toBeVisible();
 
+    await expect(host.getByRole('button', { name: /^Morgana/i })).toBeHidden();
+    await host.locator('.create-advanced > summary').click();
     await host.getByRole('button', { name: /^Morgana/i }).click();
     await expect(host.locator('.create-role-list').filter({ hasText: 'Evil roles' }).getByText('Morgana')).toHaveCount(0);
   });
@@ -280,57 +282,104 @@ test('create-room shows default roles and custom role config affects assignment'
   }
 });
 
-test('create-room teaches AI fill and a two-human five-seat room progresses with AI actions', async ({ browser }) => {
+test('AI room created from advanced settings plays normally for guests joining by plain link and by code', async ({ browser }) => {
   const context = await browser.newContext();
   const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const host = await context.newPage();
-  const guest = await context.newPage();
+  const linkGuest = await context.newPage();
+  const codeGuest = await context.newPage();
   const players: PlayerSession[] = [
     { index: 0, name: 'E2E Human 1', page: host },
-    { index: 1, name: 'E2E Human 2', page: guest },
+    { index: 1, name: 'E2E Human 2', page: linkGuest },
+    { index: 2, name: 'E2E Human 3', page: codeGuest },
   ];
 
   try {
     await host.goto(`/?devSession=${runId}-p1`);
     await host.getByRole('button', { name: /Host the round/i }).click();
-    await expect(host.getByLabel(/Human player count/i).getByRole('button', { name: '5' })).toHaveClass(/selected/);
-    await expect(host.getByLabel(/Table size/i).getByRole('button', { name: '5' })).toHaveClass(/selected/);
     await host.getByLabel(/Your nickname/i).fill(players[0].name);
-    await host.getByLabel(/Human player count/i).getByRole('button', { name: '2' }).click();
-    await expect(host.getByText(/2 humans \+ 3 AI/i)).toBeVisible();
-    await expect(host.getByText(/AI will fill empty seats and auto-ready\/vote\/play mission cards/i)).toBeVisible();
+    await host.locator('.create-advanced > summary').click();
+    await host.getByLabel(/Fill empty seats with AI/i).check();
+    await host.getByLabel(/Human player count/i).getByRole('button', { name: '3', exact: true }).click();
+    await expect(host.getByText(/3 humans \+ 2 AI/i)).toBeVisible();
     await host.getByRole('button', { name: /^Create Room$/i }).click();
 
     await expect(host.getByRole('heading', { name: /Current Room/i })).toBeVisible();
     await expect(host.locator('.players li').filter({ hasText: /AI Seat 1/i }).getByText(/^AI$/)).toBeVisible();
     const roomCode = (await host.locator('.room-code-copy strong').innerText()).trim();
+    const joinLink = await host.getByLabel(/Join link/i).inputValue();
+    expect(new URL(joinLink).pathname).toBe('/');
+    expect(new URL(joinLink).search).toBe(`?step=join&code=${roomCode}`);
 
-    await guest.goto(`/?devSession=${runId}-p2&step=join&code=${roomCode}`);
-    await guest.getByLabel(/Your nickname/i).fill(players[1].name);
-    await guest.getByRole('button', { name: /^Join Room$/i }).click();
-    await expect(guest.getByRole('heading', { name: /Current Room/i })).toBeVisible();
+    // The shared link carries no devSession, so this tab gets its own default identity.
+    await linkGuest.goto(joinLink);
+    await expect(linkGuest.getByLabel(/5-digit room code/i)).toHaveValue(roomCode);
+    await linkGuest.getByLabel(/Your nickname/i).fill(players[1].name);
+    await linkGuest.getByRole('button', { name: /^Join Room$/i }).click();
+    await expect(linkGuest.getByRole('heading', { name: /Current Room/i })).toBeVisible();
 
-    for (const player of players) {
-      const readyButton = player.page.getByRole('button', { name: /^Set Ready$/i });
-      if (await readyButton.isVisible()) await readyButton.click();
+    await codeGuest.goto(`/?devSession=${runId}-p3`);
+    await codeGuest.locator('.home-join-form').getByLabel(/5-digit room code/i).fill(roomCode);
+    await codeGuest.locator('.home-join-form').getByLabel(/Your nickname/i).fill(players[2].name);
+    await codeGuest.locator('.home-join-form').getByRole('button', { name: /^Join Room$/i }).click();
+    await expect(codeGuest.getByRole('heading', { name: /Current Room/i })).toBeVisible();
+
+    for (const guest of [linkGuest, codeGuest]) {
+      await expect(guest.locator('.players .ai-player-badge')).toHaveCount(2);
+      await expect(guest.locator('.ai-room-note')).toContainText(/3 humans \+ 2 AI/i);
+      await expect(guest.locator('.ai-room-note')).not.toContainText(/keep it open/i);
     }
 
-    await expect(host.getByRole('button', { name: /^Start Game$/i })).toHaveCount(0);
-    await expect(host.getByText(/Table Quest/i)).toBeVisible();
-    await expect(guest.getByText(/Table Quest/i)).toBeVisible();
+    for (const player of players) {
+      await player.page.getByRole('button', { name: /^Set Ready$/i }).click();
+    }
 
-    await proposeTeam(players, players);
+    for (const player of players) {
+      await expect(player.page.getByText(/Table Quest/i)).toBeVisible();
+    }
+
+    await proposeTeam(players, players.slice(1, 3));
     await expect(host.getByText('Waiting to vote')).toBeVisible();
-    await expect(host.locator('.vote-submission-card')).toBeVisible();
     await submitVotes(players, () => 'approve');
-    await expect(host.getByText('Mission card', { exact: true }).first().or(host.getByText('Mission', { exact: true }).first())).toBeVisible();
-    await submitMissionCards(players, () => 'success');
+    await submitMissionCards(players.slice(1, 3), () => 'success');
 
-    await expect(host.getByText(/Good won/i).or(host.getByText(/Evil won/i))).toBeVisible();
-    await expect(host.getByText('Quest 2 of 5')).toBeVisible();
+    for (const player of players) {
+      await expect(player.page.getByText('Quest 2 of 5')).toBeVisible();
+    }
+    await expect(linkGuest.getByText(/Good won/i).or(linkGuest.getByText(/Evil won/i))).toBeVisible();
   } finally {
     await context.close();
   }
+});
+
+test('host releases a seat so a player can reclaim it from a new browser mid-game', async ({ browser }) => {
+  await withStartedRoom(browser, 5, async ({ context, host, players, roomCode }) => {
+    await revealRoles(players);
+    const lost = players[2];
+    const newBrowser = await context.newPage();
+    const newSession = `reclaim-${Date.now().toString(36)}`;
+
+    await newBrowser.goto(`/?devSession=${newSession}&step=join&code=${roomCode}`);
+    await newBrowser.getByLabel(/Your nickname/i).fill(lost.name);
+    await newBrowser.getByRole('button', { name: /^Join Room$/i }).click();
+    await expect(newBrowser.getByText(/ask the host to release your seat/i)).toBeVisible();
+
+    await host.getByText('Host permissions').click();
+    const row = host.locator('.host-player-action-row').filter({ hasText: lost.name });
+    await expect(row.getByRole('button', { name: /^Remove$/i })).toHaveCount(0);
+    host.once('dialog', (dialog) => dialog.accept());
+    await row.getByRole('button', { name: /^Release Seat$/i }).click();
+    await expect(row.getByText(/Waiting to rejoin/i)).toBeVisible();
+    await expect(host.getByText(new RegExp(`join room ${roomCode} again with the same nickname`, 'i'))).toBeVisible();
+
+    await newBrowser.getByRole('button', { name: /^Join Room$/i }).click();
+    await expect(newBrowser.getByRole('heading', { name: /Your Player Area/i })).toBeVisible();
+    const revealButton = newBrowser.getByRole('button', { name: /Reveal .* hidden role/i });
+    if (await revealButton.isVisible()) await revealButton.click();
+    const reclaimedRole = (await newBrowser.locator('.live-player-phone .phone-role .role-face strong').innerText()).trim();
+    expect(reclaimedRole).toBe(lost.role);
+    await expect(row.getByRole('button', { name: /^Release Seat$/i })).toBeVisible();
+  });
 });
 
 test('mission cards enforce Good cannot fail and Evil can fail in the live UI', async ({ browser }) => {
@@ -401,8 +450,7 @@ async function createLobbyRoom(browser: Browser, playerCount: number, configureH
   await host.goto(`/?devSession=${runId}-p1`);
   await host.getByRole('button', { name: /Host the round/i }).click();
   await host.getByLabel(/Your nickname/i).fill(players[0].name);
-  await host.getByLabel(/Human player count/i).getByRole('button', { name: String(playerCount) }).click();
-  await host.getByLabel(/Table size/i).getByRole('button', { name: String(playerCount) }).click();
+  await host.getByLabel(/Player count/i).getByRole('button', { name: String(playerCount), exact: true }).click();
   await configureHost?.(host);
   await host.getByRole('button', { name: /^Create Room$/i }).click();
   await expect(host.getByRole('heading', { name: /Current Room/i })).toBeVisible();

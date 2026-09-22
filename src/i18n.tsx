@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { applyShareMetaToDocument, getLanguageFromPath } from './shareMeta';
 
 export type Language = 'en' | 'zh';
 
@@ -12,7 +13,7 @@ const zh: Record<string, string> = {
   'Your Player Area': '你的操作区',
   'Round Table Lobby': '房间大厅',
   'Create a room, let every player ready at the table, then reveal each secret role on their own phone.': '创建房间，让玩家入座准备，然后在各自手机上查看秘密身份。',
-  'Guide the Avalon game from setup to finish, with AI ready to fill empty seats when needed.': '管理并推进阿瓦隆游戏流程。人数不够时，AI 可以补上空缺。',
+  'For in-person game nights: scan to join, and roles, votes, and scoring are handled for you.': '朋友线下聚会，扫码开局，自动处理身份、投票和计分。',
   'Each player can privately reveal their role and night information before the first quest.': '每位玩家可在第一轮任务前私下查看身份和夜晚信息。',
   'Check your private identity first; the shared board below keeps the table moving through teams, votes, quests, and results.': '先查看自己的身份与夜晚信息；下面的公共棋盘会继续推进组队、投票、任务和结果。',
   'The shared board tracks proposals, votes, mission cards, and quest results.': '公共面板会记录组队、投票、任务票和任务结果。',
@@ -21,6 +22,57 @@ const zh: Record<string, string> = {
   'Only the selected crew submits mission cards; results stay anonymous.': '只有任务队伍提交任务票；结果匿名结算。',
   'Good has three successful quests. The Assassin must guess Merlin before the winner is final.': '好人已完成三轮任务成功。刺客必须刺杀梅林后才最终定胜负。',
   'The table is finished. Review the result or reset for the next game.': '本桌已结束。可以查看结果或重置开始下一局。',
+  'Multi-phone simulator (experimental)': '多手机模拟器（实验）',
+  'Built for friends at the same table': '为围坐一桌的朋友设计',
+  'The host opens a room, everyone scans the code or types the 5-digit number, and each phone privately shows that player their role. Votes, quest cards, and the score are tallied automatically.': '房主开房后，大家扫码或输入 5 位房号入座，每部手机只显示自己的身份。投票、任务票和比分都会自动统计。',
+  'Scan to join': '扫码入座',
+  'Automatic scoring': '自动计分',
+  'AI seats are labeled in the room and act automatically.': 'AI 席位会在房间里明确标注，并自动行动。',
+  'Recommended roles for this player count. Special roles can be changed under Advanced settings.': '已按人数使用推荐配置。特殊角色可在「高级设置」中调整。',
+  'Advanced settings': '高级设置',
+  'AI fill-ins (experimental)': 'AI 补位（实验）',
+  'Fill empty seats with AI': '用 AI 补齐空位',
+  "For short tables or solo testing. AI moves are driven by the host's page, so keep it open during the game.": '适合人数不够或一个人测试流程。AI 的行动由房主的页面驱动，开局后请保持房主页面打开。',
+  'Seats marked AI are played automatically.': '标有 AI 的座位由系统自动操作。',
+  'AI moves run from this page, so keep it open during the game.': 'AI 的行动由你的页面驱动，开局后请保持此页面打开。',
+  "Release {name}'s seat? They can then rejoin from a new phone or browser with the same nickname.": '释放 {name} 的座位？释放后，对方可以在新的手机或浏览器上用原昵称重新加入。',
+  'Seat released. Ask {name} to join room {code} again with the same nickname.': '座位已释放。请 {name} 用原昵称重新加入房间 {code}。',
+  'Could not release seat.': '无法释放座位。',
+  'If a player switched phones or browsers, release their seat so they can rejoin with the same nickname.': '有玩家换了手机或浏览器时，释放其座位，对方用原昵称即可重新加入。',
+  'Waiting to rejoin': '等待重新加入',
+  'Release Seat': '释放座位',
+  'This game has already started. If you switched phones or browsers, ask the host to release your seat, then rejoin with the same nickname.': '本局已经开始。如果你换了手机或浏览器，请让房主释放你的座位，再用原昵称重新加入。',
+  'This seat was just reclaimed from another device.': '这个座位刚刚已被另一台设备接回。',
+  'AI seats cannot be released.': 'AI 座位不需要释放。',
+  'Assassin cannot target themselves.': '刺客不能选择自己。',
+  'Assassin player is not in this room.': '刺客不在这个房间里。',
+  'Assassination target is not in this room.': '刺杀目标不在这个房间里。',
+  'Avalon Lite missions need 5-10 players.': '阿瓦隆任务需要 5–10 名玩家。',
+  'Display name is required.': '请填写昵称。',
+  'Good players cannot submit Fail cards.': '好人不能出失败票。',
+  'Host cannot remove themselves.': '房主不能移除自己。',
+  'Only selected mission team players can submit mission cards.': '只有任务队员才能提交任务票。',
+  'Only the Assassin can submit the assassination.': '只有刺客可以执行刺杀。',
+  'Only the current leader can propose the mission team.': '只有当前队长可以提交队伍。',
+  'Only the host can release a seat.': '只有房主可以释放座位。',
+  'Only the host can remove players.': '只有房主可以移除玩家。',
+  'Player is not in this room.': '这名玩家不在这个房间里。',
+  'Player not found.': '找不到这名玩家。',
+  'Players can only be removed before the game starts.': '只能在开局前移除玩家。',
+  'Players can only leave an active game after the room has been inactive for 5 minutes.': '游戏进行中不能离开；房间超过 5 分钟无人操作后才可以离开。',
+  'Players can only leave before the game starts or after it finishes.': '只能在开局前或本局结束后离开。',
+  'Room not found.': '找不到这个房间。',
+  'Seats can only be released after the game starts.': '开局后才能释放座位。',
+  'Selected team includes a player outside this room.': '所选队伍里有不在本房间的玩家。',
+  'The game is not finished yet.': '本局还没有结束。',
+  'The host seat cannot be released.': '房主的座位不能释放。',
+  'The room changed while saving. Please try again.': '保存时房间状态有变化，请再试一次。',
+  'This player has already submitted a mission card.': '这名玩家已经提交过任务票。',
+  'This room is already full.': '这个房间已经满员。',
+  'Unable to generate an unused room code': '暂时无法生成新房号，请稍后再试。',
+  'Request failed.': '请求失败，请稍后再试。',
+  'Failed to fetch': '网络连接失败，请检查网络后重试。',
+  'Load failed': '网络连接失败，请检查网络后重试。',
   'Neon API mode': 'Neon API 模式',
   'Local browser demo mode': '本地浏览器演示模式',
   'You were removed from the room.': '你已被移出房间。',
@@ -65,21 +117,15 @@ const zh: Record<string, string> = {
   'Create a live 5-digit code for the table.': '创建一个 5 位房号给本桌玩家。',
   'Join by rune': '输入房号加入',
   "Enter a host's 5-digit code and ready up.": '输入房主的 5 位房号并准备。',
-  'Try demo': '试用演示',
-  'Simulate 5-10 phone screens on this laptop.': '在这台电脑上模拟 5-10 个手机屏幕。',
   'Medieval table, modern phones': '中世纪圆桌，现代手机',
-  'AI fill-ins for short tables': 'AI 补位，少人也能玩阿瓦隆',
   'Veiled Roundtable is a mobile Avalon board game assistant for hidden identities, quest voting, and the Merlin assassination endgame.': '迷雾圆桌是面向手机端的阿瓦隆桌游助手，帮助阿瓦隆房间完成隐藏身份分发、任务投票和刺杀梅林等关键流程。',
-  'When the Avalon room is short on people or you want to test and practice a flow, AI players can fill empty seats so the table can start sooner.': '少人玩阿瓦隆时，或想测试、练习流程时，AI 玩家可以作为 AI 补位填补空座，让牌局更容易开起来。',
   'Avalon assistant highlights': '阿瓦隆助手亮点',
-  'Round table setup': '圆桌开房',
   'Private phone reveals': '手机端私密身份',
   'Quest votes and Merlin endgame': '任务投票与刺杀梅林',
-  'AI player fill-ins': 'AI 玩家补位',
   'Phones around a candlelit Avalon round table': '烛光阿瓦隆圆桌旁摆放多台手机',
   'Misty castle council room with a round table': '迷雾城堡议事厅中的圆桌',
   'About Veiled Roundtable': '了解迷雾圆桌',
-  'For short Avalon tables, hidden roles, and phone-based flow': '少人局、隐藏身份与手机流程',
+  'In-person Avalon: hidden roles and phone-based flow': '线下阿瓦隆：隐藏身份与手机流程',
   'View flow and option details': '查看流程和选项说明',
   'Live workflow': '实时流程',
   '1. Host opens the hall': '1. 房主开房',
@@ -103,8 +149,6 @@ const zh: Record<string, string> = {
   'Table size': '圆桌人数',
   'humans': '真人',
   'AI': 'AI',
-  'AI will fill empty seats and auto-ready/vote/play mission cards.': 'AI 会补齐空位，并自动准备、投票和提交任务票。',
-  'Recommended defaults update when player count changes. Adjust special roles before creating the room.': '切换人数时会更新推荐默认身份。创建房间前可调整特殊身份。',
   'Good roles': '好人身份',
   'Evil roles': '坏人身份',
   'Creating...': '创建中…',
@@ -356,10 +400,8 @@ const zh: Record<string, string> = {
   'Good victory': '好人胜利',
   'Unknown captain': '未知队长',
   'Join': '加入',
-  'Demo': '演示',
   'opens a real table room.': '会开启真实桌游房间。',
   'is for players with a 5-digit code.': '适合已有 5 位房号的玩家。',
-  'stays on this device and never connects to Neon.': '会留在本设备，且不会连接 Neon。',
   'players': '名玩家',
   'needs': '需要',
   'is choosing': '正在选择',
@@ -475,19 +517,36 @@ const I18nContext = createContext<I18nContextValue | undefined>(undefined);
 function detectInitialLanguage(): Language {
   const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
   if (stored === 'en' || stored === 'zh') return stored;
+  const linkLanguage = getLanguageFromPath(window.location.pathname);
+  if (linkLanguage) return linkLanguage;
   const languages = [navigator.language, ...(navigator.languages ?? [])].filter(Boolean);
   return languages.some((language) => language.toLowerCase().startsWith('zh')) ? 'zh' : 'en';
 }
 
+// Server and rule errors that embed numbers or phase names.
+const zhPatterns: Array<[RegExp, (...groups: string[]) => string]> = [
+  [/^Quest (\d+) needs exactly (\d+) team members\.$/, (quest, size) => `第 ${quest} 轮任务需要正好 ${size} 名队员。`],
+  [/^Mission flow is in \w+, not \w+\.$/, () => '游戏进度已经变化，请以最新画面为准。'],
+];
+
+export function translateZhPattern(text: string): string | undefined {
+  for (const [pattern, format] of zhPatterns) {
+    const match = text.match(pattern);
+    if (match) return format(...match.slice(1));
+  }
+  return undefined;
+}
+
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<Language>(detectInitialLanguage);
+  useEffect(() => applyShareMetaToDocument(language), [language]);
   const value = useMemo<I18nContextValue>(() => ({
     language,
     setLanguage: (nextLanguage) => {
       localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
       setLanguageState(nextLanguage);
     },
-    t: (text) => (language === 'zh' ? zh[text] ?? text : text),
+    t: (text) => (language === 'zh' ? zh[text] ?? translateZhPattern(text) ?? text : text),
   }), [language]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

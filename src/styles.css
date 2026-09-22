@@ -119,6 +119,13 @@ label {
   line-height: 1.25;
 }
 
+/* Holds the error's height even while it is hidden, so showing it on blur
+   never shifts the controls below mid-click. */
+.field-error-slot {
+  display: block;
+  min-height: calc(1.56rem + 2px);
+}
+
 .shell {
   position: relative;
   width: min(820px, 100%);
@@ -430,7 +437,7 @@ label {
 
 .secondary-entry-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(7rem, 0.62fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.55rem;
   align-items: stretch;
   margin-top: 0.1rem;
@@ -472,37 +479,6 @@ label {
     linear-gradient(180deg, rgba(255, 226, 150, 0.26), rgba(120, 50, 30, 0.06)),
     linear-gradient(180deg, #a64b2d, #662632);
   color: #fff7de;
-}
-
-.secondary-entry-actions .demo-entry-action {
-  position: relative;
-  border-color: #9d7a42;
-  border-style: dashed;
-  background:
-    repeating-linear-gradient(-45deg, rgba(124, 63, 42, 0.07) 0 6px, transparent 6px 12px),
-    rgba(255, 248, 221, 0.58);
-  color: #5a3118;
-  box-shadow: inset 0 0 0 1px rgba(255, 248, 221, 0.58);
-}
-
-.demo-entry-action::after {
-  content: "DEMO";
-  justify-self: start;
-  border: 1px solid rgba(124, 63, 42, 0.3);
-  border-radius: 999px;
-  background: rgba(47, 73, 56, 0.12);
-  color: #5f4424;
-  padding: 0.08rem 0.32rem;
-  font-size: 0.58rem;
-  font-weight: 900;
-  line-height: 1.1;
-}
-
-.secondary-entry-actions .demo-entry-action:hover:not(:disabled) {
-  border-color: #b48645;
-  background:
-    repeating-linear-gradient(-45deg, rgba(124, 63, 42, 0.09) 0 6px, transparent 6px 12px),
-    rgba(255, 248, 221, 0.72);
 }
 
 .learn-more {
@@ -1024,6 +1000,72 @@ label {
 .create-role-sides {
   display: grid;
   gap: 0.75rem;
+}
+
+.create-advanced {
+  border: 1px solid #c59a4d;
+  border-radius: 8px;
+  background: rgba(255, 244, 211, 0.6);
+  padding: 0.7rem 0.8rem;
+}
+
+.create-advanced summary {
+  color: #4a2a14;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.create-advanced[open] summary {
+  margin-bottom: 0.85rem;
+}
+
+.create-advanced > div + div {
+  margin-top: 1rem;
+}
+
+.create-ai-fill {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.create-ai-fill h3,
+.create-ai-fill h4 {
+  margin: 0;
+}
+
+.create-ai-fill h4 {
+  margin-bottom: 0.45rem;
+  color: #3a2010;
+}
+
+.create-ai-fill .hint {
+  margin: 0;
+}
+
+.create-ai-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: #321a0c;
+  font-weight: 900;
+}
+
+.create-ai-toggle input {
+  flex: none;
+  width: 1.2rem;
+  height: 1.2rem;
+  min-height: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+  accent-color: #2f4938;
+}
+
+.released-seat-status {
+  align-self: center;
+  color: #5f4424;
+  font-weight: 900;
 }
 
 .create-role-list {
@@ -2513,7 +2555,10 @@ label {
 
 .runtime-footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: baseline;
+  gap: 0.4rem 1rem;
   padding: 0.85rem 0 0.2rem;
   color: rgba(255, 247, 222, 0.54);
   font-size: 0.72rem;
@@ -2523,6 +2568,24 @@ label {
 .runtime-footer span {
   border-top: 1px solid rgba(240, 199, 107, 0.22);
   padding-top: 0.35rem;
+}
+
+.runtime-footer .footer-link {
+  min-height: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: rgba(255, 247, 222, 0.72);
+  padding: 0.35rem 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.runtime-footer .footer-link:hover:not(:disabled) {
+  background: none;
+  color: #f7d98b;
 }
 
 @media (max-width: 560px) {
@@ -3947,7 +4010,7 @@ label {
   }
 
   .secondary-entry-actions {
-    grid-template-columns: minmax(230px, 1fr) minmax(128px, 0.42fr);
+    grid-template-columns: minmax(0, 1fr);
     justify-self: stretch;
     width: 100%;
     gap: 0.65rem;
@@ -3965,20 +4028,6 @@ label {
 
   .create-room-action span {
     font-size: 1.08rem;
-  }
-
-  .demo-entry-action {
-    align-self: center;
-    min-height: 60px;
-  }
-
-  .demo-entry-action span {
-    font-size: 0.96rem;
-  }
-
-  .demo-entry-action small {
-    font-size: 0.74rem;
-    line-height: 1.22;
   }
 
   .workflow-grid {

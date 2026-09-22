@@ -1,6 +1,16 @@
 # Veiled Roundtable
 
-Avalon room assistant for face-to-face Avalon Lite gatherings. One person creates a room at the table, everyone else joins with a 5-digit numeric code or share link, players mark ready, and the host starts once the lobby is valid.
+Avalon room assistant for face-to-face Avalon Lite gatherings. One person creates a room at the table, everyone else joins with a 5-digit numeric code, share link, or QR code, and the game starts automatically once every seat is filled and ready. Roles, team votes, quest cards, and scoring are handled on the players' phones.
+
+## Creating a Room
+
+The default create form is built for an all-human table:
+
+- **Player count** (5-10). Every seat is a real player.
+- **Role setup** uses the recommended roles for that count.
+- **Advanced settings** (collapsed by default) holds special-role toggles and **AI fill-ins (experimental)**.
+
+AI fill-ins stay available for short tables and solo testing. Turning them on in Advanced settings lets the host pick how many humans play; the remaining seats become AI players. Whether a room has AI is decided by the room itself (its AI players), not by the URL, so anyone who joins by link or code sees the same AI seats. AI seats are labeled in the lobby and in the game. AI moves are driven from the host's page, so the host needs to keep that page open during the game. When AI fill-ins are switched off, the room is created with every seat human even if a human count was chosen earlier.
 
 ## Local Run
 
@@ -15,7 +25,7 @@ In production, the app uses Vercel serverless functions backed by Neon Postgres.
 
 ## Demo Simulator
 
-The homepage **Try demo** path now opens a local-only tabletop simulator instead of creating a fake room. It does not write to Neon and does not use the live host/join backend.
+The **Multi-phone simulator (experimental)** link at the bottom of the homepage (or `/?step=demo`) opens a local-only tabletop simulator instead of creating a fake room. It does not write to Neon and does not use the live host/join backend.
 
 Demo supports:
 
@@ -88,12 +98,12 @@ The smoke test uses the local room service with mocked browser storage. It creat
 ## Table Flow
 
 1. Host opens the site and taps **Create Room**.
-2. Host enters a nickname, optionally enables Percival/Morgana for 7+ players, and receives a 5-digit room code.
+2. Host enters a nickname, picks the player count, optionally adjusts special roles under Advanced settings, and receives a 5-digit room code.
 3. Other players open the site, tap **Join Room**, enter the 5-digit room code and nickname. A join URL in the form `/?step=join&code=12345` also opens the join form with the code prefilled.
 4. The lobby shows seats, host marker, current player marker, and ready state.
-5. Refreshing the same browser restores its current room/player session, and rejoining from the same device reuses the existing seat.
+5. Refreshing the same browser restores its current room/player session, and rejoining from the same device reuses the existing seat. Before the game starts, rejoining with the same nickname from another browser also takes the existing seat. After it starts, see **Reconnecting From a New Browser** below.
 6. Before the game starts, the host can remove stale players from the lobby so abandoned seats do not block start.
-7. Host can start once 5-10 players are ready; unready non-host players are left out of that game.
+7. The game starts automatically once the room has its planned player count and every player is ready.
 8. Starting locks the room, assigns Avalon Lite roles from the active ready player count, and shows each device its own private reveal.
 9. Mission play runs from the players' own phones: the current leader proposes the team, every player votes approve/reject, and selected mission players submit Success/Fail cards. Good players cannot submit Fail.
 10. Three successful missions enter the Assassin endgame. Normal missions pause, every player sees the Assassin warning, and the current Assassin can choose a Merlin target from the dedicated Assassin phase panel. Hitting Merlin gives Evil the win; missing Merlin gives Good the win.
@@ -103,6 +113,16 @@ Live private reveal and the demo's multi-phone cards now render through the shar
 ## Share Join
 
 Room screens keep the 5-digit room code prominent for table readout before the game starts and after it finishes. They also show a readable join link, Copy Link and Copy Code controls, and a scannable QR code for the join URL. The numeric code remains the fallback.
+
+The shared link is `/?step=join&code=12345` from the English UI and `/zh/?step=join&code=12345` from the Chinese UI. It never copies the sharer's other query parameters (such as `devSession`).
+
+Link previews (WeChat, iMessage, Slack, and so on) read the static HTML without running the app, so the preview language comes from the path. `index.html` holds the English title, description, and Open Graph summary; the build also emits `dist/zh/index.html` with the Chinese versions. Both are generated from `src/shareMeta.ts`. Opening a `/zh/` link starts the UI in Chinese unless that browser already saved a language choice, and the live page title follows whichever language is showing.
+
+## Reconnecting From a New Browser
+
+A player's seat is tied to a device token kept in that browser's `localStorage`. Opening the room again in the same browser (for example, tapping the invite link again inside WeChat) keeps the seat. Switching to a different browser or app — WeChat's built-in browser to Safari, scanning with the system camera instead of WeChat, clearing WeChat's cache — counts as a new device.
+
+Once a game has started, a new device cannot take a seat on its own. The host opens **Host permissions** and taps **Release Seat** next to that player; the player then joins the same room code with the same nickname and gets their original seat, role, and progress back. The host's own seat cannot be released this way, and AI seats never need it.
 
 ## Mission MVP Status
 

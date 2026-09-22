@@ -1,6 +1,6 @@
 import { getTeamSize, roleAllegiance, type MissionCard, type Vote } from '../domain/avalon';
 import type { MissionState } from '../domain/missionFlow';
-import type { RoomPlayer, RoomSnapshot } from './roomCore';
+import { getPrivateRoleInfo, type RoomPlayer, type RoomSnapshot } from './roomCore';
 
 export type RoomAiAction =
   | { type: 'proposeTeam'; leaderPlayerId: string; selectedTeamIds: string[] }
@@ -42,8 +42,7 @@ export function getNextRoomAiAction(snapshot: RoomSnapshot): RoomAiAction | unde
   if (missionState.phase === 'assassin') {
     const assassin = snapshot.players.find((player) => player.isAi && player.role === 'Assassin');
     if (!assassin) return undefined;
-    const target = snapshot.players.find((player) => player.role === 'Merlin' && player.id !== assassin.id)
-      ?? snapshot.players.find((player) => player.id !== assassin.id);
+    const target = chooseAiAssassinationTarget(snapshot, missionState, assassin);
     if (!target) return undefined;
     return { type: 'submitAssassination', assassinPlayerId: assassin.id, targetPlayerId: target.id };
   }
@@ -74,6 +73,33 @@ function chooseAiTeam(players: RoomPlayer[], missionState: MissionState, leader:
 function chooseAiVote(missionState: MissionState, voter: RoomPlayer): Vote {
   if (missionState.selectedTeamIds.includes(voter.id)) return 'approve';
   return 'approve';
+}
+
+// The Assassin guesses from what a human Assassin would know: its own night
+// vision (visible evil teammates) and the public quest record. Other players'
+// hidden roles are never read here.
+function chooseAiAssassinationTarget(snapshot: RoomSnapshot, missionState: MissionState, assassin: RoomPlayer): RoomPlayer | undefined {
+  const visibleEvilIds = new Set(getPrivateRoleInfo(assassin, snapshot.players)?.sees.map((seen) => seen.playerId) ?? []);
+  const candidates = snapshot.players.filter((player) => player.id !== assassin.id && !visibleEvilIds.has(player.id));
+  const merlinScore = (playerId: string) => missionState.missionResults.reduce((score, result) => {
+    if (!result.selectedTeamIds?.includes(playerId)) return score;
+    return score + (result.outcome === 'success' ? 2 : -3);
+  }, 0);
+  return [...candidates].sort((left, right) => (
+    merlinScore(right.id) - merlinScore(left.id)
+    || stableTieBreak(snapshot.room.id, left.id) - stableTieBreak(snapshot.room.id, right.id)
+  ))[0];
+}
+
+// Deterministic so the host's retry loop sees the same pending action each
+// render, while still varying the pick between rooms instead of by seat order.
+function stableTieBreak(roomId: string, playerId: string): number {
+  let hash = 2166136261;
+  for (const char of `${roomId}:${playerId}`) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
 function uniqueIds(ids: string[]): string[] {

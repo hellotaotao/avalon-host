@@ -1,3 +1,5 @@
+import { sharePathPrefix, type ShareLanguage } from './shareMeta';
+
 export type EntryScreen = 'home' | 'create' | 'join' | 'demo' | 'demoJoin';
 
 const queryToScreen: Record<string, EntryScreen> = {
@@ -38,11 +40,12 @@ export function buildStepUrl(rawUrl: string, screen: EntryScreen): string {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-export function buildJoinUrl(rawUrl: string, code: string): string {
-  const url = new URL(rawUrl, 'https://avalon.local');
-  url.searchParams.set('step', 'join');
-  url.searchParams.set('code', normalizeJoinCode(code));
-  return `${url.pathname}${url.search}${url.hash}`;
+// Shared links carry only the join route and room code. The sharer's own query
+// params (devSession and anything else) must not leak into invitations; the
+// path picks the preview language to match the sharer's UI.
+export function buildJoinUrl(code: string, language: ShareLanguage): string {
+  const search = new URLSearchParams({ step: 'join', code: normalizeJoinCode(code) });
+  return `${sharePathPrefix[language]}?${search}`;
 }
 
 function normalizeJoinCode(code: string): string {

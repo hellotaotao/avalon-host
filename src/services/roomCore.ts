@@ -199,6 +199,21 @@ export function buildCreateRoomSettings(input: Pick<CreateRoomInput, 'humanPlaye
   };
 }
 
+export interface CreateRoomSeatChoice {
+  playerCount: number;
+  aiFillEnabled: boolean;
+  humanPlayerCount: number;
+}
+
+// The create form keeps the AI human count around while AI fill is toggled off,
+// so the room input is derived here instead of trusting that leftover state.
+export function resolveCreateRoomSeats(choice: CreateRoomSeatChoice): Required<Pick<CreateRoomInput, 'plannedPlayerCount' | 'humanPlayerCount'>> {
+  const plannedPlayerCount = choice.playerCount;
+  if (!choice.aiFillEnabled) return { plannedPlayerCount, humanPlayerCount: plannedPlayerCount };
+  const humanPlayerCount = Math.min(Math.max(1, Math.floor(choice.humanPlayerCount)), plannedPlayerCount - 1);
+  return { plannedPlayerCount, humanPlayerCount };
+}
+
 export function getAiFillCount(settings: RoomSettings): number {
   return Math.max(0, (settings.plannedPlayerCount ?? 5) - (settings.humanPlayerCount ?? settings.plannedPlayerCount ?? 5));
 }
@@ -431,6 +446,37 @@ export function resetRoomToLobbySnapshot(snapshot: RoomSnapshot, hostPlayerId: s
   }));
   return snapshot;
 }
+
+// A released seat keeps its player, role, and history but drops the device
+// binding, so the same person can reclaim it from a new phone or browser.
+const RELEASED_SEAT_TOKEN_PREFIX = 'released:';
+
+export function buildReleasedSeatToken(playerId: string): string {
+  return `${RELEASED_SEAT_TOKEN_PREFIX}${playerId}`;
+}
+
+export function isSeatReleased(player: RoomPlayer): boolean {
+  return Boolean(player.deviceToken?.startsWith(RELEASED_SEAT_TOKEN_PREFIX));
+}
+
+export function releaseSeatInSnapshot(snapshot: RoomSnapshot, hostPlayerId: string, targetPlayerId: string): RoomSnapshot {
+  if (snapshot.room.status === 'lobby' || snapshot.room.status === 'setup') {
+    throw new Error('Seats can only be released after the game starts.');
+  }
+  const host = requirePlayer(snapshot, hostPlayerId);
+  if (!host.isHost) throw new Error('Only the host can release a seat.');
+  const target = requirePlayer(snapshot, targetPlayerId);
+  if (target.isHost) throw new Error('The host seat cannot be released.');
+  if (target.isAi) throw new Error('AI seats cannot be released.');
+  target.deviceToken = buildReleasedSeatToken(target.id);
+  return snapshot;
+}
+
+export function findReleasedSeatForRejoin(players: RoomPlayer[], displayName: string): RoomPlayer | undefined {
+  return findPlayerByDisplayName(players.filter((player) => !player.isAi && isSeatReleased(player)), displayName);
+}
+
+export const GAME_ALREADY_STARTED_JOIN_ERROR = 'This game has already started. If you switched phones or browsers, ask the host to release your seat, then rejoin with the same nickname.';
 
 export function findPlayerByDeviceToken(players: RoomPlayer[], deviceToken: string): RoomPlayer | undefined {
   return players.find((player) => player.deviceToken === deviceToken);

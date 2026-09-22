@@ -22,7 +22,14 @@ describe('entry navigation state', () => {
   });
 
   it('builds shareable join URLs with a five-digit code', () => {
-    expect(buildJoinUrl('https://example.test/path?x=1#top', '12-345')).toBe('/path?x=1&step=join&code=12345#top');
+    expect(buildJoinUrl('12-345', 'en')).toBe('/?step=join&code=12345');
+  });
+
+  it('puts Chinese join links under the Chinese share page', () => {
+    const url = buildJoinUrl('54321', 'zh');
+    expect(url).toBe('/zh/?step=join&code=54321');
+    expect(parseEntryStep(`https://example.test${url}`)).toBe('join');
+    expect(parseJoinCodeFromUrl(`https://example.test${url}`)).toBe('54321');
   });
 
   it('preserves unrelated query params when setting an entry step', () => {

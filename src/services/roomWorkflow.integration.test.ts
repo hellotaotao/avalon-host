@@ -7,6 +7,8 @@ import {
   LOCAL_ROOMS_STORAGE_KEY,
   proposeMissionTeam,
   readyForNextGame,
+  releaseSeat,
+  resetRoomToLobby,
   setReady,
   submitAssassination,
   submitMissionCard,
@@ -151,6 +153,57 @@ describe('room workflow integration', () => {
       teamVote: { approveCount: 2, rejectCount: 3, passed: false },
     });
     expect(snapshot.room.settings.missionState?.missionResults).toEqual([]);
+  });
+
+  it('lets a player reclaim a released seat from a new browser after the game starts', async () => {
+    const started = await startReadyFivePlayerRoom();
+    const lostPlayer = started.players.find((player) => player.displayName === 'Tao P3')!;
+    const host = started.players.find((player) => player.isHost)!;
+
+    await expect(joinRoom({ code: started.room.code, displayName: 'Tao P3', deviceToken: 'new-browser-p3' }))
+      .rejects.toThrow('This game has already started. If you switched phones or browsers, ask the host to release your seat, then rejoin with the same nickname.');
+
+    const released = await releaseSeat(started.room.id, host.id, lostPlayer.id);
+    expect(released.players.find((player) => player.id === lostPlayer.id)?.role).toBe(lostPlayer.role);
+
+    await expect(joinRoom({ code: started.room.code, displayName: 'Tao P4', deviceToken: 'new-browser-p3' }))
+      .rejects.toThrow('This game has already started.');
+
+    const rejoined = await joinRoom({ code: started.room.code, displayName: ' tao p3 ', deviceToken: 'new-browser-p3' });
+    expect(rejoined.currentPlayerId).toBe(lostPlayer.id);
+    expect(rejoined.snapshot.players).toHaveLength(5);
+    expect(rejoined.snapshot.room.status).toBe(started.room.status);
+    expect(rejoined.snapshot.players.find((player) => player.id === lostPlayer.id)).toMatchObject({
+      role: lostPlayer.role,
+      seatIndex: lostPlayer.seatIndex,
+      deviceToken: 'new-browser-p3',
+    });
+
+    await expect(joinRoom({ code: started.room.code, displayName: 'Tao P3', deviceToken: 'third-browser-p3' }))
+      .rejects.toThrow('This game has already started.');
+    const sameDeviceAgain = await joinRoom({ code: started.room.code, displayName: 'Tao P3', deviceToken: 'new-browser-p3' });
+    expect(sameDeviceAgain.currentPlayerId).toBe(lostPlayer.id);
+  });
+
+  it('keeps AI seats when a guest joins by code and after the host abandons back to lobby', async () => {
+    const host = await createRoom({
+      displayName: 'Labs Host',
+      humanPlayerCount: 2,
+      plannedPlayerCount: 5,
+      deviceToken: 'ai-again-host',
+    });
+    const guest = await joinRoom({ code: host.snapshot.room.code, displayName: 'Plain Guest', deviceToken: 'ai-again-guest' });
+    const aiIds = guest.snapshot.players.filter((player) => player.isAi).map((player) => player.id);
+    expect(aiIds).toHaveLength(3);
+
+    let snapshot = await setReady(host.snapshot.room.id, host.currentPlayerId, true);
+    snapshot = await setReady(snapshot.room.id, guest.currentPlayerId, true);
+    expect(snapshot.room.status).toBe('reveal');
+
+    snapshot = await resetRoomToLobby(snapshot.room.id, host.currentPlayerId);
+    expect(snapshot.room.status).toBe('lobby');
+    expect(snapshot.room.settings).toMatchObject({ humanPlayerCount: 2, plannedPlayerCount: 5 });
+    expect(snapshot.players.filter((player) => player.isAi).map((player) => player.id).sort()).toEqual([...aiIds].sort());
   });
 
   it('fills a larger table with ready AI seats and persists AI actions through room service calls', async () => {

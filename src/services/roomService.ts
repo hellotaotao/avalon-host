@@ -15,11 +15,14 @@ import {
   buildAiPlayers,
   findPlayerByDeviceToken,
   findPlayerByDisplayName,
+  findReleasedSeatForRejoin,
+  GAME_ALREADY_STARTED_JOIN_ERROR,
   generateRoomCode,
   isRoomStaleForExit,
   leavePlayerFromSnapshot,
   LOCAL_ROOMS_STORAGE_KEY,
   normalizeRoomCode,
+  releaseSeatInSnapshot,
   removePlayerFromSnapshot,
   readyForNextGameInSnapshot,
   startDemoSnapshot,
@@ -46,8 +49,10 @@ export {
   DEMO_JOIN_ROOM_CODE,
   findPlayerByDeviceToken,
   findPlayerByDisplayName,
+  findReleasedSeatForRejoin,
   generateRoomCode,
   isRoomStaleForExit,
+  isSeatReleased,
   getPrivateRoleInfo,
   getStartablePlayers,
   getStartValidation,
@@ -55,13 +60,16 @@ export {
   leavePlayerFromSnapshot,
   LOCAL_ROOMS_STORAGE_KEY,
   normalizeRoomCode,
+  releaseSeatInSnapshot,
   removePlayerFromSnapshot,
   readyForNextGameInSnapshot,
+  resolveCreateRoomSeats,
   startDemoSnapshot,
   transferHostInSnapshot,
   resetRoomToLobbySnapshot,
   validateHostCanStart,
   type CreateRoomInput,
+  type CreateRoomSeatChoice,
   type JoinRoomInput,
   type Room,
   type RoomGameHistoryEntry,
@@ -88,6 +96,7 @@ interface RoomRepository {
   submitAssassination(roomId: string, assassinPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
   readyForNextGame(roomId: string, playerId: string): Promise<RoomSnapshot>;
   removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
+  releaseSeat(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
   transferHost(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
   resetRoomToLobby(roomId: string, hostPlayerId: string): Promise<RoomSnapshot>;
   dissolveRoom(roomId: string, hostPlayerId: string): Promise<null>;
@@ -145,6 +154,10 @@ export async function readyForNextGame(roomId: string, playerId: string): Promis
 
 export async function removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot> {
   return repository().removePlayer(roomId, hostPlayerId, targetPlayerId);
+}
+
+export async function releaseSeat(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot> {
+  return repository().releaseSeat(roomId, hostPlayerId, targetPlayerId);
 }
 
 export async function transferHost(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot> {
@@ -217,7 +230,13 @@ const localRepository: RoomRepository = {
       writeRooms(data, snapshot.room.id);
       return { snapshot, currentPlayerId: sameDevicePlayer.id };
     }
-    if (snapshot.room.status !== 'lobby') throw new Error('This game has already started. Only original players can re-enter from the same device.');
+    const releasedSeat = findReleasedSeatForRejoin(snapshot.players, displayName);
+    if (releasedSeat) {
+      releasedSeat.deviceToken = input.deviceToken;
+      writeRooms(data, snapshot.room.id);
+      return { snapshot, currentPlayerId: releasedSeat.id };
+    }
+    if (snapshot.room.status !== 'lobby') throw new Error(GAME_ALREADY_STARTED_JOIN_ERROR);
     const existingPlayer = findPlayerByDisplayName(snapshot.players.filter((player) => !player.isAi), displayName);
     if (existingPlayer) {
       if (existingPlayer.displayName !== displayName) existingPlayer.displayName = displayName;
@@ -361,6 +380,14 @@ const localRepository: RoomRepository = {
     return snapshot;
   },
 
+  async releaseSeat(roomId: string, hostPlayerId: string, targetPlayerId: string) {
+    const data = readRooms();
+    const snapshot = requireById(data, roomId);
+    releaseSeatInSnapshot(snapshot, hostPlayerId, targetPlayerId);
+    writeRooms(data, snapshot.room.id);
+    return snapshot;
+  },
+
   async transferHost(roomId: string, hostPlayerId: string, targetPlayerId: string) {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
@@ -431,6 +458,7 @@ const apiRepository: RoomRepository = {
   submitAssassination: (roomId, assassinPlayerId, targetPlayerId) => apiRequest('submitAssassination', { roomId, assassinPlayerId, targetPlayerId }),
   readyForNextGame: (roomId, playerId) => apiRequest('readyForNextGame', { roomId, playerId }),
   removePlayer: (roomId, hostPlayerId, targetPlayerId) => apiRequest('removePlayer', { roomId, hostPlayerId, targetPlayerId }),
+  releaseSeat: (roomId, hostPlayerId, targetPlayerId) => apiRequest('releaseSeat', { roomId, hostPlayerId, targetPlayerId }),
   transferHost: (roomId, hostPlayerId, targetPlayerId) => apiRequest('transferHost', { roomId, hostPlayerId, targetPlayerId }),
   resetRoomToLobby: (roomId, hostPlayerId) => apiRequest('resetRoomToLobby', { roomId, hostPlayerId }),
   dissolveRoom: (roomId, hostPlayerId) => apiRequest('dissolveRoom', { roomId, hostPlayerId }),

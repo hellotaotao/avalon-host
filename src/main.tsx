@@ -61,7 +61,9 @@ import {
   proposeMissionTeam,
   readyForNextGame,
   readyForNextGameInSnapshot,
+  releaseSeat,
   removePlayer,
+  resolveCreateRoomSeats,
   setReady,
   submitAssassination,
   submitMissionCard,
@@ -71,6 +73,7 @@ import {
   updateMissionState,
   isHostedConfigured,
   isRoomStaleForExit,
+  isSeatReleased,
   type RoomPlayer,
   type RoomSnapshot,
   type RoomGamePlayerResult,
@@ -141,7 +144,8 @@ function App() {
   const [deviceToken] = useState(() => getOrCreateDeviceToken());
   const [hostName, setHostName] = useState('');
   const [hostNameTouched, setHostNameTouched] = useState(false);
-  const [humanPlayerCount, setHumanPlayerCount] = useState(5);
+  const [aiFillEnabled, setAiFillEnabled] = useState(false);
+  const [humanPlayerCount, setHumanPlayerCount] = useState(4);
   const [plannedPlayerCount, setPlannedPlayerCount] = useState<(typeof playerCountRange)[number]>(5);
   const [hostRoleOptions, setHostRoleOptions] = useState<RolePresetOptions>(() => getRecommendedRolePresetOptions(5));
   const [joinName, setJoinName] = useState('');
@@ -197,7 +201,7 @@ function App() {
         if (cancelled) return;
         clearSessionBinding();
         setCurrentPlayerId('');
-        setMessage(error instanceof Error ? error.message : t('Could not restore room.'));
+        setMessage(error instanceof Error ? t(error.message) : t('Could not restore room.'));
       });
     return () => {
       cancelled = true;
@@ -321,7 +325,7 @@ function App() {
         setSnapshot(nextSnapshot);
       })
       .catch((error) => {
-        const errorMessage = error instanceof Error ? error.message : t('Could not run AI action.');
+        const errorMessage = error instanceof Error ? t(error.message) : t('Could not run AI action.');
         const currentAttemptState = aiActionAttemptRef.current;
         if (currentAttemptState?.actionKey === actionKey) {
           currentAttemptState.lastError = errorMessage;
@@ -360,8 +364,7 @@ function App() {
     try {
       const result = await createRoom({
         displayName: hostName,
-        humanPlayerCount,
-        plannedPlayerCount,
+        ...resolveCreateRoomSeats({ playerCount: plannedPlayerCount, aiFillEnabled, humanPlayerCount }),
         roleOptions: hostRoleOptions,
         deviceToken,
       });
@@ -371,24 +374,21 @@ function App() {
       clearEntryStepFromUrl();
       setScreen('room');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not create room.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not create room.'));
     } finally {
       setBusy(false);
-    }
-  }
-
-  function handleHumanPlayerCount(nextHumanPlayerCount: number) {
-    setHumanPlayerCount(nextHumanPlayerCount);
-    if (plannedPlayerCount < nextHumanPlayerCount) {
-      const nextPlayerCount = Math.max(5, nextHumanPlayerCount) as (typeof playerCountRange)[number];
-      setPlannedPlayerCount(nextPlayerCount);
-      setHostRoleOptions(getRecommendedRolePresetOptions(nextPlayerCount));
     }
   }
 
   function handlePlannedPlayerCount(nextPlayerCount: (typeof playerCountRange)[number]) {
     setPlannedPlayerCount(nextPlayerCount);
     setHostRoleOptions(getRecommendedRolePresetOptions(nextPlayerCount));
+    setHumanPlayerCount((current) => Math.min(current, nextPlayerCount - 1));
+  }
+
+  function handleAiFillToggle(enabled: boolean) {
+    setAiFillEnabled(enabled);
+    if (enabled) setHumanPlayerCount(plannedPlayerCount - 1);
   }
 
   function handleHostRoleToggle(key: keyof RolePresetOptions) {
@@ -410,7 +410,7 @@ function App() {
       clearEntryStepFromUrl();
       setScreen('room');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not join room.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not join room.'));
     } finally {
       setBusy(false);
     }
@@ -430,7 +430,7 @@ function App() {
     try {
       setSnapshot(await setReady(snapshot.room.id, currentPlayer.id, !currentPlayer.isReady));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not update ready state.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not update ready state.'));
     } finally {
       setBusy(false);
     }
@@ -454,7 +454,7 @@ function App() {
     try {
       setSnapshot(await updateNickname(snapshot.room.id, currentPlayer.id, name));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not update nickname.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not update nickname.'));
     } finally {
       setBusy(false);
     }
@@ -470,7 +470,7 @@ function App() {
     try {
       setSnapshot(await updateMissionState(snapshot.room.id, currentPlayer.id, nextMissionState));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not update mission flow.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not update mission flow.'));
     }
   }
 
@@ -484,14 +484,14 @@ function App() {
         const nextMissionState = submitTeamProposal(currentMissionState, playerIds, currentPlayer.id, selectedTeamIds);
         await handleMissionStateChange(nextMissionState);
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : t('Could not propose team.'));
+        setMessage(error instanceof Error ? t(error.message) : t('Could not propose team.'));
       }
       return;
     }
     try {
       setSnapshot(await proposeMissionTeam(snapshot.room.id, currentPlayer.id, selectedTeamIds));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not propose team.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not propose team.'));
     }
   }
 
@@ -505,14 +505,14 @@ function App() {
         const nextMissionState = submitTeamVoteToState(currentMissionState, playerIds, currentPlayer.id, vote);
         await handleMissionStateChange(nextMissionState);
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : t('Could not submit vote.'));
+        setMessage(error instanceof Error ? t(error.message) : t('Could not submit vote.'));
       }
       return;
     }
     try {
       setSnapshot(await submitTeamVote(snapshot.room.id, currentPlayer.id, vote));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not submit vote.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not submit vote.'));
     }
   }
 
@@ -526,14 +526,14 @@ function App() {
         const nextMissionState = submitMissionCardToState(currentMissionState, playerIds, snapshot.players.map(toRoomAvalonPlayer), currentPlayer.id, card);
         await handleMissionStateChange(nextMissionState);
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : t('Could not submit mission card.'));
+        setMessage(error instanceof Error ? t(error.message) : t('Could not submit mission card.'));
       }
       return;
     }
     try {
       setSnapshot(await submitMissionCard(snapshot.room.id, currentPlayer.id, card));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not submit mission card.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not submit mission card.'));
     }
   }
 
@@ -547,14 +547,14 @@ function App() {
         const nextMissionState = resolveAssassination(currentMissionState, snapshot.players.map(toRoomAvalonPlayer), currentPlayer.id, targetPlayerId);
         await handleMissionStateChange(nextMissionState);
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : t('Could not submit assassination.'));
+        setMessage(error instanceof Error ? t(error.message) : t('Could not submit assassination.'));
       }
       return;
     }
     try {
       setSnapshot(await submitAssassination(snapshot.room.id, currentPlayer.id, targetPlayerId));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not submit assassination.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not submit assassination.'));
     }
   }
 
@@ -564,7 +564,7 @@ function App() {
       try {
         setSnapshot(readyForNextGameInSnapshot(cloneRoomSnapshot(snapshot), currentPlayer.id));
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : t('Could not ready for next game.'));
+        setMessage(error instanceof Error ? t(error.message) : t('Could not ready for next game.'));
       }
       return;
     }
@@ -573,7 +573,7 @@ function App() {
     try {
       setSnapshot(await readyForNextGame(snapshot.room.id, currentPlayer.id));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not ready for next game.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not ready for next game.'));
     } finally {
       setBusy(false);
     }
@@ -586,7 +586,25 @@ function App() {
     try {
       setSnapshot(await removePlayer(snapshot.room.id, currentPlayer.id, targetPlayerId));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not remove player.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not remove player.'));
+    }
+  }
+
+  async function handleReleaseSeat(targetPlayerId: string) {
+    if (!snapshot || !currentPlayer?.isHost || busy) return;
+    const target = snapshot.players.find((player) => player.id === targetPlayerId);
+    if (!target) return;
+    const values = { name: target.displayName, code: snapshot.room.code };
+    if (!window.confirm(fillText(t("Release {name}'s seat? They can then rejoin from a new phone or browser with the same nickname."), values))) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      setSnapshot(await releaseSeat(snapshot.room.id, currentPlayer.id, targetPlayerId));
+      setMessage(fillText(t('Seat released. Ask {name} to join room {code} again with the same nickname.'), values));
+    } catch (error) {
+      setMessage(error instanceof Error ? t(error.message) : t('Could not release seat.'));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -599,7 +617,7 @@ function App() {
       setSnapshot(await transferHost(snapshot.room.id, currentPlayer.id, targetPlayerId));
       setMessage(t('Host rights transferred.'));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not transfer host.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not transfer host.'));
     } finally {
       setBusy(false);
     }
@@ -614,7 +632,7 @@ function App() {
       setSnapshot(await resetRoomToLobby(snapshot.room.id, currentPlayer.id));
       setMessage(t('Game abandoned. Back to lobby.'));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not reset game.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not reset game.'));
     } finally {
       setBusy(false);
     }
@@ -633,7 +651,7 @@ function App() {
       navigateEntry('home', { replace: true });
       setMessage(t('Room dissolved.'));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not dissolve room.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not dissolve room.'));
     } finally {
       setBusy(false);
     }
@@ -668,7 +686,7 @@ function App() {
       navigateEntry('home', { replace: true });
       setMessage(t('You left the room.'));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not leave room.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not leave room.'));
     } finally {
       setBusy(false);
     }
@@ -689,7 +707,7 @@ function App() {
       setScreen('home');
       setMessage(t('Old room cleared.'));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('Could not leave room.'));
+      setMessage(error instanceof Error ? t(error.message) : t('Could not leave room.'));
     } finally {
       setBusy(false);
     }
@@ -721,7 +739,7 @@ function App() {
       <header className="hero">
         <div className="hero-top"><p className="eyebrow">{t('Avalon room assistant')}</p><LanguageSwitcher /></div>
         <h1>{screen === 'room' ? getRoomHeroTitle(snapshot, t) : t('Veiled Roundtable')}</h1>
-        <p className="lede">{screen === 'room' ? getRoomHeroCopy(snapshot, t) : t('Guide the Avalon game from setup to finish, with AI ready to fill empty seats when needed.')}</p>
+        <p className="lede">{screen === 'room' ? getRoomHeroCopy(snapshot, t) : t('For in-person game nights: scan to join, and roles, votes, and scoring are handled for you.')}</p>
       </header>
 
       {message && <p className="notice">{message}</p>}
@@ -770,15 +788,11 @@ function App() {
                 <span>{t('Host the round')}</span>
                 <small>{t('Create a live 5-digit code for the table.')}</small>
               </button>
-              <button type="button" className="path-card secondary-path demo-button demo-entry-action" onClick={() => navigateEntry('demo')}>
-                <span>{t('Try demo')}</span>
-                <small>{t('Simulate 5-10 phone screens on this laptop.')}</small>
-              </button>
             </div>
           </section>
           <section className="learn-more" aria-labelledby="learn-more-title">
             <p className="eyebrow">{t('About Veiled Roundtable')}</p>
-            <h2 id="learn-more-title">{t('For short Avalon tables, hidden roles, and phone-based flow')}</h2>
+            <h2 id="learn-more-title">{t('In-person Avalon: hidden roles and phone-based flow')}</h2>
             <HomeSeoIntro />
             <details className="home-details">
               <summary>{t('View flow and option details')}</summary>
@@ -798,7 +812,7 @@ function App() {
               </div>
               <div className="entry-guide">
                 <h2>{t('What each choice means')}</h2>
-                <p><strong>{t('Host')}</strong> {t('opens a real table room.')} <strong>{t('Join')}</strong> {t('is for players with a 5-digit code.')} <strong>{t('Demo')}</strong> {t('stays on this device and never connects to Neon.')}</p>
+                <p><strong>{t('Host')}</strong> {t('opens a real table room.')} <strong>{t('Join')}</strong> {t('is for players with a 5-digit code.')}</p>
               </div>
             </details>
           </section>
@@ -830,12 +844,16 @@ function App() {
                 aria-invalid={showHostNameError}
                 aria-describedby={showHostNameError ? 'host-name-error' : undefined}
               />
-              {showHostNameError && <small id="host-name-error" className="field-error">{t('Enter a nickname before creating the room.')}</small>}
+              <span className="field-error-slot">
+                {showHostNameError && <small id="host-name-error" className="field-error">{t('Enter a nickname before creating the room.')}</small>}
+              </span>
             </label>
             <CreateRoomRoleConfig
+              aiFillEnabled={aiFillEnabled}
               humanPlayerCount={humanPlayerCount}
               playerCount={plannedPlayerCount}
-              onHumanPlayerCountChange={handleHumanPlayerCount}
+              onAiFillEnabledChange={handleAiFillToggle}
+              onHumanPlayerCountChange={setHumanPlayerCount}
               roleOptions={hostRoleOptions}
               onPlayerCountChange={handlePlannedPlayerCount}
               onToggleRole={handleHostRoleToggle}
@@ -890,6 +908,7 @@ function App() {
           onReady={handleReady}
           onRename={handleRename}
           onRemovePlayer={handleRemovePlayer}
+          onReleaseSeat={handleReleaseSeat}
           onTransferHost={handleTransferHost}
           onResetRoomToLobby={handleResetRoomToLobby}
           onDissolveRoom={handleDissolveRoom}
@@ -908,7 +927,14 @@ function App() {
       )}
 
       <footer className="runtime-footer">
-        <span>{isHostedConfigured && !isDevSessionActive() ? t('Neon API mode') : t('Local browser demo mode')}</span>
+        {screen === 'home' && (
+          <button type="button" className="footer-link" onClick={() => navigateEntry('demo')}>
+            {t('Multi-phone simulator (experimental)')}
+          </button>
+        )}
+        {import.meta.env.DEV && (
+          <span>{isHostedConfigured && !isDevSessionActive() ? t('Neon API mode') : t('Local browser demo mode')}</span>
+        )}
       </footer>
     </main>
   );
@@ -933,14 +959,14 @@ function HomeSeoIntro() {
     <section className="home-seo" aria-labelledby="home-seo-title">
       <div className="home-seo-copy">
         <p className="eyebrow">{t('Medieval table, modern phones')}</p>
-        <h2 id="home-seo-title">{t('AI fill-ins for short tables')}</h2>
+        <h2 id="home-seo-title">{t('Built for friends at the same table')}</h2>
         <p>{t('Veiled Roundtable is a mobile Avalon board game assistant for hidden identities, quest voting, and the Merlin assassination endgame.')}</p>
-        <p>{t('When the Avalon room is short on people or you want to test and practice a flow, AI players can fill empty seats so the table can start sooner.')}</p>
+        <p>{t('The host opens a room, everyone scans the code or types the 5-digit number, and each phone privately shows that player their role. Votes, quest cards, and the score are tallied automatically.')}</p>
         <div className="seo-tags" aria-label={t('Avalon assistant highlights')}>
-          <span>{t('Round table setup')}</span>
+          <span>{t('Scan to join')}</span>
           <span>{t('Private phone reveals')}</span>
           <span>{t('Quest votes and Merlin endgame')}</span>
-          <span>{t('AI player fill-ins')}</span>
+          <span>{t('Automatic scoring')}</span>
         </div>
       </div>
       <figure className="home-seo-art">
@@ -965,16 +991,20 @@ function HomeSeoIntro() {
 }
 
 function CreateRoomRoleConfig({
+  aiFillEnabled,
   humanPlayerCount,
   playerCount,
   roleOptions,
+  onAiFillEnabledChange,
   onHumanPlayerCountChange,
   onPlayerCountChange,
   onToggleRole,
 }: {
+  aiFillEnabled: boolean;
   humanPlayerCount: number;
   playerCount: (typeof playerCountRange)[number];
   roleOptions: RolePresetOptions;
+  onAiFillEnabledChange: (enabled: boolean) => void;
   onHumanPlayerCountChange: (playerCount: number) => void;
   onPlayerCountChange: (playerCount: (typeof playerCountRange)[number]) => void;
   onToggleRole: (key: keyof RolePresetOptions) => void;
@@ -984,35 +1014,19 @@ function CreateRoomRoleConfig({
   const preset = buildRolePreset(playerCount, roleOptions);
   const goodRoles = preset.roles.filter((role) => roleAllegiance(role) === 'good');
   const evilRoles = preset.roles.filter((role) => roleAllegiance(role) === 'evil');
-  const aiCount = Math.max(0, playerCount - humanPlayerCount);
+  const seats = resolveCreateRoomSeats({ playerCount, aiFillEnabled, humanPlayerCount });
+  const aiCount = seats.plannedPlayerCount - seats.humanPlayerCount;
 
   return (
     <section className="create-role-config" aria-label={t('Role configuration')}>
       <div>
-        <h3>{t('Human players')}</h3>
-        <div className="segmented" aria-label={t('Human player count')}>
-          {Array.from({ length: 10 }, (_, index) => index + 1).map((count) => (
-            <button
-              key={count}
-              type="button"
-              className={count === humanPlayerCount ? 'selected' : ''}
-              onClick={() => onHumanPlayerCountChange(count)}
-            >
-              {count}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <h3>{t('Table size')}</h3>
-        <div className="segmented" aria-label={t('Table size')}>
+        <h3>{t('Player count')}</h3>
+        <div className="segmented" aria-label={t('Player count')}>
           {playerCountRange.map((count) => (
             <button
               key={count}
               type="button"
               className={count === playerCount ? 'selected' : ''}
-              disabled={count < humanPlayerCount}
               onClick={() => onPlayerCountChange(count)}
             >
               {count}
@@ -1022,43 +1036,72 @@ function CreateRoomRoleConfig({
         <p className="create-role-summary">{rule.goodCount} {t('Good')} / {rule.evilCount} {t('Evil')}</p>
         {aiCount > 0 && (
           <div className="ai-fill-note">
-            <strong>{humanPlayerCount} {t(humanPlayerCount === 1 ? 'human' : 'humans')} + {aiCount} {t('AI')}</strong>
-            <span>{t('AI will fill empty seats and auto-ready/vote/play mission cards.')}</span>
+            <strong>{seats.humanPlayerCount} {t(seats.humanPlayerCount === 1 ? 'human' : 'humans')} + {aiCount} {t('AI')}</strong>
+            <span>{t('AI seats are labeled in the room and act automatically.')}</span>
           </div>
         )}
       </div>
 
       <div>
         <h3>{t('Role setup')}</h3>
-        <p className="hint">{t('Recommended defaults update when player count changes. Adjust special roles before creating the room.')}</p>
+        <p className="hint">{t('Recommended roles for this player count. Special roles can be changed under Advanced settings.')}</p>
         <div className="create-role-sides">
           <RoleList title={t('Good roles')} roles={goodRoles} language={language} />
           <RoleList title={t('Evil roles')} roles={evilRoles} language={language} />
         </div>
       </div>
 
-      <div>
-        <h3>{t('Special roles')}</h3>
-        <div className="role-option-chips" aria-label={t('Special roles')}>
-          {optionalRoleControls.map((control) => {
-            const checked = Boolean(roleOptions[control.key]);
-            const disabled = !checked && !canEnableRoleOption(playerCount, roleOptions, control.key);
-            return (
-              <button
-                key={control.key}
-                type="button"
-                className={`role-option-chip ${checked ? 'selected' : ''}`}
-                aria-pressed={checked}
-                disabled={disabled}
-                onClick={() => onToggleRole(control.key)}
-              >
-                <span>{formatRole(control.role, language)}</span>
-                <small>{t(control.note)}</small>
-              </button>
-            );
-          })}
+      <details className="create-advanced">
+        <summary>{t('Advanced settings')}</summary>
+        <div>
+          <h3>{t('Special roles')}</h3>
+          <div className="role-option-chips" aria-label={t('Special roles')}>
+            {optionalRoleControls.map((control) => {
+              const checked = Boolean(roleOptions[control.key]);
+              const disabled = !checked && !canEnableRoleOption(playerCount, roleOptions, control.key);
+              return (
+                <button
+                  key={control.key}
+                  type="button"
+                  className={`role-option-chip ${checked ? 'selected' : ''}`}
+                  aria-pressed={checked}
+                  disabled={disabled}
+                  onClick={() => onToggleRole(control.key)}
+                >
+                  <span>{formatRole(control.role, language)}</span>
+                  <small>{t(control.note)}</small>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+
+        <div className="create-ai-fill">
+          <h3>{t('AI fill-ins (experimental)')}</h3>
+          <label className="create-ai-toggle">
+            <input type="checkbox" checked={aiFillEnabled} onChange={(event) => onAiFillEnabledChange(event.target.checked)} />
+            <span>{t('Fill empty seats with AI')}</span>
+          </label>
+          <p className="hint">{t("For short tables or solo testing. AI moves are driven by the host's page, so keep it open during the game.")}</p>
+          {aiFillEnabled && (
+            <div>
+              <h4>{t('Human players')}</h4>
+              <div className="segmented" aria-label={t('Human player count')}>
+                {Array.from({ length: playerCount - 1 }, (_, index) => index + 1).map((count) => (
+                  <button
+                    key={count}
+                    type="button"
+                    className={count === seats.humanPlayerCount ? 'selected' : ''}
+                    onClick={() => onHumanPlayerCountChange(count)}
+                  >
+                    {count}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </details>
     </section>
   );
 }
@@ -1253,7 +1296,7 @@ function DemoSimulator() {
       setAiStatus(`${t('AI move from')} ${body.provider ?? 'AI'}${body.model ? ` (${body.model})` : ''}.`);
     } catch (error) {
       setDemo((current) => runNextAiAction(current, language));
-      setAiStatus(`${error instanceof Error ? error.message : t('AI failed.')} ${t('Used local heuristic fallback.')}`);
+      setAiStatus(`${error instanceof Error ? t(error.message) : t('AI failed.')} ${t('Used local heuristic fallback.')}`);
     } finally {
       setAiBusy(false);
     }
@@ -3858,6 +3901,7 @@ function RoomView({
   onReady,
   onRename,
   onRemovePlayer,
+  onReleaseSeat,
   onTransferHost,
   onResetRoomToLobby,
   onDissolveRoom,
@@ -3880,6 +3924,7 @@ function RoomView({
   onReady: () => void;
   onRename: (event: React.FormEvent<HTMLFormElement>) => void;
   onRemovePlayer: (targetPlayerId: string) => void;
+  onReleaseSeat: (targetPlayerId: string) => void;
   onTransferHost: (targetPlayerId: string) => void;
   onResetRoomToLobby: () => void;
   onDissolveRoom: () => void;
@@ -3895,7 +3940,7 @@ function RoomView({
   showGameStartNotice: boolean;
   busy: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const started = snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup';
   const playerIds = snapshot.players.map((player) => player.id);
   const missionState = started && snapshot.players.length >= 5 ? ensureMissionState(snapshot.room.settings.missionState, playerIds) : undefined;
@@ -3906,9 +3951,11 @@ function RoomView({
   const allPlayersReady = readyCount === snapshot.players.length;
   const isFinished = snapshot.room.status === 'finished' || missionState?.phase === 'finished';
   const showJoinPanel = !started;
-  const joinLinkPath = buildJoinUrl(window.location.href, snapshot.room.code);
+  const joinLinkPath = buildJoinUrl(snapshot.room.code, language);
   const joinLink = `${window.location.origin}${joinLinkPath}`;
   const assassinationTargets = snapshot.players.filter((player) => player.id !== currentPlayer?.id);
+  const aiSeatCount = snapshot.players.filter((player) => player.isAi).length;
+  const plannedHumanCount = (snapshot.room.settings.plannedPlayerCount ?? snapshot.players.length) - aiSeatCount;
   const [liveSelectedTeamIds, setLiveSelectedTeamIds] = useState<string[]>([]);
   const latestGame = snapshot.room.settings.gameHistory?.at(-1);
   const currentPlayerResult = latestGame?.playerResults.find((result) => result.playerId === currentPlayer?.id);
@@ -4105,6 +4152,7 @@ function RoomView({
         onResetRoomToLobby={onResetRoomToLobby}
         onDissolveRoom={onDissolveRoom}
         onRemovePlayer={onRemovePlayer}
+        onReleaseSeat={onReleaseSeat}
         onTransferHost={onTransferHost}
       />
 
@@ -4112,6 +4160,17 @@ function RoomView({
         <section className="panel players-panel">
           <h2>{t('Players')}</h2>
           <p className="hint">{readyCount}/{snapshot.players.length} {t('ready. Minimum 5 ready players.')}</p>
+          {aiSeatCount > 0 && !isDemoMode && (
+            <div className="ai-fill-note ai-room-note">
+              <strong>
+                {t('AI fill-ins (experimental)')} · {plannedHumanCount} {t(plannedHumanCount === 1 ? 'human' : 'humans')} + {aiSeatCount} {t('AI')}
+              </strong>
+              <span>
+                {t('Seats marked AI are played automatically.')}
+                {currentPlayer?.isHost && ` ${t('AI moves run from this page, so keep it open during the game.')}`}
+              </span>
+            </div>
+          )}
           <ol className="players">
             {snapshot.players.map((player) => {
               return (
@@ -4155,6 +4214,7 @@ function HostAuthorityPanel({
   onResetRoomToLobby,
   onDissolveRoom,
   onRemovePlayer,
+  onReleaseSeat,
   onTransferHost,
 }: {
   players: RoomPlayer[];
@@ -4165,6 +4225,7 @@ function HostAuthorityPanel({
   onResetRoomToLobby: () => void;
   onDissolveRoom: () => void;
   onRemovePlayer: (targetPlayerId: string) => void;
+  onReleaseSeat: (targetPlayerId: string) => void;
   onTransferHost: (targetPlayerId: string) => void;
 }) {
   const { t } = useI18n();
@@ -4187,13 +4248,17 @@ function HostAuthorityPanel({
       {manageablePlayers.length > 0 && (
         <div className="host-action-group">
           <h3>{t('Manage players')}</h3>
+          {started && <p>{t('If a player switched phones or browsers, release their seat so they can rejoin with the same nickname.')}</p>}
           <div className="host-player-actions">
             {manageablePlayers.map((player) => (
               <div key={player.id} className="host-player-action-row">
                 <span>{player.displayName}</span>
                 <div>
                   <button type="button" className="secondary-control" onClick={() => onTransferHost(player.id)} disabled={busy}>{t('Make Host')}</button>
-                  <button type="button" className="small-danger" onClick={() => onRemovePlayer(player.id)} disabled={busy}>{t('Remove')}</button>
+                  {!started && <button type="button" className="small-danger" onClick={() => onRemovePlayer(player.id)} disabled={busy}>{t('Remove')}</button>}
+                  {started && (isSeatReleased(player)
+                    ? <small className="released-seat-status">{t('Waiting to rejoin')}</small>
+                    : <button type="button" className="secondary-control" onClick={() => onReleaseSeat(player.id)} disabled={busy}>{t('Release Seat')}</button>)}
                 </div>
               </div>
             ))}
@@ -4596,7 +4661,7 @@ function MissionPanel({
       setFlowError('');
       onMissionStateChange(selectMissionTeam(missionState, playerIds, selectedTeamIds));
     } catch (error) {
-      setFlowError(error instanceof Error ? error.message : t('Could not propose team.'));
+      setFlowError(error instanceof Error ? t(error.message) : t('Could not propose team.'));
     }
   }
 
@@ -4606,7 +4671,7 @@ function MissionPanel({
       setFlowError('');
       onMissionStateChange(recordTeamVote(missionState, playerIds, Number(approveCount), Number(rejectCount)));
     } catch (error) {
-      setFlowError(error instanceof Error ? error.message : t('Could not record vote.'));
+      setFlowError(error instanceof Error ? t(error.message) : t('Could not record vote.'));
     }
   }
 
@@ -4616,7 +4681,7 @@ function MissionPanel({
       setFlowError('');
       onMissionStateChange(advanceMissionResult(missionState, playerIds, Number(successCount), Number(failCount)));
     } catch (error) {
-      setFlowError(error instanceof Error ? error.message : t('Could not record mission.'));
+      setFlowError(error instanceof Error ? t(error.message) : t('Could not record mission.'));
     }
   }
 
@@ -4698,6 +4763,10 @@ function QrCodePanel({ value }: { value: string }) {
       <img src={qrUrl} alt={t('QR code for the Avalon room join link')} width="176" height="176" loading="lazy" />
     </a>
   );
+}
+
+function fillText(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
 }
 
 async function copyText(text: string) {

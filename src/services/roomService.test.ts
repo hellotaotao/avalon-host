@@ -13,7 +13,11 @@ import {
   DEMO_JOIN_ROOM_CODE,
   findPlayerByDeviceToken,
   findPlayerByDisplayName,
+  findReleasedSeatForRejoin,
   generateRoomCode,
+  isSeatReleased,
+  releaseSeatInSnapshot,
+  resolveCreateRoomSeats,
   getStartablePlayers,
   getStartValidation,
   isRoomStaleForExit,
@@ -139,6 +143,30 @@ describe('room service rules', () => {
     expect(settings).toMatchObject({ humanPlayerCount: 1, plannedPlayerCount: 5 });
     expect(aiPlayers).toHaveLength(4);
     expect(aiPlayers.every((player) => player.isAi && player.isReady)).toBe(true);
+  });
+
+  it('creates an all-human room for every player count when AI fill is off', () => {
+    for (const playerCount of [5, 6, 7, 8, 9, 10]) {
+      const seats = resolveCreateRoomSeats({ playerCount, aiFillEnabled: false, humanPlayerCount: 2 });
+      const settings = buildCreateRoomSettings(seats);
+
+      expect(seats).toEqual({ plannedPlayerCount: playerCount, humanPlayerCount: playerCount });
+      expect(buildAiPlayers('r1', settings, 1)).toHaveLength(0);
+    }
+  });
+
+  it('ignores a leftover human count once AI fill is switched back off', () => {
+    const withAi = resolveCreateRoomSeats({ playerCount: 7, aiFillEnabled: true, humanPlayerCount: 3 });
+    expect(withAi).toEqual({ plannedPlayerCount: 7, humanPlayerCount: 3 });
+    expect(buildAiPlayers('r1', buildCreateRoomSettings(withAi), 1)).toHaveLength(4);
+
+    const switchedOff = resolveCreateRoomSeats({ playerCount: 7, aiFillEnabled: false, humanPlayerCount: 3 });
+    expect(buildAiPlayers('r1', buildCreateRoomSettings(switchedOff), 1)).toHaveLength(0);
+  });
+
+  it('keeps at least one human and one AI seat when AI fill is on', () => {
+    expect(resolveCreateRoomSeats({ playerCount: 5, aiFillEnabled: true, humanPlayerCount: 5 })).toEqual({ plannedPlayerCount: 5, humanPlayerCount: 4 });
+    expect(resolveCreateRoomSeats({ playerCount: 5, aiFillEnabled: true, humanPlayerCount: 0 })).toEqual({ plannedPlayerCount: 5, humanPlayerCount: 1 });
   });
 
   it('validates start against configured table size when AI fills part of the room', () => {
@@ -319,6 +347,39 @@ describe('room service rules', () => {
     players[1].displayName = '  Alice   Wang  ';
     expect(findPlayerByDisplayName(players, 'alice wang')?.id).toBe('p2');
     expect(findPlayerByDisplayName(players, 'Bob')).toBeUndefined();
+  });
+
+  it('lets the host release a human seat after the game starts', () => {
+    const snapshot = startDemoSnapshot(makeSnapshot(5), 'p1').snapshot!;
+    snapshot.players = snapshot.players.map((player) => ({ ...player, deviceToken: `device-${player.id}` }));
+
+    releaseSeatInSnapshot(snapshot, 'p1', 'p3');
+
+    const released = snapshot.players.find((player) => player.id === 'p3')!;
+    expect(isSeatReleased(released)).toBe(true);
+    expect(findPlayerByDeviceToken(snapshot.players, 'device-p3')).toBeUndefined();
+    expect(released.role).toBeTruthy();
+    expect(snapshot.players.filter(isSeatReleased)).toHaveLength(1);
+  });
+
+  it('only lets the host release a non-host human seat during a game', () => {
+    const lobby = makeSnapshot(5);
+    expect(() => releaseSeatInSnapshot(lobby, 'p1', 'p2')).toThrow('Seats can only be released after the game starts.');
+
+    const started = startDemoSnapshot(makeSnapshot(5), 'p1').snapshot!;
+    expect(() => releaseSeatInSnapshot(started, 'p2', 'p3')).toThrow('Only the host can release a seat.');
+    expect(() => releaseSeatInSnapshot(started, 'p1', 'p1')).toThrow('The host seat cannot be released.');
+
+    started.players[4] = { ...started.players[4], isAi: true };
+    expect(() => releaseSeatInSnapshot(started, 'p1', started.players[4].id)).toThrow('AI seats cannot be released.');
+  });
+
+  it('matches a released seat only by its original nickname', () => {
+    const snapshot = startDemoSnapshot(makeSnapshot(5), 'p1').snapshot!;
+    releaseSeatInSnapshot(snapshot, 'p1', 'p3');
+
+    expect(findReleasedSeatForRejoin(snapshot.players, '  player 3 ')?.id).toBe('p3');
+    expect(findReleasedSeatForRejoin(snapshot.players, 'Player 2')).toBeUndefined();
   });
 
   it('creates a host demo room with enough ready players and exactly one host', () => {

@@ -16,12 +16,15 @@ import {
   buildAiPlayers,
   buildCreateRoomSettings,
   findPlayerByDisplayName,
+  findReleasedSeatForRejoin,
+  GAME_ALREADY_STARTED_JOIN_ERROR,
   generateRoomCode,
   isRoomStaleForExit,
   leavePlayerFromSnapshot,
   mapPlayer,
   mapRoom,
   normalizeRoomCode,
+  releaseSeatInSnapshot,
   removePlayerFromSnapshot,
   readyForNextGameInSnapshot,
   startDemoSnapshot,
@@ -115,6 +118,8 @@ async function dispatch(body: RequestBody) {
       return readyForNextGame(readString(body.roomId, 'roomId'), readString(body.playerId, 'playerId'));
     case 'removePlayer':
       return removePlayer(readString(body.roomId, 'roomId'), readString(body.hostPlayerId, 'hostPlayerId'), readString(body.targetPlayerId, 'targetPlayerId'));
+    case 'releaseSeat':
+      return releaseSeat(readString(body.roomId, 'roomId'), readString(body.hostPlayerId, 'hostPlayerId'), readString(body.targetPlayerId, 'targetPlayerId'));
     case 'transferHost':
       return transferHost(readString(body.roomId, 'roomId'), readString(body.hostPlayerId, 'hostPlayerId'), readString(body.targetPlayerId, 'targetPlayerId'));
     case 'resetRoomToLobby':
@@ -183,7 +188,22 @@ async function joinRoom(input: JoinRoomInput) {
     return { snapshot: await fetchSnapshot(found.room.id), currentPlayerId: existingPlayer.id as string };
   }
 
-  if (found.room.status !== 'lobby') throw new HttpError(409, 'This game has already started. Only original players can re-enter from the same device.');
+  const releasedSeat = findReleasedSeatForRejoin(found.players, displayName);
+  if (releasedSeat) {
+    // Conditional on the released token so two devices racing for the same
+    // seat cannot both claim it.
+    const claimedRows = await sql`
+      update players
+      set device_token_hash = ${input.deviceToken}
+      where id = ${releasedSeat.id} and room_id = ${found.room.id} and device_token_hash = ${releasedSeat.deviceToken}
+      returning id::text as id
+    `;
+    if (!claimedRows[0]) throw new HttpError(409, 'This seat was just reclaimed from another device.');
+    await touchRoom(found.room.id);
+    return { snapshot: await fetchSnapshot(found.room.id), currentPlayerId: releasedSeat.id };
+  }
+
+  if (found.room.status !== 'lobby') throw new HttpError(409, GAME_ALREADY_STARTED_JOIN_ERROR);
 
   const sameNamePlayer = findPlayerByDisplayName(found.players.filter((player) => !player.isAi), displayName);
   if (sameNamePlayer) {
@@ -345,6 +365,21 @@ async function removePlayer(roomId: string, hostPlayerId: string, targetPlayerId
   for (const player of snapshot.players) {
     await sql`update players set seat_index = ${player.seatIndex} where id = ${player.id} and room_id = ${roomId}`;
   }
+  return fetchSnapshot(roomId);
+}
+
+async function releaseSeat(roomId: string, hostPlayerId: string, targetPlayerId: string) {
+  const snapshot = await fetchSnapshot(roomId);
+  releaseSeatInSnapshot(snapshot, hostPlayerId, targetPlayerId);
+  const target = snapshot.players.find((player) => player.id === targetPlayerId);
+  const rows = await getSql()`
+    update players
+    set device_token_hash = ${target.deviceToken}
+    where id = ${targetPlayerId} and room_id = ${roomId}
+    returning id::text as id
+  `;
+  assertDeletedRows(rows, 'Player not found.');
+  await touchRoom(roomId);
   return fetchSnapshot(roomId);
 }
 
