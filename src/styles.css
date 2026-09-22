@@ -1062,6 +1062,29 @@ label {
   accent-color: #2f4938;
 }
 
+.captain-card small {
+  color: #5f4424;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.final-proposal-warning {
+  margin: 0.55rem 0 0;
+  border: 1px solid #b83224;
+  border-radius: 8px;
+  background: #ffe0d4;
+  color: #7a1d14;
+  padding: 0.45rem 0.6rem;
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+.result-modal-reason {
+  margin: 0;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .released-seat-status {
   align-self: center;
   color: #5f4424;

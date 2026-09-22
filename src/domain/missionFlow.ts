@@ -98,6 +98,9 @@ export function recordTeamVote(state: MissionState, playerIds: string[], approve
   const passed = votePasses(votes, playerIds.length);
   const teamVote = { approveCount, rejectCount, passed };
   if (!passed) {
+    if (state.proposalIndex + 1 >= MAX_PROPOSALS_PER_QUEST) {
+      return finishState({ ...state, teamVote, teamVotes: undefined, missionCardSubmissions: undefined }, state.missionResults, 'evil');
+    }
     return {
       ...state,
       phase: 'proposal',
@@ -207,6 +210,15 @@ export function resolveAssassination(state: MissionState, players: Player[], ass
     assassination: { assassinPlayerId, targetPlayerId, hitMerlin },
     winner: hitMerlin ? 'evil' : 'good',
   };
+}
+
+// A quest allows five proposals; rejecting the fifth hands Evil the game.
+export const MAX_PROPOSALS_PER_QUEST = 5;
+
+// Every other ending follows an approved vote, so a finished game whose last
+// team vote failed can only have ended on the fifth rejected proposal.
+export function endedByRejectedProposals(state: MissionState): boolean {
+  return state.phase === 'finished' && state.teamVote?.passed === false;
 }
 
 function finishState(state: MissionState, missionResults: MissionResultState[], winner: MissionWinner): MissionState {

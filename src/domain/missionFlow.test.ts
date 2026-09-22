@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   advanceMissionResult,
   createInitialMissionState,
+  endedByRejectedProposals,
   recordTeamVote,
   resolveAssassination,
   selectMissionTeam,
@@ -105,6 +106,41 @@ describe('mission flow', () => {
       selectedTeamIds: [],
       teamVote: { approveCount: 2, rejectCount: 3, passed: false },
     });
+  });
+
+  it('hands Evil the win when the fifth proposal in a quest is rejected', () => {
+    let state = createInitialMissionState(playerIds);
+    for (let rejection = 1; rejection <= 4; rejection += 1) {
+      state = recordTeamVote(selectMissionTeam(state, playerIds, ['p1', 'p2']), playerIds, 2, 3);
+      expect(state).toMatchObject({ phase: 'proposal', proposalIndex: rejection });
+      expect(endedByRejectedProposals(state)).toBe(false);
+    }
+
+    const finished = recordTeamVote(selectMissionTeam(state, playerIds, ['p1', 'p2']), playerIds, 2, 3);
+    expect(finished).toMatchObject({ phase: 'finished', winner: 'evil', roundIndex: 0, teamVote: { passed: false } });
+    expect(endedByRejectedProposals(finished)).toBe(true);
+  });
+
+  it('plays the fifth proposal normally when it is approved, and starts the next quest fresh', () => {
+    let state = createInitialMissionState(playerIds);
+    for (let rejection = 1; rejection <= 4; rejection += 1) {
+      state = recordTeamVote(selectMissionTeam(state, playerIds, ['p1', 'p2']), playerIds, 2, 3);
+    }
+    const approved = recordTeamVote(selectMissionTeam(state, playerIds, ['p1', 'p2']), playerIds, 3, 2);
+    expect(approved.phase).toBe('mission');
+
+    const nextQuest = advanceMissionResult(approved, playerIds, 2, 0);
+    expect(nextQuest).toMatchObject({ phase: 'proposal', roundIndex: 1, proposalIndex: 0 });
+  });
+
+  it('does not treat mission or assassination endings as proposal losses', () => {
+    let state = createInitialMissionState(playerIds);
+    for (const teamSize of [2, 3, 2]) {
+      const team = playerIds.slice(0, teamSize);
+      state = advanceMissionResult(recordTeamVote(selectMissionTeam(state, playerIds, team), playerIds, 3, 2), playerIds, teamSize - 1, 1);
+    }
+    expect(state).toMatchObject({ phase: 'finished', winner: 'evil' });
+    expect(endedByRejectedProposals(state)).toBe(false);
   });
 
   it('records an approved successful mission and advances the round', () => {

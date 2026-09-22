@@ -13,6 +13,7 @@ import {
 } from '../domain/avalon.js';
 import {
   createInitialMissionState,
+  endedByRejectedProposals,
   type MissionState,
 } from '../domain/missionFlow.js';
 
@@ -39,7 +40,7 @@ export interface RoomGameHistoryEntry {
   gameNumber: number;
   winner: Allegiance;
   endedAt: string;
-  endReason: 'assassination_hit' | 'assassination_miss' | 'three_failed_quests' | 'three_successful_quests';
+  endReason: 'assassination_hit' | 'assassination_miss' | 'three_failed_quests' | 'three_successful_quests' | 'five_rejected_proposals';
   playerResults: RoomGamePlayerResult[];
 }
 
@@ -353,6 +354,7 @@ function buildGameHistoryEntry(snapshot: RoomSnapshot, missionState: MissionStat
 }
 
 function getGameEndReason(missionState: MissionState): RoomGameHistoryEntry['endReason'] {
+  if (endedByRejectedProposals(missionState)) return 'five_rejected_proposals';
   if (missionState.assassination?.hitMerlin) return 'assassination_hit';
   if (missionState.assassination) return 'assassination_miss';
   if (missionState.winner === 'evil') return 'three_failed_quests';

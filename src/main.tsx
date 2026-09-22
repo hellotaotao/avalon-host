@@ -20,7 +20,9 @@ import {
 } from './domain/avalon';
 import {
   advanceMissionResult,
+  endedByRejectedProposals,
   ensureMissionState,
+  MAX_PROPOSALS_PER_QUEST,
   recordTeamVote,
   resolveAssassination,
   selectMissionTeam,
@@ -1764,6 +1766,7 @@ type PlayerPhoneAction =
   | {
       kind: 'vote';
       selectedTeamNames: string[];
+      isFinalProposal?: boolean;
       currentVote?: Vote;
       submittedVoteCount?: number;
       playerCount?: number;
@@ -1999,6 +2002,7 @@ function getLivePhoneAction({
     return {
       kind: 'vote',
       selectedTeamNames,
+      isFinalProposal: isFinalProposal(missionState),
       currentVote: missionState.teamVotes?.[player.id],
       submittedVoteCount: Object.keys(missionState.teamVotes ?? {}).length,
       playerCount: players.length,
@@ -2069,6 +2073,7 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
         <span>{t('Team vote')}</span>
         {action.selectedTeamNames.length > 0 && <p>{t('Team')}: {action.selectedTeamNames.join(', ')}</p>}
         <p>{t('Every player votes on this proposal, including the captain.')}</p>
+        {action.isFinalProposal && <p className="final-proposal-warning">{t('Fifth proposal this quest: if this crew is rejected, Evil wins.')}</p>}
         {action.onVote ? (
           <>
             <div className="choice-row">
@@ -3361,7 +3366,8 @@ function chooseAiTeam(current: DemoState, leader: DemoPlayer, teamSize: number):
   const team = new Set<string>();
   if (roleAllegiance(leader.role) === 'evil') {
     team.add(leader.id);
-    const ally = current.players.find((player) => player.id !== leader.id && roleAllegiance(player.role) === 'evil' && player.role !== 'Oberon');
+    const visibleEvilIds = getDemoVisibleEvilIds(current, leader);
+    const ally = current.players.find((player) => visibleEvilIds.has(player.id));
     if (ally && team.size < teamSize) team.add(ally.id);
   } else if (teamSize > 1) {
     team.add(leader.id);
@@ -3380,6 +3386,15 @@ function chooseAiVote(current: DemoState, voter: DemoPlayer): Vote {
   return suspicionScore <= 45 || selfOnTeam ? 'approve' : 'reject';
 }
 
+// Evil players the viewer sees at night: teammates for evil roles, suspects for Merlin.
+function getDemoVisibleEvilIds(current: DemoState, viewer: DemoPlayer): Set<string> {
+  const info = getVisibilityInfo(
+    { id: viewer.id, name: viewer.displayName, role: viewer.role },
+    current.players.map((player) => ({ id: player.id, name: player.displayName, role: player.role })),
+  );
+  return new Set(info.sees.filter((item) => item.hint !== 'Merlin candidate').map((item) => item.playerId));
+}
+
 function visibleEvilPlayersOnCurrentDemoTeam(current: DemoState, viewer: DemoPlayer): Array<{ playerId: string; name: string; hint: string }> {
   const currentTeamIds = new Set(current.selectedTeamIds);
   return getVisibilityInfo(
@@ -3389,13 +3404,15 @@ function visibleEvilPlayersOnCurrentDemoTeam(current: DemoState, viewer: DemoPla
 }
 
 function chooseEvilMissionCard(current: DemoState, actor: DemoPlayer): MissionCard {
-  const evilOnTeam = current.selectedTeamIds.filter((id) => roleAllegiance(current.players.find((player) => player.id === id)?.role ?? 'Loyal Servant') === 'evil').length;
+  const visibleEvilIds = getDemoVisibleEvilIds(current, actor);
+  const evilOnTeam = current.selectedTeamIds.filter((id) => id === actor.id || visibleEvilIds.has(id)).length;
   if (current.roundIndex === 0 && evilOnTeam > 1 && actor.role !== 'Assassin') return 'success';
   return 'fail';
 }
 
 function chooseAiAssassinationTarget(current: DemoState, assassin: DemoPlayer): DemoPlayer {
-  const goodCandidates = current.players.filter((player) => player.role !== 'Assassin');
+  const visibleEvilIds = getDemoVisibleEvilIds(current, assassin);
+  const goodCandidates = current.players.filter((player) => player.id !== assassin.id && !visibleEvilIds.has(player.id));
   const successfulTeamIds = current.missionResults
     .filter((result) => result.outcome === 'success')
     .flatMap((result) => result.selectedTeamIds ?? []);
@@ -3404,8 +3421,8 @@ function chooseAiAssassinationTarget(current: DemoState, assassin: DemoPlayer): 
     return counts;
   }, {});
   return [...goodCandidates].sort((left, right) => {
-    const rightScore = suspicionFor(assassin, right.id) + (successfulTeamCounts[right.id] ?? 0) * 12 - (right.role === 'Percival' ? 8 : 0);
-    const leftScore = suspicionFor(assassin, left.id) + (successfulTeamCounts[left.id] ?? 0) * 12 - (left.role === 'Percival' ? 8 : 0);
+    const rightScore = suspicionFor(assassin, right.id) + (successfulTeamCounts[right.id] ?? 0) * 12;
+    const leftScore = suspicionFor(assassin, left.id) + (successfulTeamCounts[left.id] ?? 0) * 12;
     return rightScore - leftScore || left.seatIndex - right.seatIndex;
   })[0] ?? goodCandidates[0] ?? current.players[0];
 }
@@ -3424,10 +3441,9 @@ function rememberAgent(player: DemoPlayer, current: DemoState, reasoning: string
 function updateAgentMemory(player: DemoPlayer, current: DemoState, reasoning: string, _publicSpeech: string): AgentMemory {
   const memory = player.memory ?? createAgentMemory(current.players.map((candidate) => candidate.id), player.id);
   const suspicion = { ...memory.suspicion };
+  const visibleEvilIds = roleAllegiance(player.role) === 'evil' ? getDemoVisibleEvilIds(current, player) : new Set<string>();
   current.selectedTeamIds.forEach((id) => {
-    if (id !== player.id && roleAllegiance(player.role) === 'evil' && roleAllegiance(current.players.find((candidate) => candidate.id === id)?.role ?? 'Loyal Servant') === 'evil') {
-      suspicion[id] = -35;
-    }
+    if (visibleEvilIds.has(id)) suspicion[id] = -35;
   });
   return {
     suspicion,
@@ -3672,10 +3688,19 @@ function getMissionPhaseCopy({
   if (missionState.phase === 'assassin') {
     return t('Good reached three successful quests. The Assassin now chooses a Merlin target.');
   }
+  return getGameEndCopy(missionState, t);
+}
+
+function getGameEndCopy(missionState: MissionState, t: (text: string) => string): string {
+  if (endedByRejectedProposals(missionState)) return t('Evil wins because five crew proposals in a row were rejected this quest.');
   if (missionState.assassination) {
     return missionState.winner === 'evil' ? t('The Assassin found Merlin and stole the endgame.') : t('Merlin survived the final guess.');
   }
   return missionState.winner === 'evil' ? t('Evil wins after three failed quests.') : t('Good wins after three successful quests.');
+}
+
+function isFinalProposal(missionState: MissionState): boolean {
+  return missionState.proposalIndex + 1 >= MAX_PROPOSALS_PER_QUEST;
 }
 
 function toDemoAvalonPlayer(player: DemoPlayer): Player {
@@ -3795,6 +3820,7 @@ function GameResultModal({
         <button type="button" className="result-modal-close" onClick={onDismiss} aria-label={t('Close result summary')}>×</button>
         <p className="eyebrow">{won ? t('Victory') : t('Defeat')}</p>
         <h2 id="game-result-title">{won ? t('You won this game') : t('You lost this game')}</h2>
+        <p className="result-modal-reason">{getGameEndCopy(missionState, t)}</p>
         <div className="result-summary-grid">
           <div>
             <span>{t('Winner')}</span>
@@ -3877,6 +3903,7 @@ function getEndReasonLabel(reason: string) {
     assassination_miss: 'Assassin missed Merlin',
     three_failed_quests: 'Three failed quests',
     three_successful_quests: 'Three successful quests',
+    five_rejected_proposals: 'Five proposals rejected',
   }[reason] ?? 'Game finished';
 }
 
@@ -4511,6 +4538,9 @@ function CurrentExpeditionPanel({
         <div className="captain-card">
           <span>{t('Captain')}</span>
           <strong>{leaderName}</strong>
+          {(missionState.phase === 'proposal' || missionState.phase === 'vote') && (
+            <small>{t('Proposal this quest')} {missionState.proposalIndex + 1}/{MAX_PROPOSALS_PER_QUEST}</small>
+          )}
         </div>
         <div className="expedition-state-card">
           <span>{phaseLabel}</span>
@@ -4518,6 +4548,9 @@ function CurrentExpeditionPanel({
           <small>{formatFailThresholdRule(currentFailThreshold, language)}</small>
         </div>
       </div>
+      {(missionState.phase === 'proposal' || missionState.phase === 'vote') && isFinalProposal(missionState) && (
+        <p className="final-proposal-warning">{t('Fifth proposal this quest: if this crew is rejected, Evil wins.')}</p>
+      )}
       <div className="team-roster">
         <div className="team-roster-heading">
           <span>{missionState.phase === 'proposal' ? t('Proposed crew') : t('Locked crew')}</span>

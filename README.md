@@ -10,7 +10,7 @@ The default create form is built for an all-human table:
 - **Role setup** uses the recommended roles for that count.
 - **Advanced settings** (collapsed by default) holds special-role toggles and **AI fill-ins (experimental)**.
 
-AI fill-ins stay available for short tables and solo testing. Turning them on in Advanced settings lets the host pick how many humans play; the remaining seats become AI players. Whether a room has AI is decided by the room itself (its AI players), not by the URL, so anyone who joins by link or code sees the same AI seats. AI seats are labeled in the lobby and in the game. AI moves are driven from the host's page, so the host needs to keep that page open during the game. When AI fill-ins are switched off, the room is created with every seat human even if a human count was chosen earlier.
+AI fill-ins stay available for short tables and solo testing. Turning them on in Advanced settings lets the host pick how many humans play; the remaining seats become AI players. Whether a room has AI is decided by the room itself (its AI players), not by the URL, so anyone who joins by link or code sees the same AI seats. AI seats are labeled in the lobby and in the game. AI moves are driven from the host's page, so the host needs to keep that page open during the game. AI players decide only from what a human in their seat would know: their own role, their night vision, and the public quest record. When AI fill-ins are switched off, the room is created with every seat human even if a human count was chosen earlier.
 
 ## Local Run
 
@@ -128,7 +128,7 @@ Once a game has started, a new device cannot take a seat on its own. The host op
 
 Mission flow state is stored in `rooms.settings.missionState`. Live room updates are fetched through a Vercel API polling loop; demo mode updates the local snapshot only and does not write to Neon.
 
-Normal live play is phone-driven. The Table Quest panel remains a status surface with host backup controls, but it is no longer the only way to progress proposals, votes, or mission results. Individual team votes are tracked in mission state, and mission cards are stored as submitted-player markers plus an anonymous card pile until every selected player has submitted; only then is the public success/fail aggregate revealed. After three successful quests, the assigned Assassin can submit the Merlin guess from the dedicated Assassin phase panel. Three failed quests finish with Evil winning; an Assassin hit on Merlin also gives Evil the win; an Assassin miss gives Good the win.
+Normal live play is phone-driven. The Table Quest panel remains a status surface with host backup controls, but it is no longer the only way to progress proposals, votes, or mission results. Individual team votes are tracked in mission state, and mission cards are stored as submitted-player markers plus an anonymous card pile until every selected player has submitted; only then is the public success/fail aggregate revealed. After three successful quests, the assigned Assassin can submit the Merlin guess from the dedicated Assassin phase panel. Three failed quests finish with Evil winning; an Assassin hit on Merlin also gives Evil the win; an Assassin miss gives Good the win. Each quest allows five crew proposals: if the fifth is rejected too, Evil wins. The board shows the proposal count and warns everyone before the fifth vote.
 
 ## Neon Status
 

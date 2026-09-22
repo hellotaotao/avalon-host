@@ -163,6 +163,32 @@ test('six-player rejected team vote rotates leader, then the next leader recover
   });
 });
 
+test('five rejected proposals in one quest hand Evil the game, with a warning before the last vote', async ({ browser }) => {
+  await withStartedRoom(browser, 5, async ({ host, players }) => {
+    for (let proposal = 1; proposal <= 4; proposal += 1) {
+      await expect(host.locator('.captain-card')).toContainText(`Proposal this quest ${proposal}/5`);
+      await expect(host.locator('.expedition-board .final-proposal-warning')).toHaveCount(0);
+      await proposeTeam(players, players.slice(0, 2));
+      await submitVotes(players, () => 'reject');
+    }
+
+    await expect(host.locator('.captain-card')).toContainText('Proposal this quest 5/5');
+    await expect(host.locator('.expedition-board .final-proposal-warning')).toContainText(/if this crew is rejected, Evil wins/i);
+    await proposeTeam(players, players.slice(0, 2));
+    for (const player of players) {
+      await expect(player.page.locator('.phone-action .final-proposal-warning')).toBeVisible();
+    }
+    await submitVotes(players, () => 'reject');
+
+    const result = host.getByRole('dialog');
+    await expect(result.getByRole('heading', { name: /You (won|lost) this game/i })).toBeVisible();
+    await expect(result.getByText(/five crew proposals in a row were rejected/i)).toBeVisible();
+    await result.getByRole('button', { name: /Close result summary/i }).click();
+    await expect(host.getByText(/Game 1: Evil won/i)).toBeVisible();
+    await expect(host.getByText(/Five proposals rejected/i).first()).toBeVisible();
+  });
+});
+
 test('lobby room controls are scoped to host and guests', async ({ browser }) => {
   const room = await createLobbyRoom(browser, 5);
   try {

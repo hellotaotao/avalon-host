@@ -155,6 +155,20 @@ describe('room workflow integration', () => {
     expect(snapshot.room.settings.missionState?.missionResults).toEqual([]);
   });
 
+  it('ends the game for Evil when five proposals in a quest are rejected and records why', async () => {
+    let snapshot = await startReadyFivePlayerRoom();
+
+    for (let proposal = 1; proposal <= 5; proposal += 1) {
+      const missionState = snapshot.room.settings.missionState!;
+      snapshot = await proposeMissionTeam(snapshot.room.id, missionState.leaderPlayerId, snapshot.players.slice(0, 2).map((player) => player.id));
+      snapshot = await submitVotes(snapshot, () => 'reject');
+    }
+
+    expect(snapshot.room.status).toBe('finished');
+    expect(snapshot.room.settings.missionState).toMatchObject({ winner: 'evil', missionResults: [] });
+    expect(snapshot.room.settings.gameHistory?.at(-1)).toMatchObject({ winner: 'evil', endReason: 'five_rejected_proposals' });
+  });
+
   it('lets a player reclaim a released seat from a new browser after the game starts', async () => {
     const started = await startReadyFivePlayerRoom();
     const lostPlayer = started.players.find((player) => player.displayName === 'Tao P3')!;
