@@ -40,6 +40,7 @@ Demo supports:
 - A multi-phone table view where every player has a virtual phone. Each phone can show/hide that player's own role and night information.
 - Demo and live play share the same `PlayerPhone` surface for role, night information, and player-facing phase actions. Demo mode controls reveal state persistently for operating many phones; live mode uses protected per-player peek controls.
 - Local table state for leader, quest round, team selection, public approve/reject votes, anonymous mission success/fail cards, and score progress.
+- The same rules as live rooms: votes, quest results, the five-proposal limit, and the assassination all resolve through `src/domain/missionFlow.ts`, so the demo cannot drift from real play.
 
 ## Developer 5-Player Simulator
 

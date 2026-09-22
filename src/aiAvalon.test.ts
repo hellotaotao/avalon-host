@@ -134,6 +134,28 @@ describe('AI Avalon request filtering and validation', () => {
     expect(decision.publicSpeech).toBe('I reject the current proposed team: Assassin AI (p2), Loyal (p3).');
   });
 
+  it('tells the model which proposal this is and warns on the fifth', () => {
+    const request = buildAiAvalonDecisionRequest({ ...baseState, phase: 'vote', selectedTeamIds: ['p1', 'p3'], proposalIndex: 1 }, 'p1');
+    expect(request.game.proposalIndex).toBe(1);
+    expect(request.currentTurn.instruction).toContain('proposal 2 of 5');
+
+    const finalRequest = buildAiAvalonDecisionRequest({ ...baseState, phase: 'vote', selectedTeamIds: ['p1', 'p3'], proposalIndex: 4 }, 'p1');
+    expect(finalRequest.currentTurn.instruction).toMatch(/proposal 5 of 5.*Evil wins immediately/);
+  });
+
+  it('lets Merlin approve the fifth proposal even with visible evil, since rejecting it loses the game', () => {
+    const request = buildAiAvalonDecisionRequest({ ...baseState, phase: 'vote', selectedTeamIds: ['p2', 'p3'], proposalIndex: 4 }, 'p1');
+
+    const decision = normalizeAiAvalonDecision(request, {
+      privateReasoningSummary: 'Last proposal of the quest; rejecting it hands Evil the game.',
+      publicSpeech: 'I will take this team.',
+      action: { type: 'vote', vote: 'approve' },
+      memoryUpdate: {},
+    });
+
+    expect(decision.action).toEqual({ type: 'vote', vote: 'approve' });
+  });
+
   it('does not treat Percival Merlin-candidate visibility as known evil', () => {
     const percivalState: AiTableStateInput = {
       ...baseState,

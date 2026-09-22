@@ -245,6 +245,31 @@ test('demo setup uses table size and manual seats instead of separate modes', as
   expect(failMarkerContent).toBe('none');
 });
 
+test('demo follows the same five-rejection rule as live rooms', async ({ page }) => {
+  await page.goto('/?step=demo');
+  await page.getByLabel(/Table size/i).getByRole('button', { name: '5', exact: true }).click();
+  await page.getByLabel(/Manual seats/i).getByRole('button', { name: '5', exact: true }).click();
+  await page.getByRole('button', { name: /Start demo/i }).click();
+
+  const phones = page.locator('.demo-phone-grid .player-phone');
+  for (let proposal = 1; proposal <= 5; proposal += 1) {
+    await expect(page.getByText(`Proposal this quest ${proposal}/5`)).toBeVisible();
+    await expect(page.locator('.demo-board .final-proposal-warning')).toHaveCount(proposal === 5 ? 1 : 0);
+    const leaderAction = page.locator('.demo-phone-grid .player-phone.leader-phone .phone-action');
+    const crewChoices = leaderAction.getByRole('checkbox');
+    await crewChoices.nth(0).check();
+    await crewChoices.nth(1).check();
+    await leaderAction.getByRole('button', { name: /^Propose Team$/i }).click();
+    await expect(phones.locator('.phone-action .final-proposal-warning')).toHaveCount(proposal === 5 ? 5 : 0);
+    for (let seat = 0; seat < 5; seat += 1) {
+      await phones.nth(seat).getByRole('button', { name: /^Reject$/i }).click();
+    }
+  }
+
+  await expect(page.getByText(/Evil wins because five crew proposals in a row were rejected this quest/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Copy demo log/i })).toBeVisible();
+});
+
 test('pure AI demo can pause between quest rounds', async ({ page }) => {
   await page.route('**/api/ai-avalon', (route) => route.fulfill({
     status: 503,

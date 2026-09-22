@@ -160,6 +160,7 @@ function readRequest(body: unknown): AiAvalonDecisionRequest {
       roundIndex: request.game.roundIndex,
       phase: request.game.phase,
       teamSize: request.game.teamSize,
+      proposalIndex: typeof request.game.proposalIndex === 'number' ? request.game.proposalIndex : 0,
       selectedTeamIds: [...request.game.selectedTeamIds],
       missionResults: request.game.missionResults.map((result) => ({ ...result })),
       lastVote: request.game.lastVote ? { ...request.game.lastVote } : undefined,

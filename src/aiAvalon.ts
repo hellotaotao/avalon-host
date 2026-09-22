@@ -1,4 +1,5 @@
 import { getTeamSize, getVisibilityInfo, roleAllegiance, type MissionCard, type Player, type Role, type Vote } from './domain/avalon.js';
+import { MAX_PROPOSALS_PER_QUEST } from './domain/missionFlow.js';
 
 export interface AiAgentMemory {
   suspicion: Record<string, number>;
@@ -48,6 +49,7 @@ export interface AiTableStateInput {
   phase: 'setup' | 'proposal' | 'vote' | 'mission' | 'result' | 'assassin' | 'finished';
   roundIndex: number;
   leaderIndex: number;
+  proposalIndex?: number;
   selectedTeamIds: string[];
   players: AiTablePlayerInput[];
   tableHistory: AiTableHistoryEntryInput[];
@@ -84,6 +86,7 @@ export interface AiAvalonDecisionRequest {
     roundIndex: number;
     phase: Exclude<AiTableStateInput['phase'], 'setup' | 'result' | 'finished'>;
     teamSize: number;
+    proposalIndex?: number;
     selectedTeamIds: string[];
     missionResults: AiTableStateInput['missionResults'];
     lastVote?: AiTableStateInput['lastVote'];
@@ -220,6 +223,7 @@ export function buildAiAvalonDecisionRequest(state: AiTableStateInput, actorId: 
       roundIndex: state.roundIndex,
       phase: state.phase,
       teamSize: getTeamSize(state.playerCount, state.roundIndex),
+      proposalIndex: state.proposalIndex ?? 0,
       selectedTeamIds: [...state.selectedTeamIds],
       missionResults: state.missionResults.map((result) => ({ ...result })),
       lastVote: state.lastVote ? { ...state.lastVote } : undefined,
@@ -229,7 +233,7 @@ export function buildAiAvalonDecisionRequest(state: AiTableStateInput, actorId: 
       phase: state.phase,
       actorId: actor.id,
       actorName: actor.displayName,
-      instruction: buildCurrentTurnInstruction(state.phase, currentActionContext.currentProposedTeamText),
+      instruction: buildCurrentTurnInstruction(state.phase, currentActionContext.currentProposedTeamText, state.proposalIndex ?? 0),
     },
     currentActionContext,
     actingPlayer: {
@@ -340,11 +344,22 @@ function buildCurrentActionContext(
   };
 }
 
-function buildCurrentTurnInstruction(phase: AiAvalonDecisionRequest['game']['phase'], currentTeamText: string): string {
-  if (phase === 'vote') return `Vote approve or reject for the current proposed team only: ${currentTeamText}. Do not vote on or cite an older historical team as if it is current.`;
+function buildCurrentTurnInstruction(phase: AiAvalonDecisionRequest['game']['phase'], currentTeamText: string, proposalIndex: number): string {
+  if (phase === 'vote') return `Vote approve or reject for the current proposed team only: ${currentTeamText}. Do not vote on or cite an older historical team as if it is current. ${describeProposalLimit(proposalIndex)}`;
   if (phase === 'mission') return `Submit a mission card for the current mission team only: ${currentTeamText}. Include a brief private reason for the card choice: good players must submit success; evil players should weigh sabotage pressure against staying hidden. Do not reveal the chosen card publicly before mission resolution.`;
   if (phase === 'assassin') return 'Good completed three quests. Choose exactly one good player as Merlin for the Assassin endgame; do not claim certainty unless your own information supports it.';
-  return 'Propose a new legal mission team for the current round.';
+  return `Propose a new legal mission team for the current round. ${describeProposalLimit(proposalIndex)}`;
+}
+
+function describeProposalLimit(proposalIndex: number): string {
+  const count = `This is proposal ${proposalIndex + 1} of ${MAX_PROPOSALS_PER_QUEST} this quest.`;
+  return isFinalProposalIndex(proposalIndex)
+    ? `${count} If this proposal is rejected, Evil wins immediately.`
+    : `${count} If proposal ${MAX_PROPOSALS_PER_QUEST} is rejected too, Evil wins immediately.`;
+}
+
+function isFinalProposalIndex(proposalIndex = 0): boolean {
+  return proposalIndex + 1 >= MAX_PROPOSALS_PER_QUEST;
 }
 
 function formatTeamText(team: AiAvalonDecisionRequest['publicPlayers']): string {
@@ -354,6 +369,8 @@ function formatTeamText(team: AiAvalonDecisionRequest['publicPlayers']): string 
 function guardVoteAgainstVisibleEvil(request: AiAvalonDecisionRequest, action: AiAvalonDecisionAction, privateReasoningSummary: string): AiAvalonDecisionAction {
   const visibleEvilOnTeam = visibleEvilPlayersOnCurrentTeam(request);
   if (request.currentActionContext.actionType !== 'vote' || action.type !== 'vote' || action.vote !== 'approve' || !visibleEvilOnTeam.length) return action;
+  // Rejecting the final proposal hands Evil the game, so Merlin may take it.
+  if (isFinalProposalIndex(request.game.proposalIndex)) return action;
   if (hasExplicitStrategicVisibleEvilApprovalJustification(privateReasoningSummary, visibleEvilOnTeam)) return action;
   return { type: 'vote', vote: 'reject' };
 }

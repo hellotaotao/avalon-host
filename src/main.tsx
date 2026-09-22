@@ -8,7 +8,6 @@ import {
   getTeamSize,
   getVisibilityInfo,
   playerCountRange,
-  resolveMission,
   roleAllegiance,
   type Allegiance,
   type MissionCard,
@@ -1185,6 +1184,7 @@ interface DemoState {
   phase: 'setup' | 'proposal' | 'vote' | 'mission' | 'result' | 'assassin' | 'finished';
   roundIndex: number;
   leaderIndex: number;
+  proposalIndex: number;
   selectedTeamIds: string[];
   missionResults: DemoMissionResult[];
   tableHistory: DemoHistoryEntry[];
@@ -1192,6 +1192,7 @@ interface DemoState {
   lastVote?: { approveCount: number; rejectCount: number; passed: boolean };
   lastMission?: DemoMissionResult;
   assassination?: DemoAssassination;
+  winner?: Allegiance;
 }
 
 const demoNames = ['Arthur', 'Bors', 'Cai', 'Dagonet', 'Elaine', 'Gareth', 'Helena', 'Isolde', 'Lucan', 'Yvain'];
@@ -1482,11 +1483,17 @@ function DemoSimulator() {
         <div className="status">
           <span>{t('Leader')}: {demo.players[demo.leaderIndex]?.displayName}</span>
           <span>{t('Quest')}: {demo.roundIndex + 1} {t('needs')} {teamSize}</span>
+          {(demo.phase === 'proposal' || demo.phase === 'vote') && (
+            <span>{t('Proposal this quest')} {demo.proposalIndex + 1}/{MAX_PROPOSALS_PER_QUEST}</span>
+          )}
           <span>{t('Score')}: {t('Good')} {goodScore} / {t('Evil')} {evilScore}</span>
         </div>
       </section>
 
       <section className="demo-board" aria-label={t('Demo table state')}>
+        {(demo.phase === 'proposal' || demo.phase === 'vote') && demo.proposalIndex + 1 >= MAX_PROPOSALS_PER_QUEST && (
+          <p className="final-proposal-warning">{t('Fifth proposal this quest: if this crew is rejected, Evil wins.')}</p>
+        )}
         {demo.lastVote && (
           <p className="hint">
             {t('Last vote')}: {demo.lastVote.approveCount} {t('approve')}, {demo.lastVote.rejectCount} {t('reject')}.
@@ -1509,7 +1516,9 @@ function DemoSimulator() {
                 ? t('Good wins: the Assassin missed Merlin.')
                 : demo.assassination?.hitMerlin
                   ? t('Evil wins: the Assassin found Merlin.')
-                  : t('Evil wins.')}
+                  : demoEndedByRejectedProposals(demo)
+                    ? t('Evil wins because five crew proposals in a row were rejected this quest.')
+                    : t('Evil wins.')}
               {' '}
               {t('Reset the table to try another setup.')}
             </p>
@@ -1624,6 +1633,7 @@ function DemoSimulator() {
             assassination={demo.assassination}
             winner={winner}
             lastMission={demo.lastMission}
+            isFinalProposal={demo.proposalIndex + 1 >= MAX_PROPOSALS_PER_QUEST}
             tableMode={demo.mode}
           />
         ))}
@@ -1679,6 +1689,7 @@ function DemoPhone({
   assassination,
   winner,
   lastMission,
+  isFinalProposal,
   tableMode,
 }: {
   player: DemoPlayer;
@@ -1695,6 +1706,7 @@ function DemoPhone({
   assassination?: DemoAssassination;
   winner?: Allegiance;
   lastMission?: DemoMissionResult;
+  isFinalProposal: boolean;
   tableMode: DemoMode;
 }) {
   const { t, language } = useI18n();
@@ -1728,6 +1740,7 @@ function DemoPhone({
         canFailMission,
         winner,
         lastMission,
+        isFinalProposal,
         onToggleTeamPlayer,
         onVote,
         onPlayMissionCard,
@@ -1870,6 +1883,7 @@ function getDemoPhoneAction({
   canFailMission,
   winner,
   lastMission,
+  isFinalProposal,
   onToggleTeamPlayer,
   onVote,
   onPlayMissionCard,
@@ -1888,6 +1902,7 @@ function getDemoPhoneAction({
   canFailMission: boolean;
   winner?: Allegiance;
   lastMission?: DemoMissionResult;
+  isFinalProposal: boolean;
   onToggleTeamPlayer: (playerId: string) => void;
   onVote: (playerId: string, vote: Vote) => void;
   onPlayMissionCard: (playerId: string, card: MissionCard) => void;
@@ -1913,6 +1928,7 @@ function getDemoPhoneAction({
     return {
       kind: 'vote',
       selectedTeamNames: selectedTeamIds.map((id) => players.find((candidate) => candidate.id === id)?.displayName ?? id),
+      isFinalProposal,
       currentVote: player.teamVote,
       submittedVoteCount: players.filter((candidate) => candidate.teamVote).length,
       playerCount: players.length,
@@ -2323,14 +2339,16 @@ function resolveDemoVoteIfReady(
   const approveCount = players.filter((player) => player.teamVote === 'approve').length;
   const rejectCount = players.filter((player) => player.teamVote === 'reject').length;
   if (approveCount + rejectCount !== current.playerCount) return { players, statePatch: {} };
-  const passed = approveCount > current.playerCount / 2;
+  const next = recordTeamVote(toDemoMissionState(current, 'vote'), current.players.map((player) => player.id), approveCount, rejectCount);
   return {
     players: players.map((player) => ({ ...player, missionCard: undefined })),
     statePatch: {
-      phase: passed ? 'mission' : 'proposal',
-      leaderIndex: passed ? current.leaderIndex : (current.leaderIndex + 1) % current.playerCount,
-      selectedTeamIds: passed ? current.selectedTeamIds : [],
-      lastVote: { approveCount, rejectCount, passed },
+      phase: next.phase,
+      leaderIndex: getDemoLeaderIndex(current, next.leaderPlayerId),
+      proposalIndex: next.proposalIndex,
+      selectedTeamIds: next.selectedTeamIds,
+      lastVote: next.teamVote,
+      winner: next.winner,
     },
   };
 }
@@ -2339,26 +2357,19 @@ function resolveDemoMissionIfReady(current: DemoState, players: DemoPlayer[]): D
   const missionCards = players.filter((player) => current.selectedTeamIds.includes(player.id) && player.missionCard);
   if (missionCards.length !== current.selectedTeamIds.length) return { ...current, players };
   const cards = current.selectedTeamIds.map((id) => players.find((player) => player.id === id)?.missionCard ?? 'success');
-  const resolved = resolveMission(cards, current.playerCount, current.roundIndex);
-  const result: DemoMissionResult = {
-    roundIndex: current.roundIndex,
-    outcome: resolved.outcome,
-    successCount: cards.filter((card) => card === 'success').length,
-    failCount: resolved.failCount,
-    requiredFails: resolved.requiredFails,
-    selectedTeamIds: [...current.selectedTeamIds],
-  };
-  const missionResults = [...current.missionResults, result];
-  const goodScore = missionResults.filter((item) => item.outcome === 'success').length;
-  const evilScore = missionResults.filter((item) => item.outcome === 'fail').length;
+  const successCount = cards.filter((card) => card === 'success').length;
+  const next = advanceMissionResult(toDemoMissionState(current, 'mission'), current.players.map((player) => player.id), successCount, cards.length - successCount);
+  // The demo pauses on the quest result before the next proposal; advanceDemoToNextQuest moves on.
+  const startsNextQuest = next.phase === 'proposal';
   return {
     ...current,
     players,
-    phase: evilScore >= 3 ? 'finished' : goodScore >= 3 ? 'assassin' : 'result',
-    missionResults,
-    selectedTeamIds: goodScore >= 3 || evilScore >= 3 ? [] : current.selectedTeamIds,
-    lastMission: result,
+    phase: startsNextQuest ? 'result' : next.phase,
+    missionResults: next.missionResults,
+    selectedTeamIds: startsNextQuest ? current.selectedTeamIds : next.selectedTeamIds,
+    lastMission: next.missionResults.at(-1),
     assassination: undefined,
+    winner: next.winner,
   };
 }
 
@@ -2368,6 +2379,7 @@ function advanceDemoToNextQuest(current: DemoState): DemoState {
     phase: 'proposal',
     roundIndex: current.roundIndex + 1,
     leaderIndex: (current.leaderIndex + 1) % current.playerCount,
+    proposalIndex: 0,
     selectedTeamIds: [],
     players: current.players.map((player) => ({ ...player, teamVote: undefined, missionCard: undefined })),
     lastVote: undefined,
@@ -2377,10 +2389,16 @@ function advanceDemoToNextQuest(current: DemoState): DemoState {
 function resolveDemoAssassination(current: DemoState, targetPlayerId: string): DemoState {
   if (current.phase !== 'assassin') return current;
   const target = current.players.find((player) => player.id === targetPlayerId);
-  if (!target || target.role === 'Assassin') return current;
   const assassin = current.players.find((player) => player.role === 'Assassin');
-  const hitMerlin = target.role === 'Merlin';
-  const winner: Allegiance = hitMerlin ? 'evil' : 'good';
+  if (!target || !assassin) return current;
+  let next: MissionState;
+  try {
+    next = resolveAssassination(toDemoMissionState(current, 'assassin'), current.players.map(toDemoAvalonPlayer), assassin.id, target.id);
+  } catch {
+    return current;
+  }
+  const hitMerlin = Boolean(next.assassination?.hitMerlin);
+  const winner: Allegiance = next.winner ?? (hitMerlin ? 'evil' : 'good');
   const assassination: DemoAssassination = {
     targetPlayerId: target.id,
     targetName: target.displayName,
@@ -2391,6 +2409,7 @@ function resolveDemoAssassination(current: DemoState, targetPlayerId: string): D
     ...current,
     phase: 'finished',
     assassination,
+    winner,
     tableHistory: [
       ...current.tableHistory,
       makeHistory(
@@ -2406,10 +2425,31 @@ function resolveDemoAssassination(current: DemoState, targetPlayerId: string): D
 }
 
 function getDemoWinner(demo: DemoState): Allegiance | undefined {
-  const evilScore = demo.missionResults.filter((result) => result.outcome === 'fail').length;
-  if (demo.phase === 'finished' && demo.assassination) return demo.assassination.winner;
-  if (demo.phase === 'finished' && evilScore >= 3) return 'evil';
-  return undefined;
+  return demo.phase === 'finished' ? demo.winner : undefined;
+}
+
+// The demo keeps its own UI state, but votes, quests, and the assassination all
+// resolve through the same missionFlow functions as live rooms, so the rules
+// cannot drift apart.
+function toDemoMissionState(demo: DemoState, phase: MissionState['phase']): MissionState {
+  return {
+    phase,
+    roundIndex: demo.roundIndex,
+    leaderPlayerId: demo.players[demo.leaderIndex]?.id ?? demo.players[0].id,
+    selectedTeamIds: [...demo.selectedTeamIds],
+    proposalIndex: demo.proposalIndex,
+    teamVote: demo.lastVote,
+    missionResults: demo.missionResults.map((result) => ({ ...result })),
+    winner: demo.winner,
+  };
+}
+
+function getDemoLeaderIndex(demo: DemoState, leaderPlayerId: string): number {
+  return Math.max(0, demo.players.findIndex((player) => player.id === leaderPlayerId));
+}
+
+function demoEndedByRejectedProposals(demo: DemoState): boolean {
+  return endedByRejectedProposals(toDemoMissionState(demo, demo.phase === 'finished' ? 'finished' : 'proposal'));
 }
 
 function getDemoQuestTeamNames(demo: DemoState, teamIds: string[] = []): string[] {
@@ -2427,8 +2467,10 @@ function buildDemoLog(demo: DemoState, language: Language): string {
     `Manual seats: ${demo.humanCount}`,
     `AI seats: ${demo.playerCount - demo.humanCount}`,
     `Current phase: ${demo.phase}`,
+    `Proposal this quest: ${demo.proposalIndex + 1}/${MAX_PROPOSALS_PER_QUEST}`,
     `Winner: ${winner ? formatAllegiance(winner, language) : 'not decided'}`,
   ];
+  if (demoEndedByRejectedProposals(demo)) lines.push('End reason: five crew proposals in a row were rejected this quest.');
 
   lines.push('', '## Players, identities, and role vision');
   demo.players.forEach((player) => {
@@ -3382,6 +3424,8 @@ function chooseAiVote(current: DemoState, voter: DemoPlayer): Vote {
   const selfOnTeam = current.selectedTeamIds.includes(voter.id);
   const suspicionScore = scoreTeamSuspicion(current, voter, current.selectedTeamIds);
   if (roleAllegiance(voter.role) === 'evil') return selfOnTeam || suspicionScore > -30 ? 'approve' : 'reject';
+  // Rejecting the last allowed proposal hands Evil the game.
+  if (current.proposalIndex + 1 >= MAX_PROPOSALS_PER_QUEST) return 'approve';
   if (visibleEvilPlayersOnCurrentDemoTeam(current, voter).length) return 'reject';
   return suspicionScore <= 45 || selfOnTeam ? 'approve' : 'reject';
 }
@@ -3556,6 +3600,7 @@ function createDemoState(
     phase: 'setup',
     roundIndex: 0,
     leaderIndex: 0,
+    proposalIndex: 0,
     selectedTeamIds: [],
     missionResults: [],
     tableHistory: [],
