@@ -111,6 +111,10 @@ test('home join layout stays compact on phone and full width on desktop', async 
 });
 
 test('default create form only asks for nickname and player count, and every count is all-human', async ({ page }) => {
+  const externalRequests: string[] = [];
+  page.on('request', (request) => {
+    if (!request.url().startsWith('http://127.0.0.1:5173')) externalRequests.push(request.url());
+  });
   await page.goto('/?devSession=all-human-create');
   await page.getByRole('button', { name: /Host the round/i }).click();
 
@@ -130,6 +134,10 @@ test('default create form only asks for nickname and player count, and every cou
   await expect(page.locator('.players li')).toHaveCount(1);
   await expect(page.locator('.players .ai-player-badge')).toHaveCount(0);
   await expect(page.locator('.ai-room-note')).toHaveCount(0);
+  // The QR code is drawn in the page, so no third party sees the join link.
+  await expect(page.locator('.qr-code svg')).toBeVisible();
+  await expect(page.locator('.qr-code img')).toHaveCount(0);
+  expect(externalRequests).toEqual([]);
   await expect(page.getByText(/9 more ready players needed/i)).toBeVisible();
 });
 

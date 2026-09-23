@@ -2161,7 +2161,7 @@ label {
   background: #fff8df;
 }
 
-.qr-code img {
+.qr-code svg {
   display: block;
   width: 112px;
   height: 112px;
@@ -2431,9 +2431,9 @@ label {
     border-radius: 8px;
   }
 
-  .qr-code img {
-    width: 82px;
-    height: 82px;
+  .qr-code svg {
+    width: 104px;
+    height: 104px;
   }
 
   .room-grid > .panel {

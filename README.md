@@ -115,6 +115,8 @@ Live private reveal and the demo's multi-phone cards now render through the shar
 
 Room screens keep the 5-digit room code prominent for table readout before the game starts and after it finishes. They also show a readable join link, Copy Link and Copy Code controls, and a scannable QR code for the join URL. The numeric code remains the fallback.
 
+The QR code is drawn in the page with `qrcode.react`, so the join link is never sent to a third-party image service and the code still appears on a flaky connection.
+
 The shared link is `/?step=join&code=12345` from the English UI and `/zh/?step=join&code=12345` from the Chinese UI. It never copies the sharer's other query parameters (such as `devSession`).
 
 Link previews (WeChat, iMessage, Slack, and so on) read the static HTML without running the app, so the preview language comes from the path. `index.html` holds the English title, description, and Open Graph summary; the build also emits `dist/zh/index.html` with the Chinese versions. Both are generated from `src/shareMeta.ts`. Opening a `/zh/` link starts the UI in Chinese unless that browser already saved a language choice, and the live page title follows whichever language is showing.

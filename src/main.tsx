@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   buildRolePreset,
   getMissionFailThreshold,
@@ -4833,12 +4834,20 @@ function MissionPanel({
   );
 }
 
+// Drawn in the page: the join link never leaves the device, and the code still
+// appears when the room is open on a flaky connection.
 function QrCodePanel({ value }: { value: string }) {
   const { t } = useI18n();
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=176x176&margin=10&data=${encodeURIComponent(value)}`;
   return (
     <a className="qr-code" href={value} aria-label={t('Scan QR code to join this Avalon room')}>
-      <img src={qrUrl} alt={t('QR code for the Avalon room join link')} width="176" height="176" loading="lazy" />
+      <QRCodeSVG
+        value={value}
+        title={t('QR code for the Avalon room join link')}
+        size={176}
+        marginSize={3}
+        bgColor="#ffffff"
+        fgColor="#231206"
+      />
     </a>
   );
 }
