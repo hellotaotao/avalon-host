@@ -51,6 +51,9 @@ export interface Room {
   gameType: 'avalon_lite';
   settings: RoomSettings;
   updatedAt?: string;
+  // Bumped by every write that changes the game, so clients can drop a slow
+  // response that carries an older board than the one already on screen.
+  version?: number;
 }
 
 export interface RoomPlayer {
@@ -508,6 +511,7 @@ export function mapRoom(row: Record<string, unknown>): Room {
     gameType: row.game_type as 'avalon_lite',
     settings: (row.settings as RoomSettings | null) ?? {},
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : (row.updated_at as string | undefined),
+    version: row.version === undefined || row.version === null ? undefined : Number(row.version),
   };
 }
 

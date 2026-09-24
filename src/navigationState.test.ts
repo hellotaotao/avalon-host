@@ -32,6 +32,11 @@ describe('entry navigation state', () => {
     expect(parseJoinCodeFromUrl(`https://example.test${url}`)).toBe('54321');
   });
 
+  it('starts join links from the deployed base path', () => {
+    expect(buildJoinUrl('12345', 'en', '/table/')).toBe('/table/?step=join&code=12345');
+    expect(buildJoinUrl('12345', 'zh', '/table')).toBe('/table/zh/?step=join&code=12345');
+  });
+
   it('preserves unrelated query params when setting an entry step', () => {
     const url = buildStepUrl('https://example.test/?deploy-check=ok&step=join', 'create');
     expect(url).toBe('/?deploy-check=ok&step=create');

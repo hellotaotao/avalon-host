@@ -2144,6 +2144,44 @@ label {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.share-actions-invite {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.share-feedback {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #d8ad58;
+  border-radius: 8px;
+  background: #fff8df;
+  color: #3d2a12;
+  font-size: 0.85rem;
+}
+
+/* The panel around this block is the dark room-code card, whose paragraph
+   color would otherwise wash out on the cream feedback background. */
+.share-feedback p {
+  margin: 0;
+  color: #3d2a12;
+}
+
+.share-fallback {
+  width: 100%;
+  resize: none;
+  border: 1px solid #d8ad58;
+  border-radius: 6px;
+  padding: 0.45rem 0.55rem;
+  background: #fffdf4;
+  color: #3d2a12;
+  font: inherit;
+  font-size: 0.82rem;
+  /* The fallback exists to be selected by hand, so it stays selectable even
+     where the rest of the board disables selection. */
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 .count-row {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }

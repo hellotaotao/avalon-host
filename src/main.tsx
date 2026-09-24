@@ -81,6 +81,8 @@ import {
   type RoomGamePlayerResult,
 } from './services/roomService';
 import { getSessionStorageKeys, isDevSessionActive } from './sessionKeys';
+import { attemptRestore, isStaleSnapshot } from './roomSession';
+import { buildInviteMessage, copyTextToClipboard } from './inviteShare';
 import { I18nProvider, formatAllegiance, formatHint, formatRole, formatRoleDescription, useI18n, type Language } from './i18n';
 import './styles.css';
 
@@ -164,6 +166,8 @@ function App() {
   const previousRoomStatusRef = useRef(snapshot?.room.status);
   const [restorableSnapshot, setRestorableSnapshot] = useState<RoomSnapshot>();
   const [restorablePlayerId, setRestorablePlayerId] = useState('');
+  const [restoreUnavailable, setRestoreUnavailable] = useState(false);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
 
   const currentPlayer = snapshot?.players.find((player) => player.id === currentPlayerId);
   const isHostNameMissing = !hostName.trim();
@@ -176,39 +180,64 @@ function App() {
   );
 
   useEffect(() => {
-    const explicitEntryScreen = parseEntryStep(window.location.href);
-    if (explicitEntryScreen !== 'home') return;
+    const entryScreen = parseEntryStep(window.location.href);
+    const invitedCode = parseJoinCodeFromUrl(window.location.href);
+    // Home restores the previous room; an invitation link restores the seat
+    // only when it points at the room this device is already sitting in.
+    if (entryScreen !== 'home' && !(entryScreen === 'join' && invitedCode)) return;
 
     const sessionKeys = getSessionStorageKeys();
     const storedRoomId = localStorage.getItem(sessionKeys.currentRoomId);
     const storedPlayerId = localStorage.getItem(sessionKeys.currentPlayerId);
-    if (!storedRoomId || !storedPlayerId) return;
+    if (!storedRoomId || !storedPlayerId) {
+      setRestoreUnavailable(false);
+      return;
+    }
 
     let cancelled = false;
-    void getRoomById(storedRoomId)
-      .then((restoredSnapshot) => {
-        if (cancelled) return;
-        if (restoredSnapshot?.players.some((player) => player.id === storedPlayerId)) {
-          setRestorableSnapshot(restoredSnapshot);
-          setRestorablePlayerId(storedPlayerId);
-          return;
-        }
+    void attemptRestore(() => getRoomById(storedRoomId), storedPlayerId).then(({ decision, snapshot: restoredSnapshot }) => {
+      if (cancelled) return;
+      if (decision.action === 'retry') {
+        // The saved seat stays put: the server never said it was gone.
+        setRestoreUnavailable(true);
+        return;
+      }
+      setRestoreUnavailable(false);
+      if (decision.action === 'clear') {
         clearSessionBinding();
         setCurrentPlayerId('');
         setSnapshot(undefined);
-        setScreen('home');
-        setMessage(t('You were removed from the room.'));
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        clearSessionBinding();
-        setCurrentPlayerId('');
-        setMessage(error instanceof Error ? t(error.message) : t('Could not restore room.'));
-      });
+        if (entryScreen === 'home') {
+          setScreen('home');
+          setMessage(decision.reason === 'roomGone' ? t('Room expired or was closed.') : t('You were removed from the room.'));
+        }
+        return;
+      }
+      if (!restoredSnapshot) return;
+      if (entryScreen === 'join') {
+        // A different room's invitation leaves this device's seat alone until
+        // the player actually joins the new room.
+        if (restoredSnapshot.room.code !== invitedCode) return;
+        setCurrentPlayerId(storedPlayerId);
+        setSnapshot(restoredSnapshot);
+        clearEntryStepFromUrl();
+        setScreen('room');
+        setMessage(t('Welcome back to your seat.'));
+        return;
+      }
+      setRestorableSnapshot(restoredSnapshot);
+      setRestorablePlayerId(storedPlayerId);
+    });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [restoreAttempt]);
+
+  // Once any room is on screen, an earlier failed lookup no longer describes
+  // this device's seat.
+  useEffect(() => {
+    if (snapshot) setRestoreUnavailable(false);
+  }, [snapshot?.room.id]);
 
   useEffect(() => {
     function handlePopState() {
@@ -241,7 +270,7 @@ function App() {
         setMessage(t('You were removed from the room.'));
         return;
       }
-      setSnapshot(nextSnapshot);
+      setSnapshot((current) => (isStaleSnapshot(current, nextSnapshot) ? current : nextSnapshot));
     });
   }, [currentPlayerId, snapshot?.room.id]);
 
@@ -745,6 +774,17 @@ function App() {
       </header>
 
       {message && <p className="notice">{message}</p>}
+
+      {screen === 'home' && restoreUnavailable && !restorableSnapshot && (
+        <section className="panel restore-panel">
+          <p className="eyebrow">{t('Saved seat')}</p>
+          <h2>{t('Could not reach the table right now.')}</h2>
+          <p>{t('Your seat is still saved on this device. Check the network and try again.')}</p>
+          <div className="share-actions">
+            <button type="button" className="primary" onClick={() => setRestoreAttempt((current) => current + 1)} disabled={busy}>{t('Try Again')}</button>
+          </div>
+        </section>
+      )}
 
       {screen === 'home' && restorableSnapshot && (
         <section className="panel restore-panel">
@@ -1379,8 +1419,7 @@ function DemoSimulator() {
   }
 
   async function copyDemoLog() {
-    await copyText(buildDemoLog(demo, language));
-    setDemoLogCopied(true);
+    setDemoLogCopied(await copyTextToClipboard(buildDemoLog(demo, language)));
   }
 
   return (
@@ -4107,13 +4146,7 @@ function RoomView({
             </div>
             <QrCodePanel value={joinLink} />
           </div>
-          <div className="share-panel">
-            <input value={joinLink} readOnly aria-label={t('Join link')} onFocus={(event) => event.currentTarget.select()} />
-            <div className="share-actions">
-              <button type="button" onClick={() => copyText(joinLink)}>{t('Copy Link')}</button>
-              <button type="button" onClick={() => copyText(snapshot.room.code)}>{t('Copy Code')}</button>
-            </div>
-          </div>
+          <InviteSharePanel joinLink={joinLink} code={snapshot.room.code} />
         </div>
       )}
 
@@ -4852,24 +4885,59 @@ function QrCodePanel({ value }: { value: string }) {
   );
 }
 
-function fillText(template: string, values: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
+type InviteCopyFeedback =
+  | { kind: 'copied'; text: string }
+  | { kind: 'manual'; text: string; fallbackText: string };
+
+function InviteSharePanel({ joinLink, code }: { joinLink: string; code: string }) {
+  const { t } = useI18n();
+  const [feedback, setFeedback] = useState<InviteCopyFeedback>();
+  const inviteMessage = buildInviteMessage(t, { code, joinLink });
+
+  useEffect(() => {
+    if (feedback?.kind !== 'copied') return undefined;
+    const timer = window.setTimeout(() => setFeedback(undefined), 2600);
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
+
+  async function copy(text: string, successMessage: string) {
+    const copied = await copyTextToClipboard(text);
+    setFeedback(copied
+      ? { kind: 'copied', text: successMessage }
+      : { kind: 'manual', text: t('This browser blocked the copy. Long-press the text below to copy it by hand.'), fallbackText: text });
+  }
+
+  return (
+    <div className="share-panel">
+      <input value={joinLink} readOnly aria-label={t('Join link')} onFocus={(event) => event.currentTarget.select()} />
+      <div className="share-actions share-actions-invite">
+        <button type="button" className="primary" onClick={() => copy(inviteMessage, t('Invitation copied. Paste it into the chat.'))}>{t('Copy Invitation')}</button>
+      </div>
+      <div className="share-actions">
+        <button type="button" onClick={() => copy(joinLink, t('Join link copied.'))}>{t('Copy Link')}</button>
+        <button type="button" onClick={() => copy(code, t('Room code copied.'))}>{t('Copy Code')}</button>
+      </div>
+      {feedback && (
+        <div className="share-feedback" role="status" aria-live="polite">
+          <p>{feedback.text}</p>
+          {feedback.kind === 'manual' && (
+            <textarea
+              className="share-fallback"
+              value={feedback.fallbackText}
+              readOnly
+              rows={3}
+              aria-label={t('Invitation text to copy by hand')}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
-async function copyText(text: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-  const input = document.createElement('textarea');
-  input.value = text;
-  input.setAttribute('readonly', '');
-  input.style.position = 'fixed';
-  input.style.left = '-9999px';
-  document.body.append(input);
-  input.select();
-  document.execCommand('copy');
-  input.remove();
+function fillText(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
 }
 
 function getOrCreateDeviceToken() {

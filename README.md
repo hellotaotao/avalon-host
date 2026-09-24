@@ -119,11 +119,15 @@ The QR code is drawn in the page with `qrcode.react`, so the join link is never 
 
 The shared link is `/?step=join&code=12345` from the English UI and `/zh/?step=join&code=12345` from the Chinese UI. It never copies the sharer's other query parameters (such as `devSession`).
 
+**Copy Invitation** puts a one-line message with the room code and the join link on the clipboard, in whichever language the room screen is showing; **Copy Link** and **Copy Code** copy those alone. Every button reports what actually happened: browsers that refuse the clipboard API fall back to a selection copy, and when that fails too the panel shows the text for a long-press copy instead of claiming success.
+
 Link previews (WeChat, iMessage, Slack, and so on) read the static HTML without running the app, so the preview language comes from the path. `index.html` holds the English title, description, and Open Graph summary; the build also emits `dist/zh/index.html` with the Chinese versions. Both are generated from `src/shareMeta.ts`. Opening a `/zh/` link starts the UI in Chinese unless that browser already saved a language choice, and the live page title follows whichever language is showing.
 
 ## Reconnecting From a New Browser
 
-A player's seat is tied to a device token kept in that browser's `localStorage`. Opening the room again in the same browser (for example, tapping the invite link again inside WeChat) keeps the seat. Switching to a different browser or app — WeChat's built-in browser to Safari, scanning with the system camera instead of WeChat, clearing WeChat's cache — counts as a new device.
+A player's seat is tied to a device token kept in that browser's `localStorage`. Opening the room again in the same browser (for example, tapping the invite link again inside WeChat) keeps the seat: an invitation link for the room this device is already in goes straight back to it, and an invitation for a different room leaves the saved seat alone until that new room is actually joined. Switching to a different browser or app — WeChat's built-in browser to Safari, scanning with the system camera instead of WeChat, clearing WeChat's cache — counts as a new device.
+
+The saved seat survives a bad network. It is dropped only when the server answers that the room is gone or that this player is no longer in it, or when the player leaves; a request that fails, times out, or comes back unreadable leaves it in place and offers a retry. Coming back to a backgrounded page refreshes the room immediately instead of waiting for the next poll, and a slow poll can no longer paint an older board over a newer one when the newer write bumped the room's version or update time (lobby player removal does neither yet).
 
 Once a game has started, a new device cannot take a seat on its own. The host opens **Host permissions** and taps **Release Seat** next to that player; the player then joins the same room code with the same nickname and gets their original seat, role, and progress back. The host's own seat cannot be released this way, and AI seats never need it.
 

@@ -1,4 +1,4 @@
-import { sharePathPrefix, type ShareLanguage } from './shareMeta';
+import { sharePathForLanguage, type ShareLanguage } from './shareMeta';
 
 export type EntryScreen = 'home' | 'create' | 'join' | 'demo' | 'demoJoin';
 
@@ -43,9 +43,9 @@ export function buildStepUrl(rawUrl: string, screen: EntryScreen): string {
 // Shared links carry only the join route and room code. The sharer's own query
 // params (devSession and anything else) must not leak into invitations; the
 // path picks the preview language to match the sharer's UI.
-export function buildJoinUrl(code: string, language: ShareLanguage): string {
+export function buildJoinUrl(code: string, language: ShareLanguage, base: string = import.meta.env.BASE_URL ?? '/'): string {
   const search = new URLSearchParams({ step: 'join', code: normalizeJoinCode(code) });
-  return `${sharePathPrefix[language]}?${search}`;
+  return `${sharePathForLanguage(language, base)}?${search}`;
 }
 
 function normalizeJoinCode(code: string): string {

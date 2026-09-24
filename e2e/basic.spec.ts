@@ -55,6 +55,99 @@ test('Chinese invitation links open in Chinese with Chinese page meta', async ({
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 });
 
+test('copying the invitation puts the message, link, and code on the clipboard', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/?devSession=copy-invite');
+  await page.getByRole('button', { name: /Host the round/i }).click();
+  await page.getByLabel(/Your nickname/i).fill('Copy Host');
+  await page.getByRole('button', { name: /^Create Room$/i }).click();
+
+  const joinLink = await page.getByLabel('Join link').inputValue();
+  const roomCode = new URL(joinLink).searchParams.get('code') ?? '';
+  expect(roomCode).toMatch(/^\d{5}$/);
+
+  await page.getByRole('button', { name: 'Copy Invitation' }).click();
+  await expect(page.getByText('Invitation copied. Paste it into the chat.')).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(`Avalon tonight. Room code ${roomCode}. Tap to take your seat: ${joinLink}`);
+
+  await page.getByRole('button', { name: 'Copy Link' }).click();
+  await expect(page.getByText('Join link copied.')).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(joinLink);
+
+  await page.getByRole('button', { name: 'Copy Code' }).click();
+  await expect(page.getByText('Room code copied.')).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(roomCode);
+});
+
+test('an unavailable clipboard API still copies through the selection fallback', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+  });
+  await page.goto('/?devSession=copy-fallback');
+  await page.getByRole('button', { name: /Host the round/i }).click();
+  await page.getByLabel(/Your nickname/i).fill('Fallback Host');
+  await page.getByRole('button', { name: /^Create Room$/i }).click();
+
+  const joinLink = await page.getByLabel('Join link').inputValue();
+  await page.getByRole('button', { name: 'Copy Link' }).click();
+  await expect(page.getByText('Join link copied.')).toBeVisible();
+
+  // Read the clipboard from a page that still has the API, to prove the
+  // fallback really wrote the link instead of only claiming it did.
+  const reader = await page.context().newPage();
+  await reader.goto('/');
+  expect(await reader.evaluate(() => navigator.clipboard.readText())).toBe(joinLink);
+  await reader.close();
+});
+
+test('a blocked clipboard offers the invitation as text to copy by hand', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => Promise.reject(new Error('NotAllowedError')) },
+    });
+    document.execCommand = () => false;
+  });
+  await page.goto('/?devSession=copy-blocked');
+  await page.getByRole('button', { name: /Host the round/i }).click();
+  await page.getByLabel(/Your nickname/i).fill('Blocked Host');
+  await page.getByRole('button', { name: /^Create Room$/i }).click();
+
+  const joinLink = await page.getByLabel('Join link').inputValue();
+  const roomCode = new URL(joinLink).searchParams.get('code') ?? '';
+  await page.getByRole('button', { name: 'Copy Invitation' }).click();
+
+  await expect(page.getByText('This browser blocked the copy. Long-press the text below to copy it by hand.')).toBeVisible();
+  await expect(page.getByLabel('Invitation text to copy by hand'))
+    .toHaveValue(`Avalon tonight. Room code ${roomCode}. Tap to take your seat: ${joinLink}`);
+  await expect(page.getByText('Invitation copied. Paste it into the chat.')).toHaveCount(0);
+});
+
+test('re-opening the same invitation link returns to the seat instead of the join form', async ({ page }) => {
+  await page.goto('/?devSession=repeat-invite');
+  await page.getByRole('button', { name: /Host the round/i }).click();
+  await page.getByLabel(/Your nickname/i).fill('Repeat Host');
+  await page.getByRole('button', { name: /^Create Room$/i }).click();
+  const joinLink = await page.getByLabel('Join link').inputValue();
+  const roomCode = new URL(joinLink).searchParams.get('code') ?? '';
+
+  await page.goto(`${new URL(joinLink).pathname}${new URL(joinLink).search}&devSession=repeat-invite`);
+  await expect(page.getByText('Welcome back to your seat.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Current Room/i })).toBeVisible();
+  await expect(page.locator('.players li')).toHaveCount(1);
+  await expect(page.getByLabel('Join link')).toHaveValue(joinLink);
+  expect(new URL(page.url()).searchParams.get('step')).toBeNull();
+
+  // Another room's invitation leaves this device's seat alone until it joins.
+  const otherCode = roomCode === '10101' ? '20202' : '10101';
+  await page.goto(`/?step=join&code=${otherCode}&devSession=repeat-invite`);
+  await expect(page.getByRole('heading', { name: /Join Room/i })).toBeVisible();
+  await page.goto('/?devSession=repeat-invite');
+  await expect(page.getByText(`You were previously at room ${roomCode}`)).toBeVisible();
+});
+
 test('home join layout stays compact on phone and full width on desktop', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');

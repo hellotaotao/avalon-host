@@ -476,18 +476,31 @@ const apiRepository: RoomRepository = {
       if (stopped || inFlight) return;
       inFlight = true;
       try {
-        listener(await apiRepository.getRoomById(roomId));
+        const snapshot = await apiRepository.getRoomById(roomId);
+        // The answer can arrive after the caller moved to another room or left
+        // one, and applying it then would resurrect the old board.
+        if (!stopped) listener(snapshot);
       } catch {
         // Keep polling through transient API/network failures.
       } finally {
         inFlight = false;
       }
     };
+    // Phone browsers freeze timers while the app is in the background (a
+    // WeChat chat, a locked screen), so the first thing to do on the way back
+    // is a poll, not a wait for the next tick.
+    const pollOnReturn = () => {
+      if (document.visibilityState === 'visible') void poll();
+    };
     void poll();
     const timer = window.setInterval(() => void poll(), 2000);
+    document.addEventListener('visibilitychange', pollOnReturn);
+    window.addEventListener('focus', pollOnReturn);
     return () => {
       stopped = true;
       window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', pollOnReturn);
+      window.removeEventListener('focus', pollOnReturn);
     };
   },
 };
@@ -498,10 +511,20 @@ async function apiRequest<T>(action: string, payload: Record<string, unknown>): 
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ action, ...payload }),
   });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(typeof body?.error === 'string' ? body.error : 'Request failed.');
+  const rawBody = await response.text();
+  let body: unknown;
+  let parsed = false;
+  try {
+    body = rawBody ? JSON.parse(rawBody) : undefined;
+    parsed = true;
+  } catch {
+    // A gateway error page or an offline shell: not an answer about the room.
   }
+  if (!response.ok) {
+    const error = parsed && typeof (body as { error?: unknown })?.error === 'string' ? (body as { error: string }).error : undefined;
+    throw new Error(error ?? `Request failed (${response.status}).`);
+  }
+  if (!parsed) throw new Error('The server sent an unreadable response.');
   return body as T;
 }
 

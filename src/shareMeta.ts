@@ -38,6 +38,13 @@ export const shareMeta: Record<ShareLanguage, ShareMeta> = {
   },
 };
 
+// Invitations are absolute paths, so they have to start from wherever the app
+// is deployed rather than assuming the site root.
+export function sharePathForLanguage(language: ShareLanguage, base: string): string {
+  const root = base.endsWith('/') ? base : `${base}/`;
+  return language === 'zh' ? `${root}zh/` : root;
+}
+
 export function getLanguageFromPath(pathname: string): ShareLanguage | undefined {
   return pathname === '/zh' || pathname.startsWith('/zh/') ? 'zh' : undefined;
 }

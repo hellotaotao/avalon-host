@@ -71,6 +71,7 @@ const zh: Record<string, string> = {
   'This room is already full.': '这个房间已经满员。',
   'Unable to generate an unused room code': '暂时无法生成新房号，请稍后再试。',
   'Request failed.': '请求失败，请稍后再试。',
+  'The server sent an unreadable response.': '服务器返回的内容无法识别，请稍后再试。',
   'Failed to fetch': '网络连接失败，请检查网络后重试。',
   'Load failed': '网络连接失败，请检查网络后重试。',
   'Proposal this quest': '本轮组队',
@@ -297,10 +298,22 @@ const zh: Record<string, string> = {
   'Join link': '加入链接',
   'Copy Link': '复制链接',
   'Copy Code': '复制房号',
+  'Copy Invitation': '复制邀请',
+  'Avalon tonight. Room code {code}. Tap to take your seat: {link}': '来打阿瓦隆，房号 {code}。点链接入座：{link}',
+  'Invitation copied. Paste it into the chat.': '邀请已复制，粘贴到聊天里发给朋友。',
+  'Join link copied.': '加入链接已复制。',
+  'Room code copied.': '房号已复制。',
+  'This browser blocked the copy. Long-press the text below to copy it by hand.': '这个浏览器不允许自动复制。长按下面的文字手动复制。',
+  'Invitation text to copy by hand': '需要手动复制的邀请文字',
   'Private Reveal': '私密身份区',
   'Current Room': '当前房间',
   'Leave Room': '离开房间',
   'Previous room found': '发现上次的房间',
+  'Saved seat': '保存的座位',
+  'Could not reach the table right now.': '暂时连不上服务器。',
+  'Your seat is still saved on this device. Check the network and try again.': '你的座位仍保存在这台设备上。检查网络后重试。',
+  'Try Again': '重试',
+  'Welcome back to your seat.': '欢迎回到你的座位。',
   'You were previously at room': '你上次在房间',
   'Choose whether to re-enter it or leave the old room.': '请选择重新进入房间，或离开旧房间。',
   'Re-enter Room': '重新进入房间',
@@ -531,6 +544,7 @@ function detectInitialLanguage(): Language {
 const zhPatterns: Array<[RegExp, (...groups: string[]) => string]> = [
   [/^Quest (\d+) needs exactly (\d+) team members\.$/, (quest, size) => `第 ${quest} 轮任务需要正好 ${size} 名队员。`],
   [/^Mission flow is in \w+, not \w+\.$/, () => '游戏进度已经变化，请以最新画面为准。'],
+  [/^Request failed \(\d+\)\.$/, () => '请求失败，请稍后再试。'],
 ];
 
 export function translateZhPattern(text: string): string | undefined {
