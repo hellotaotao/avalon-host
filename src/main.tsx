@@ -801,34 +801,33 @@ function App() {
       {screen === 'home' && (
         <section className="entry">
           <section className="path-section" aria-labelledby="choose-path-title">
-            <div className="home-join-copy">
+            <div className="home-entry-copy">
               <p className="eyebrow">{t('Start here')}</p>
-              <h2 id="choose-path-title">{t('Join a room')}</h2>
-              <p>{t('Enter the host code here and join the table directly.')}</p>
+              <h2 id="choose-path-title">{t('Host a table or join one')}</h2>
             </div>
-            <form className="home-join-form" onSubmit={handleJoinRoom}>
-              <label className="join-code-field">
-                {t('5-digit room code')}
-                <input
-                  value={joinCode}
-                  onChange={(event) => setJoinCode(normalizeRoomCode(event.target.value))}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={5}
-                  placeholder="12345"
-                  autoComplete="one-time-code"
-                />
-              </label>
-              <label className="join-name-field">
-                {t('Your nickname')}
-                <input value={joinName} onChange={(event) => setJoinName(event.target.value)} maxLength={24} />
-              </label>
-              <button type="submit" className="primary" disabled={busy}>{busy ? t('Joining...') : t('Join Room')}</button>
-            </form>
-            <div className="secondary-entry-actions" aria-label={t('Other options')}>
-              <button type="button" className="path-card secondary-path create-room-action" onClick={() => navigateEntry('create')}>
-                <span>{t('Host the round')}</span>
-                <small>{t('Create a live 5-digit code for the table.')}</small>
+            {/* Hosting and joining are separate jobs with equal weight; players who
+                scan or tap an invite land on the join screen and skip this. */}
+            <div className="home-entry-choices">
+              <button type="button" className="entry-choice entry-choice-create create-room-action" onClick={() => navigateEntry('create')}>
+                <svg className="entry-choice-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 17h16l1-10-5 4-4-6-4 6-5-4 1 10Z" />
+                  <path d="M4 20h16" />
+                </svg>
+                <span className="entry-choice-text">
+                  <strong>{t('Host the round')}</strong>
+                  <small>{t("I'm the host. Get a room code for the table.")}</small>
+                </span>
+              </button>
+              <button type="button" className="entry-choice entry-choice-join join-room-action" onClick={() => navigateEntry('join')}>
+                <svg className="entry-choice-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
+                  <path d="M10 8l4 4-4 4" />
+                  <path d="M14 12H4" />
+                </svg>
+                <span className="entry-choice-text">
+                  <strong>{t('Join a room')}</strong>
+                  <small>{t('I have a 5-digit room code.')}</small>
+                </span>
               </button>
             </div>
           </section>

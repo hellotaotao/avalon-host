@@ -347,9 +347,10 @@ test('AI room created from advanced settings plays normally for guests joining b
     await expect(linkGuest.getByRole('heading', { name: /Current Room/i })).toBeVisible();
 
     await codeGuest.goto(`/?devSession=${runId}-p3`);
-    await codeGuest.locator('.home-join-form').getByLabel(/5-digit room code/i).fill(roomCode);
-    await codeGuest.locator('.home-join-form').getByLabel(/Your nickname/i).fill(players[2].name);
-    await codeGuest.locator('.home-join-form').getByRole('button', { name: /^Join Room$/i }).click();
+    await codeGuest.getByRole('button', { name: /Join a room/i }).click();
+    await codeGuest.getByLabel(/5-digit room code/i).fill(roomCode);
+    await codeGuest.getByLabel(/Your nickname/i).fill(players[2].name);
+    await codeGuest.getByRole('button', { name: /^Join Room$/i }).click();
     await expect(codeGuest.getByRole('heading', { name: /Current Room/i })).toBeVisible();
 
     for (const guest of [linkGuest, codeGuest]) {
@@ -487,7 +488,7 @@ async function createLobbyRoom(browser: Browser, playerCount: number, configureH
 
   for (let index = 1; index < players.length; index += 1) {
     const player = players[index];
-    await player.page.goto(`/?devSession=${runId}-p${index + 1}&code=${roomCode}`);
+    await player.page.goto(`/?devSession=${runId}-p${index + 1}&step=join&code=${roomCode}`);
     await player.page.getByLabel(/5-digit room code/i).fill(roomCode);
     await player.page.getByLabel(/Your nickname/i).fill(player.name);
     await player.page.getByRole('button', { name: /^Join Room$/i }).click();

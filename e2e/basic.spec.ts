@@ -2,10 +2,10 @@ import { test, expect } from '@playwright/test';
 
 test('home page shows Veiled Roundtable entry actions', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: /Join a room/i })).toBeVisible();
-  await expect(page.getByLabel(/5-digit room code/i)).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Join Room$/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Host a table or join one/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /Host the round/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Join a room/i })).toBeVisible();
+  await expect(page.getByLabel(/5-digit room code/i)).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Join by rune/i })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: /Built for friends at the same table/i })).toBeVisible();
   await expect(page.getByText(/scan to join, and roles, votes, and scoring are handled for you/i)).toBeVisible();
@@ -24,11 +24,14 @@ test('home page copy is consistent in Chinese', async ({ page }) => {
   await expect(page.getByRole('button', { name: '多手机模拟器（实验）' })).toBeVisible();
   await expect(page.getByText(/AI 补位|Neon/)).toHaveCount(0);
 
-  await page.locator('.home-join-form').getByLabel('5 位房号').fill('99999');
-  await page.locator('.home-join-form').getByLabel('你的昵称').fill('路人');
-  await page.locator('.home-join-form').getByRole('button', { name: '加入房间' }).click();
+  await expect(page.getByRole('heading', { name: '开一桌，还是加入一桌？' })).toBeVisible();
+  await page.getByRole('button', { name: /加入房间.*我有 5 位房号/ }).click();
+  await page.getByLabel('5 位房号').fill('99999');
+  await page.getByLabel('你的昵称').fill('路人');
+  await page.getByRole('button', { name: '加入房间', exact: true }).click();
   await expect(page.getByText('找不到这个房间。')).toBeVisible();
 
+  await page.getByRole('button', { name: '返回' }).click();
   await page.locator('.create-room-action').click();
   await expect(page.getByRole('heading', { name: '创建房间' })).toBeVisible();
   await expect(page.getByLabel('玩家人数', { exact: true })).toBeVisible();
@@ -152,59 +155,35 @@ test('re-opening the same invitation link returns to the seat instead of the joi
   await expect(page.getByText(`You were previously at room ${roomCode}`)).toBeVisible();
 });
 
-test('home join layout stays compact on phone and full width on desktop', async ({ page }) => {
+test('home gives hosting and joining equal-size entries, stacked on phone and side by side on desktop', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
 
-  const code = page.getByLabel(/5-digit room code/i);
-  const nickname = page.getByLabel(/Your nickname/i);
-  const joinButton = page.getByRole('button', { name: /^Join Room$/i });
-
-  const phoneMetrics = await page.evaluate(() => {
-    const codeInput = document.querySelector<HTMLInputElement>('.join-code-field input');
-    const nicknameInput = document.querySelector<HTMLInputElement>('.join-name-field input');
-    const join = document.querySelector<HTMLButtonElement>('.home-join-form button');
-    if (!codeInput || !nicknameInput || !join) throw new Error('Missing home join controls');
-    const codeRect = codeInput.getBoundingClientRect();
-    const nicknameRect = nicknameInput.getBoundingClientRect();
-    const joinRect = join.getBoundingClientRect();
-    const codeStyle = getComputedStyle(codeInput);
-    return {
-      codeTop: Math.round(codeRect.top),
-      nicknameTop: Math.round(nicknameRect.top),
-      joinTop: Math.round(joinRect.top),
-      codeRight: Math.round(codeRect.right),
-      joinLeft: Math.round(joinRect.left),
-      codeHeight: Math.round(codeRect.height),
-      codeFont: codeStyle.fontFamily,
-    };
+  const measure = () => page.evaluate(() => {
+    const create = document.querySelector<HTMLElement>('.entry-choice-create');
+    const join = document.querySelector<HTMLElement>('.entry-choice-join');
+    if (!create || !join) throw new Error('Missing home entry choices');
+    const a = create.getBoundingClientRect();
+    const b = join.getBoundingClientRect();
+    return { createTop: a.top, joinTop: b.top, createBottom: a.bottom, createWidth: a.width, joinWidth: b.width, createHeight: a.height, joinHeight: b.height, viewport: innerHeight };
   });
 
-  await expect(code).toBeVisible();
-  await expect(nickname).toBeVisible();
-  await expect(joinButton).toBeVisible();
-  expect(Math.abs(phoneMetrics.codeTop - phoneMetrics.joinTop)).toBeLessThanOrEqual(2);
-  expect(phoneMetrics.nicknameTop).toBeGreaterThan(phoneMetrics.codeTop + 48);
-  expect(phoneMetrics.joinLeft).toBeGreaterThan(phoneMetrics.codeRight);
-  expect(phoneMetrics.codeHeight).toBeGreaterThanOrEqual(56);
-  expect(phoneMetrics.codeFont).toContain('Georgia');
+  const phone = await measure();
+  // Both entries sit in the first screen, create first, at the same size.
+  expect(phone.createBottom).toBeLessThan(phone.viewport);
+  expect(phone.joinTop).toBeGreaterThan(phone.createTop);
+  expect(Math.abs(phone.createWidth - phone.joinWidth)).toBeLessThanOrEqual(1);
+  expect(Math.abs(phone.createHeight - phone.joinHeight)).toBeLessThanOrEqual(2);
+  expect(phone.createHeight).toBeGreaterThanOrEqual(80);
 
   await page.setViewportSize({ width: 1280, height: 720 });
+  const desktop = await measure();
+  expect(Math.abs(desktop.createTop - desktop.joinTop)).toBeLessThanOrEqual(1);
+  expect(Math.abs(desktop.createWidth - desktop.joinWidth)).toBeLessThanOrEqual(1);
 
-  const desktopMetrics = await page.evaluate(() => {
-    const form = document.querySelector<HTMLElement>('.home-join-form');
-    const actions = document.querySelector<HTMLElement>('.secondary-entry-actions');
-    if (!form || !actions) throw new Error('Missing home entry layout');
-    const formRect = form.getBoundingClientRect();
-    const actionRect = actions.getBoundingClientRect();
-    return {
-      leftGap: Math.abs(Math.round(actionRect.left - formRect.left)),
-      widthRatio: actionRect.width / formRect.width,
-    };
-  });
-
-  expect(desktopMetrics.leftGap).toBeLessThanOrEqual(2);
-  expect(desktopMetrics.widthRatio).toBeGreaterThan(0.98);
+  await page.getByRole('button', { name: /Join a room/i }).click();
+  await expect(page.getByRole('heading', { name: /^Join Room$/i })).toBeVisible();
+  await expect(page.getByLabel(/5-digit room code/i)).toBeFocused();
 });
 
 test('default create form only asks for nickname and player count, and every count is all-human', async ({ page }) => {
