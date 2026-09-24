@@ -305,6 +305,8 @@ const zh: Record<string, string> = {
   'Room code copied.': '房号已复制。',
   'This browser blocked the copy. Long-press the text below to copy it by hand.': '这个浏览器不允许自动复制。长按下面的文字手动复制。',
   'Invitation text to copy by hand': '需要手动复制的邀请文字',
+  'Join link to copy by hand': '需要手动复制的加入链接',
+  'Room code to copy by hand': '需要手动复制的房号',
   'Private Reveal': '私密身份区',
   'Current Room': '当前房间',
   'Leave Room': '离开房间',

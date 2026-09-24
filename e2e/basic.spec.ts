@@ -123,6 +123,10 @@ test('a blocked clipboard offers the invitation as text to copy by hand', async 
   await expect(page.getByLabel('Invitation text to copy by hand'))
     .toHaveValue(`Avalon tonight. Room code ${roomCode}. Tap to take your seat: ${joinLink}`);
   await expect(page.getByText('Invitation copied. Paste it into the chat.')).toHaveCount(0);
+
+  // The hand-copy box names what it holds, not always "invitation".
+  await page.getByRole('button', { name: 'Copy Code' }).click();
+  await expect(page.getByLabel('Room code to copy by hand')).toHaveValue(roomCode);
 });
 
 test('re-opening the same invitation link returns to the seat instead of the join form', async ({ page }) => {

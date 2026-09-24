@@ -515,10 +515,13 @@ async function apiRequest<T>(action: string, payload: Record<string, unknown>): 
   let body: unknown;
   let parsed = false;
   try {
-    body = rawBody ? JSON.parse(rawBody) : undefined;
+    // The API always answers with JSON, even a missing room is `null`, so an
+    // empty body fails to parse here instead of reading as "no such room".
+    body = JSON.parse(rawBody);
     parsed = true;
   } catch {
-    // A gateway error page or an offline shell: not an answer about the room.
+    // A gateway error page, an empty body, or an offline shell: not an
+    // answer about the room.
   }
   if (!response.ok) {
     const error = parsed && typeof (body as { error?: unknown })?.error === 'string' ? (body as { error: string }).error : undefined;

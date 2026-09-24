@@ -371,7 +371,7 @@ function App() {
         setMessage(t('AI action stalled. Retrying automatically.'));
         void getRoomById(snapshot.room.id)
           .then((refreshedSnapshot) => {
-            if (refreshedSnapshot) setSnapshot(refreshedSnapshot);
+            if (refreshedSnapshot) setSnapshot((current) => (isStaleSnapshot(current, refreshedSnapshot) ? current : refreshedSnapshot));
           })
           .catch(() => {
             // The retry loop will keep trying the pending AI action.
@@ -4887,7 +4887,7 @@ function QrCodePanel({ value }: { value: string }) {
 
 type InviteCopyFeedback =
   | { kind: 'copied'; text: string }
-  | { kind: 'manual'; text: string; fallbackText: string };
+  | { kind: 'manual'; text: string; fallbackText: string; fallbackLabel: string };
 
 function InviteSharePanel({ joinLink, code }: { joinLink: string; code: string }) {
   const { t } = useI18n();
@@ -4900,22 +4900,22 @@ function InviteSharePanel({ joinLink, code }: { joinLink: string; code: string }
     return () => window.clearTimeout(timer);
   }, [feedback]);
 
-  async function copy(text: string, successMessage: string) {
+  async function copy(text: string, successMessage: string, fallbackLabel: string) {
     const copied = await copyTextToClipboard(text);
     setFeedback(copied
       ? { kind: 'copied', text: successMessage }
-      : { kind: 'manual', text: t('This browser blocked the copy. Long-press the text below to copy it by hand.'), fallbackText: text });
+      : { kind: 'manual', text: t('This browser blocked the copy. Long-press the text below to copy it by hand.'), fallbackText: text, fallbackLabel });
   }
 
   return (
     <div className="share-panel">
       <input value={joinLink} readOnly aria-label={t('Join link')} onFocus={(event) => event.currentTarget.select()} />
       <div className="share-actions share-actions-invite">
-        <button type="button" className="primary" onClick={() => copy(inviteMessage, t('Invitation copied. Paste it into the chat.'))}>{t('Copy Invitation')}</button>
+        <button type="button" className="primary" onClick={() => copy(inviteMessage, t('Invitation copied. Paste it into the chat.'), t('Invitation text to copy by hand'))}>{t('Copy Invitation')}</button>
       </div>
       <div className="share-actions">
-        <button type="button" onClick={() => copy(joinLink, t('Join link copied.'))}>{t('Copy Link')}</button>
-        <button type="button" onClick={() => copy(code, t('Room code copied.'))}>{t('Copy Code')}</button>
+        <button type="button" onClick={() => copy(joinLink, t('Join link copied.'), t('Join link to copy by hand'))}>{t('Copy Link')}</button>
+        <button type="button" onClick={() => copy(code, t('Room code copied.'), t('Room code to copy by hand'))}>{t('Copy Code')}</button>
       </div>
       {feedback && (
         <div className="share-feedback" role="status" aria-live="polite">
@@ -4926,7 +4926,7 @@ function InviteSharePanel({ joinLink, code }: { joinLink: string; code: string }
               value={feedback.fallbackText}
               readOnly
               rows={3}
-              aria-label={t('Invitation text to copy by hand')}
+              aria-label={feedback.fallbackLabel}
               onFocus={(event) => event.currentTarget.select()}
             />
           )}
