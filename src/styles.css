@@ -121,11 +121,6 @@ label {
 
 /* Holds the error's height even while it is hidden, so showing it on blur
    never shifts the controls below mid-click. */
-.field-error-slot {
-  display: block;
-  min-height: calc(1.56rem + 2px);
-}
-
 .shell {
   position: relative;
   width: min(820px, 100%);

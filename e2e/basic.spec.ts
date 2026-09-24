@@ -271,6 +271,11 @@ test('create room defers the nickname error until submit and still blocks empty 
   await expect(page.getByText(/Enter a nickname before creating the room/i)).toHaveCount(0);
   await expect(nickname).toHaveAttribute('aria-invalid', 'false');
 
+  // Leaving the empty field for another control does not flag it, so the
+  // form never shifts under a tap; only submitting does.
+  await page.getByLabel(/Player count/i).getByRole('button', { name: '6', exact: true }).click();
+  await expect(page.getByText(/Enter a nickname before creating the room/i)).toHaveCount(0);
+
   await createButton.click();
   await expect(page.getByText(/Enter a nickname before creating the room/i)).toBeVisible();
   await expect(nickname).toHaveAttribute('aria-invalid', 'true');

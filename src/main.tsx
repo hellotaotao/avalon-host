@@ -878,16 +878,15 @@ function App() {
                 ref={hostNameInputRef}
                 value={hostName}
                 onChange={(event) => setHostName(event.target.value)}
-                onBlur={() => setHostNameTouched(true)}
                 maxLength={24}
                 autoFocus
                 required
                 aria-invalid={showHostNameError}
                 aria-describedby={showHostNameError ? 'host-name-error' : undefined}
               />
-              <span className="field-error-slot">
-                {showHostNameError && <small id="host-name-error" className="field-error">{t('Enter a nickname before creating the room.')}</small>}
-              </span>
+              {/* Shown only after a submit, so it never pushes the form down while
+                  the player is tapping another control. */}
+              {showHostNameError && <small id="host-name-error" className="field-error">{t('Enter a nickname before creating the room.')}</small>}
             </label>
             <CreateRoomRoleConfig
               aiFillEnabled={aiFillEnabled}
