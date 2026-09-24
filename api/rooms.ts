@@ -365,6 +365,10 @@ async function removePlayer(roomId: string, hostPlayerId: string, targetPlayerId
   for (const player of snapshot.players) {
     await sql`update players set seat_index = ${player.seatIndex} where id = ${player.id} and room_id = ${roomId}`;
   }
+  // Clients order snapshots by the room's version and update time, so a
+  // removal that left both untouched let a poll from before it bring the
+  // removed player back on screen.
+  await touchRoom(roomId);
   return fetchSnapshot(roomId);
 }
 
