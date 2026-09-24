@@ -980,6 +980,9 @@ label {
 .create-role-sides {
   display: grid;
   gap: 0.75rem;
+  /* Same spacing as between the good and evil lists, so the recommended-roles
+     note above does not sit flush against the good list. */
+  margin-top: 0.75rem;
 }
 
 .create-advanced {
