@@ -26,8 +26,10 @@ import {
   removePlayerFromSnapshot,
   readyForNextGameInSnapshot,
   startDemoSnapshot,
+  swapSeatsInSnapshot,
   transferHostInSnapshot,
   resetRoomToLobbySnapshot,
+  unreadyHostAfterJoin,
   validateHostCanStart,
   type CreateRoomInput,
   type JoinRoomInput,
@@ -42,6 +44,7 @@ export {
   autoStartReadyRoom,
   buildAiPlayers,
   buildCreateRoomSettings,
+  canArrangeSeats,
   canAutoStartGame,
   canStartGame,
   createHostDemoRoom,
@@ -65,6 +68,7 @@ export {
   readyForNextGameInSnapshot,
   resolveCreateRoomSeats,
   startDemoSnapshot,
+  swapSeatsInSnapshot,
   transferHostInSnapshot,
   resetRoomToLobbySnapshot,
   validateHostCanStart,
@@ -97,6 +101,7 @@ interface RoomRepository {
   readyForNextGame(roomId: string, playerId: string): Promise<RoomSnapshot>;
   removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
   releaseSeat(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
+  swapSeats(roomId: string, hostPlayerId: string, firstPlayerId: string, secondPlayerId: string): Promise<RoomSnapshot>;
   transferHost(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
   resetRoomToLobby(roomId: string, hostPlayerId: string): Promise<RoomSnapshot>;
   dissolveRoom(roomId: string, hostPlayerId: string): Promise<null>;
@@ -158,6 +163,10 @@ export async function removePlayer(roomId: string, hostPlayerId: string, targetP
 
 export async function releaseSeat(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot> {
   return repository().releaseSeat(roomId, hostPlayerId, targetPlayerId);
+}
+
+export async function swapSeats(roomId: string, hostPlayerId: string, firstPlayerId: string, secondPlayerId: string): Promise<RoomSnapshot> {
+  return repository().swapSeats(roomId, hostPlayerId, firstPlayerId, secondPlayerId);
 }
 
 export async function transferHost(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot> {
@@ -255,6 +264,7 @@ const localRepository: RoomRepository = {
       isReady: false,
       deviceToken: input.deviceToken,
     };
+    unreadyHostAfterJoin(snapshot.players);
     snapshot.players.push(player);
     writeRooms(data, snapshot.room.id);
     return { snapshot, currentPlayerId: player.id };
@@ -388,6 +398,14 @@ const localRepository: RoomRepository = {
     return snapshot;
   },
 
+  async swapSeats(roomId: string, hostPlayerId: string, firstPlayerId: string, secondPlayerId: string) {
+    const data = readRooms();
+    const snapshot = requireById(data, roomId);
+    swapSeatsInSnapshot(snapshot, hostPlayerId, firstPlayerId, secondPlayerId);
+    writeRooms(data, snapshot.room.id);
+    return snapshot;
+  },
+
   async transferHost(roomId: string, hostPlayerId: string, targetPlayerId: string) {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
@@ -459,6 +477,7 @@ const apiRepository: RoomRepository = {
   readyForNextGame: (roomId, playerId) => apiRequest('readyForNextGame', { roomId, playerId }),
   removePlayer: (roomId, hostPlayerId, targetPlayerId) => apiRequest('removePlayer', { roomId, hostPlayerId, targetPlayerId }),
   releaseSeat: (roomId, hostPlayerId, targetPlayerId) => apiRequest('releaseSeat', { roomId, hostPlayerId, targetPlayerId }),
+  swapSeats: (roomId, hostPlayerId, firstPlayerId, secondPlayerId) => apiRequest('swapSeats', { roomId, hostPlayerId, firstPlayerId, secondPlayerId }),
   transferHost: (roomId, hostPlayerId, targetPlayerId) => apiRequest('transferHost', { roomId, hostPlayerId, targetPlayerId }),
   resetRoomToLobby: (roomId, hostPlayerId) => apiRequest('resetRoomToLobby', { roomId, hostPlayerId }),
   dissolveRoom: (roomId, hostPlayerId) => apiRequest('dissolveRoom', { roomId, hostPlayerId }),

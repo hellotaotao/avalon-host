@@ -28,6 +28,7 @@ import {
   removePlayerFromSnapshot,
   readyForNextGameInSnapshot,
   startDemoSnapshot,
+  swapSeatsInSnapshot,
   validateHostCanStart,
   type RoomSnapshot,
   type RoomPlayer,
@@ -455,6 +456,41 @@ describe('room service rules', () => {
     expect(started.ok).toBe(true);
     expect(started.snapshot?.room.status).toBe('reveal');
     expect(started.snapshot?.players.find((player) => player.id === currentPlayerId)?.role).toBeTruthy();
+  });
+});
+
+describe('seat arrangement', () => {
+  it('swaps two seats in the lobby and takes back the host ready', () => {
+    const snapshot = makeSnapshot(5);
+    swapSeatsInSnapshot(snapshot, 'p1', 'p2', 'p4');
+    expect(snapshot.players.map((player) => player.id)).toEqual(['p1', 'p4', 'p3', 'p2', 'p5']);
+    expect(snapshot.players.map((player) => player.seatIndex)).toEqual([0, 1, 2, 3, 4]);
+    expect(snapshot.players.find((player) => player.id === 'p1')?.isReady).toBe(false);
+    expect(snapshot.players.filter((player) => player.id !== 'p1').every((player) => player.isReady)).toBe(true);
+    expect(canAutoStartGame(snapshot.players, snapshot.room.settings)).toBe(false);
+  });
+
+  it('lets only the host arrange seats', () => {
+    expect(() => swapSeatsInSnapshot(makeSnapshot(5), 'p2', 'p3', 'p4')).toThrow('Only the host can arrange seats.');
+  });
+
+  it('locks seats while a game is in progress', () => {
+    const started = startDemoSnapshot(makeSnapshot(5)).snapshot!;
+    expect(() => swapSeatsInSnapshot(started, 'p1', 'p2', 'p3')).toThrow('Seats can only be arranged between games.');
+  });
+
+  it('keeps the new order into the next game, where it drives leader rotation', () => {
+    const snapshot = makeSnapshot(5);
+    snapshot.room.status = 'finished';
+    snapshot.room.settings = { nextGameReadyPlayerIds: ['p1', 'p2'] };
+    swapSeatsInSnapshot(snapshot, 'p1', 'p1', 'p3');
+    expect(snapshot.room.settings.nextGameReadyPlayerIds).toEqual(['p2']);
+
+    let next = snapshot;
+    for (const id of ['p2', 'p3', 'p4', 'p5', 'p1']) next = readyForNextGameInSnapshot(next, id);
+    expect(next.room.status).toBe('reveal');
+    expect(next.players.map((player) => player.id)).toEqual(['p3', 'p2', 'p1', 'p4', 'p5']);
+    expect(next.room.settings.missionState?.leaderPlayerId).toBe('p3');
   });
 });
 

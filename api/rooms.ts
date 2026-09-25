@@ -28,6 +28,7 @@ import {
   removePlayerFromSnapshot,
   readyForNextGameInSnapshot,
   startDemoSnapshot,
+  swapSeatsInSnapshot,
   transferHostInSnapshot,
   resetRoomToLobbySnapshot,
   toAvalonPlayer,
@@ -120,6 +121,8 @@ async function dispatch(body: RequestBody) {
       return removePlayer(readString(body.roomId, 'roomId'), readString(body.hostPlayerId, 'hostPlayerId'), readString(body.targetPlayerId, 'targetPlayerId'));
     case 'releaseSeat':
       return releaseSeat(readString(body.roomId, 'roomId'), readString(body.hostPlayerId, 'hostPlayerId'), readString(body.targetPlayerId, 'targetPlayerId'));
+    case 'swapSeats':
+      return swapSeats(readString(body.roomId, 'roomId'), readString(body.hostPlayerId, 'hostPlayerId'), readString(body.firstPlayerId, 'firstPlayerId'), readString(body.secondPlayerId, 'secondPlayerId'));
     case 'transferHost':
       return transferHost(readString(body.roomId, 'roomId'), readString(body.hostPlayerId, 'hostPlayerId'), readString(body.targetPlayerId, 'targetPlayerId'));
     case 'resetRoomToLobby':
@@ -230,6 +233,8 @@ async function joinRoom(input: JoinRoomInput) {
     returning id::text as id
   `;
   if (!playerRow) throw new HttpError(409, 'This room is already full.');
+  // A newcomer takes the last seat, so the host confirms the seating again.
+  await sql`update players set is_ready = false where room_id = ${found.room.id} and is_host`;
   await touchRoom(found.room.id);
   return { snapshot: await fetchSnapshot(found.room.id), currentPlayerId: playerRow.id as string };
 }
@@ -385,6 +390,13 @@ async function releaseSeat(roomId: string, hostPlayerId: string, targetPlayerId:
   assertDeletedRows(rows, 'Player not found.');
   await touchRoom(roomId);
   return fetchSnapshot(roomId);
+}
+
+async function swapSeats(roomId: string, hostPlayerId: string, firstPlayerId: string, secondPlayerId: string) {
+  return withRoomWriteRetry(roomId, async (snapshot, version) => {
+    const nextSnapshot = swapSeatsInSnapshot(snapshot, hostPlayerId, firstPlayerId, secondPlayerId);
+    return persistStartedSnapshot(roomId, version, nextSnapshot, snapshot);
+  });
 }
 
 async function transferHost(roomId: string, hostPlayerId: string, targetPlayerId: string) {

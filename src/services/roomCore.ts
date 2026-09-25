@@ -452,6 +452,51 @@ export function resetRoomToLobbySnapshot(snapshot: RoomSnapshot, hostPlayerId: s
   return snapshot;
 }
 
+// Seat order drives leader rotation, so it can only change between games:
+// in the lobby, or on the results screen before the next game starts.
+export function canArrangeSeats(snapshot: RoomSnapshot): boolean {
+  const status = snapshot.room.status;
+  return status === 'lobby' || status === 'setup' || status === 'finished' || snapshot.room.settings.missionState?.phase === 'finished';
+}
+
+// The host's ready (or play-again) doubles as confirming the seating, so a
+// swap takes it back and the table waits for the host to confirm again.
+export function swapSeatsInSnapshot(snapshot: RoomSnapshot, hostPlayerId: string, firstPlayerId: string, secondPlayerId: string): RoomSnapshot {
+  if (!canArrangeSeats(snapshot)) throw new Error('Seats can only be arranged between games.');
+  const host = requirePlayer(snapshot, hostPlayerId);
+  if (!host.isHost) throw new Error('Only the host can arrange seats.');
+  requirePlayer(snapshot, firstPlayerId);
+  requirePlayer(snapshot, secondPlayerId);
+  if (firstPlayerId === secondPlayerId) return snapshot;
+  const ordered = [...snapshot.players].sort((a, b) => a.seatIndex - b.seatIndex);
+  const firstIndex = ordered.findIndex((player) => player.id === firstPlayerId);
+  const secondIndex = ordered.findIndex((player) => player.id === secondPlayerId);
+  [ordered[firstIndex], ordered[secondIndex]] = [ordered[secondIndex], ordered[firstIndex]];
+  snapshot.players = ordered.map((player, index) => ({
+    ...player,
+    seatIndex: index,
+    isReady: player.id === hostPlayerId && isLobbyStatus(snapshot) ? false : player.isReady,
+  }));
+  if (!isLobbyStatus(snapshot)) {
+    snapshot.room.settings = {
+      ...snapshot.room.settings,
+      nextGameReadyPlayerIds: (snapshot.room.settings.nextGameReadyPlayerIds ?? []).filter((id) => id !== hostPlayerId),
+    };
+  }
+  return snapshot;
+}
+
+// A newcomer takes the last seat, which is rarely where they sit, so the
+// host has to look at the table again before the game can start.
+export function unreadyHostAfterJoin(players: RoomPlayer[]): void {
+  const host = players.find((player) => player.isHost);
+  if (host) host.isReady = false;
+}
+
+function isLobbyStatus(snapshot: RoomSnapshot): boolean {
+  return snapshot.room.status === 'lobby' || snapshot.room.status === 'setup';
+}
+
 // A released seat keeps its player, role, and history but drops the device
 // binding, so the same person can reclaim it from a new phone or browser.
 const RELEASED_SEAT_TOKEN_PREFIX = 'released:';

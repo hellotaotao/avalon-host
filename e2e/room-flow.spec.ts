@@ -194,7 +194,7 @@ test('lobby room controls are scoped to host and guests', async ({ browser }) =>
   try {
     const { host, players } = room;
     const guest = players[1].page;
-    await players[1].page.getByRole('button', { name: /^Set Ready$/i }).click();
+    await players[1].page.getByRole('button', { name: /^(Set Ready|Confirm seats and ready)$/i }).click();
 
     await expect(host.getByRole('button', { name: /^Leave Room$/i })).toBeVisible();
     await expect(host.getByRole('button', { name: /^Dissolve Room$/i })).toBeVisible();
@@ -291,7 +291,7 @@ test('create-room shows default roles and custom role config affects assignment'
   try {
     const { host, players } = room;
     for (const player of players) {
-      const readyButton = player.page.getByRole('button', { name: /^Set Ready$/i });
+      const readyButton = player.page.getByRole('button', { name: /^(Set Ready|Confirm seats and ready)$/i });
       if (await readyButton.isVisible()) await readyButton.click();
     }
 
@@ -331,7 +331,7 @@ test('AI room created from advanced settings plays normally for guests joining b
     await host.getByRole('button', { name: /^Create Room$/i }).click();
 
     await expect(host.getByRole('heading', { name: /Current Room/i })).toBeVisible();
-    await expect(host.locator('.players li').filter({ hasText: /AI Seat 1/i }).getByText(/^AI$/)).toBeVisible();
+    await expect(host.locator('.round-table-seat').filter({ hasText: /AI Seat 1/i }).getByText(/^AI$/)).toBeVisible();
     const roomCode = (await host.locator('.room-code-copy strong').innerText()).trim();
     const joinLink = await host.getByLabel(/Join link/i).inputValue();
     await expect(host.locator('.qr-code svg')).toBeVisible();
@@ -354,13 +354,13 @@ test('AI room created from advanced settings plays normally for guests joining b
     await expect(codeGuest.getByRole('heading', { name: /Current Room/i })).toBeVisible();
 
     for (const guest of [linkGuest, codeGuest]) {
-      await expect(guest.locator('.players .ai-player-badge')).toHaveCount(2);
+      await expect(guest.locator('.round-table-seat.ai')).toHaveCount(2);
       await expect(guest.locator('.ai-room-note')).toContainText(/3 humans \+ 2 AI/i);
       await expect(guest.locator('.ai-room-note')).not.toContainText(/keep it open/i);
     }
 
     for (const player of players) {
-      await player.page.getByRole('button', { name: /^Set Ready$/i }).click();
+      await player.page.getByRole('button', { name: /^(Set Ready|Confirm seats and ready)$/i }).click();
     }
 
     for (const player of players) {
@@ -450,7 +450,7 @@ async function createStartedRoom(browser: Browser, playerCount: number): Promise
   const room = await createLobbyRoom(browser, playerCount);
   const { host, players } = room;
   for (const player of players) {
-    const readyButton = player.page.getByRole('button', { name: /^Set Ready$/i });
+    const readyButton = player.page.getByRole('button', { name: /^(Set Ready|Confirm seats and ready)$/i });
     if (await readyButton.isVisible()) await readyButton.click();
   }
 
