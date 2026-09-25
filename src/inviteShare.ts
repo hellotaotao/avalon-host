@@ -3,6 +3,8 @@
 // reports whether it actually landed, so the UI can fall back to text the
 // player can long-press instead of claiming a success that never happened.
 
+import { fillText } from './i18n';
+
 export const INVITE_MESSAGE_TEMPLATE = 'Avalon tonight. Room code {code}. Tap to take your seat: {link}';
 
 export interface ClipboardScope {
@@ -14,9 +16,7 @@ export function buildInviteMessage(
   translate: (text: string) => string,
   values: { code: string; joinLink: string },
 ): string {
-  return translate(INVITE_MESSAGE_TEMPLATE)
-    .replace('{code}', values.code)
-    .replace('{link}', values.joinLink);
+  return fillText(translate(INVITE_MESSAGE_TEMPLATE), { code: values.code, link: values.joinLink });
 }
 
 // The selection copy goes first because WebKit (iOS Safari, WeChat's

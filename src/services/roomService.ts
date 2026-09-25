@@ -470,40 +470,56 @@ const apiRepository: RoomRepository = {
     return (await apiRequest<RoomSnapshot | null>('getRoomByCode', { code })) ?? undefined;
   },
   subscribeToRoom(roomId: string, listener: Listener) {
-    let stopped = false;
-    let inFlight = false;
-    const poll = async () => {
-      if (stopped || inFlight) return;
-      inFlight = true;
-      try {
-        const snapshot = await apiRepository.getRoomById(roomId);
-        // The answer can arrive after the caller moved to another room or left
-        // one, and applying it then would resurrect the old board.
-        if (!stopped) listener(snapshot);
-      } catch {
-        // Keep polling through transient API/network failures.
-      } finally {
-        inFlight = false;
-      }
-    };
-    // Phone browsers freeze timers while the app is in the background (a
-    // WeChat chat, a locked screen), so the first thing to do on the way back
-    // is a poll, not a wait for the next tick.
-    const pollOnReturn = () => {
-      if (document.visibilityState === 'visible') void poll();
-    };
-    void poll();
-    const timer = window.setInterval(() => void poll(), 2000);
-    document.addEventListener('visibilitychange', pollOnReturn);
-    window.addEventListener('focus', pollOnReturn);
-    return () => {
-      stopped = true;
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', pollOnReturn);
-      window.removeEventListener('focus', pollOnReturn);
-    };
+    return subscribeByPolling(() => apiRepository.getRoomById(roomId), listener);
   },
 };
+
+export interface PollingEnvironment {
+  document: Pick<Document, 'visibilityState' | 'addEventListener' | 'removeEventListener'>;
+  window: Pick<Window, 'setInterval' | 'clearInterval' | 'addEventListener' | 'removeEventListener'>;
+}
+
+export const ROOM_POLL_INTERVAL_MS = 2000;
+
+// Live rooms are kept fresh by polling. Only one request runs at a time, and
+// an answer that lands after unsubscribing is dropped: by then the caller has
+// left or moved to another room, and applying it would resurrect the old board.
+export function subscribeByPolling(
+  load: () => Promise<RoomSnapshot | undefined>,
+  listener: Listener,
+  environment: PollingEnvironment = { document, window },
+): () => void {
+  let stopped = false;
+  let inFlight = false;
+  const poll = async () => {
+    if (stopped || inFlight) return;
+    inFlight = true;
+    try {
+      const snapshot = await load();
+      if (!stopped) listener(snapshot);
+    } catch {
+      // Keep polling through transient API/network failures.
+    } finally {
+      inFlight = false;
+    }
+  };
+  // Phone browsers freeze timers while the app is in the background (a
+  // WeChat chat, a locked screen), so the first thing to do on the way back
+  // is a poll, not a wait for the next tick.
+  const pollOnReturn = () => {
+    if (environment.document.visibilityState === 'visible') void poll();
+  };
+  void poll();
+  const timer = environment.window.setInterval(() => void poll(), ROOM_POLL_INTERVAL_MS);
+  environment.document.addEventListener('visibilitychange', pollOnReturn);
+  environment.window.addEventListener('focus', pollOnReturn);
+  return () => {
+    stopped = true;
+    environment.window.clearInterval(timer);
+    environment.document.removeEventListener('visibilitychange', pollOnReturn);
+    environment.window.removeEventListener('focus', pollOnReturn);
+  };
+}
 
 async function apiRequest<T>(action: string, payload: Record<string, unknown>): Promise<T> {
   const response = await fetch('/api/rooms', {

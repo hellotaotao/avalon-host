@@ -549,6 +549,11 @@ const zhPatterns: Array<[RegExp, (...groups: string[]) => string]> = [
   [/^Request failed \(\d+\)\.$/, () => '请求失败，请稍后再试。'],
 ];
 
+// Fills {name} placeholders; a function replacer, so `$` in a value is taken literally.
+export function fillText(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
+}
+
 export function translateZhPattern(text: string): string | undefined {
   for (const [pattern, format] of zhPatterns) {
     const match = text.match(pattern);

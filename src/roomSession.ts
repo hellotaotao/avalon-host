@@ -13,7 +13,6 @@ export type RestoreDecision =
 export interface RestoreAttempt {
   decision: RestoreDecision;
   snapshot?: RoomSnapshot;
-  error?: unknown;
 }
 
 export async function attemptRestore(
@@ -23,8 +22,8 @@ export async function attemptRestore(
   let snapshot: RoomSnapshot | undefined;
   try {
     snapshot = await load();
-  } catch (error) {
-    return { decision: { action: 'retry' }, error };
+  } catch {
+    return { decision: { action: 'retry' } };
   }
   // A resolved lookup is authoritative: the API answers a missing room with an
   // empty result and only rejects when it could not answer at all.

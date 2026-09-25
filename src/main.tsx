@@ -83,7 +83,7 @@ import {
 import { getSessionStorageKeys, isDevSessionActive } from './sessionKeys';
 import { attemptRestore, isStaleSnapshot } from './roomSession';
 import { buildInviteMessage, copyTextToClipboard } from './inviteShare';
-import { I18nProvider, formatAllegiance, formatHint, formatRole, formatRoleDescription, useI18n, type Language } from './i18n';
+import { I18nProvider, fillText, formatAllegiance, formatHint, formatRole, formatRoleDescription, useI18n, type Language } from './i18n';
 import './styles.css';
 
 type Screen = EntryScreen | 'room';
@@ -122,6 +122,13 @@ type RoomAiAutomationState = {
   lastError?: string;
   waitingForRetry: boolean;
 };
+
+// What home knows about this device's saved seat: nothing to offer, a
+// seat the server could not be reached to confirm, or a confirmed seat.
+type SavedSeatState =
+  | { kind: 'none' }
+  | { kind: 'unreachable' }
+  | { kind: 'found'; snapshot: RoomSnapshot; playerId: string };
 
 type RoomAiAttemptState = {
   actionKey: string;
@@ -164,9 +171,7 @@ function App() {
   const aiActionInFlightRef = useRef('');
   const aiThinkTimerRef = useRef<number | undefined>(undefined);
   const previousRoomStatusRef = useRef(snapshot?.room.status);
-  const [restorableSnapshot, setRestorableSnapshot] = useState<RoomSnapshot>();
-  const [restorablePlayerId, setRestorablePlayerId] = useState('');
-  const [restoreUnavailable, setRestoreUnavailable] = useState(false);
+  const [savedSeat, setSavedSeat] = useState<SavedSeatState>({ kind: 'none' });
   const [restoreAttempt, setRestoreAttempt] = useState(0);
 
   const currentPlayer = snapshot?.players.find((player) => player.id === currentPlayerId);
@@ -190,7 +195,7 @@ function App() {
     const storedRoomId = localStorage.getItem(sessionKeys.currentRoomId);
     const storedPlayerId = localStorage.getItem(sessionKeys.currentPlayerId);
     if (!storedRoomId || !storedPlayerId) {
-      setRestoreUnavailable(false);
+      setSavedSeat({ kind: 'none' });
       return;
     }
 
@@ -199,10 +204,10 @@ function App() {
       if (cancelled) return;
       if (decision.action === 'retry') {
         // The saved seat stays put: the server never said it was gone.
-        setRestoreUnavailable(true);
+        setSavedSeat({ kind: 'unreachable' });
         return;
       }
-      setRestoreUnavailable(false);
+      setSavedSeat({ kind: 'none' });
       if (decision.action === 'clear') {
         clearSessionBinding();
         setCurrentPlayerId('');
@@ -225,8 +230,7 @@ function App() {
         setMessage(t('Welcome back to your seat.'));
         return;
       }
-      setRestorableSnapshot(restoredSnapshot);
-      setRestorablePlayerId(storedPlayerId);
+      setSavedSeat({ kind: 'found', snapshot: restoredSnapshot, playerId: storedPlayerId });
     });
     return () => {
       cancelled = true;
@@ -236,7 +240,7 @@ function App() {
   // Once any room is on screen, an earlier failed lookup no longer describes
   // this device's seat.
   useEffect(() => {
-    if (snapshot) setRestoreUnavailable(false);
+    if (snapshot) setSavedSeat((current) => (current.kind === 'unreachable' ? { kind: 'none' } : current));
   }, [snapshot?.room.id]);
 
   useEffect(() => {
@@ -724,15 +728,14 @@ function App() {
   }
 
   async function handleLeaveRestorableRoom() {
-    if (!restorableSnapshot || !restorablePlayerId || busy) return;
-    if (!window.confirm(getOldRoomLeaveConfirmation(restorableSnapshot))) return;
+    if (savedSeat.kind !== 'found' || busy) return;
+    if (!window.confirm(getOldRoomLeaveConfirmation(savedSeat.snapshot))) return;
     setBusy(true);
     setMessage('');
     try {
-      await leaveRoom(restorableSnapshot.room.id, restorablePlayerId);
+      await leaveRoom(savedSeat.snapshot.room.id, savedSeat.playerId);
       clearSessionBinding();
-      setRestorableSnapshot(undefined);
-      setRestorablePlayerId('');
+      setSavedSeat({ kind: 'none' });
       setCurrentPlayerId('');
       setSnapshot(undefined);
       setScreen('home');
@@ -745,11 +748,10 @@ function App() {
   }
 
   function handleRestoreRoom() {
-    if (!restorableSnapshot || !restorablePlayerId) return;
-    setCurrentPlayerId(restorablePlayerId);
-    setSnapshot(restorableSnapshot);
-    setRestorableSnapshot(undefined);
-    setRestorablePlayerId('');
+    if (savedSeat.kind !== 'found') return;
+    setCurrentPlayerId(savedSeat.playerId);
+    setSnapshot(savedSeat.snapshot);
+    setSavedSeat({ kind: 'none' });
     clearEntryStepFromUrl();
     setScreen('room');
     setMessage('');
@@ -775,7 +777,7 @@ function App() {
 
       {message && <p className="notice">{message}</p>}
 
-      {screen === 'home' && restoreUnavailable && !restorableSnapshot && (
+      {screen === 'home' && savedSeat.kind === 'unreachable' && (
         <section className="panel restore-panel">
           <p className="eyebrow">{t('Saved seat')}</p>
           <h2>{t('Could not reach the table right now.')}</h2>
@@ -786,10 +788,10 @@ function App() {
         </section>
       )}
 
-      {screen === 'home' && restorableSnapshot && (
+      {screen === 'home' && savedSeat.kind === 'found' && (
         <section className="panel restore-panel">
           <p className="eyebrow">{t('Previous room found')}</p>
-          <h2>{t('You were previously at room')} {restorableSnapshot.room.code}</h2>
+          <h2>{t('You were previously at room')} {savedSeat.snapshot.room.code}</h2>
           <p>{t('Choose whether to re-enter it or leave the old room.')}</p>
           <div className="share-actions">
             <button type="button" className="primary" onClick={handleRestoreRoom} disabled={busy}>{t('Re-enter Room')}</button>
@@ -4932,10 +4934,6 @@ function InviteSharePanel({ joinLink, code }: { joinLink: string; code: string }
       )}
     </div>
   );
-}
-
-function fillText(template: string, values: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
 }
 
 function getOrCreateDeviceToken() {

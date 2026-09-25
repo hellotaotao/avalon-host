@@ -37,7 +37,6 @@ describe('restoring a saved seat', () => {
       throw new Error('Failed to fetch');
     }, 'player-1');
     expect(attempt.decision).toEqual({ action: 'retry' });
-    expect(attempt.error).toBeInstanceOf(Error);
   });
 
   it('clears the saved seat only when the server answers that the room is gone', async () => {
