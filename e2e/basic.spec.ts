@@ -41,7 +41,7 @@ test('home page copy is consistent in Chinese', async ({ page }) => {
 
   await page.getByLabel('你的昵称').fill('中文房主');
   await page.getByRole('button', { name: '创建房间', exact: true }).last().click();
-  const joinLink = await page.getByLabel('加入链接').inputValue();
+  const joinLink = await page.getByLabel('加入链接').innerText();
   expect(new URL(joinLink).pathname).toBe('/zh/');
   expect(new URL(joinLink).search).toMatch(/^\?step=join&code=\d{5}$/);
 });
@@ -65,7 +65,7 @@ test('copying the invitation puts the message, link, and code on the clipboard',
   await page.getByLabel(/Your nickname/i).fill('Copy Host');
   await page.getByRole('button', { name: /^Create Room$/i }).click();
 
-  const joinLink = await page.getByLabel('Join link').inputValue();
+  const joinLink = await page.getByLabel('Join link').innerText();
   const roomCode = new URL(joinLink).searchParams.get('code') ?? '';
   expect(roomCode).toMatch(/^\d{5}$/);
 
@@ -93,7 +93,7 @@ test('an unavailable clipboard API still copies through the selection fallback',
   await page.getByLabel(/Your nickname/i).fill('Fallback Host');
   await page.getByRole('button', { name: /^Create Room$/i }).click();
 
-  const joinLink = await page.getByLabel('Join link').inputValue();
+  const joinLink = await page.getByLabel('Join link').innerText();
   await page.getByRole('button', { name: 'Copy Link' }).click();
   await expect(page.getByText('Join link copied.')).toBeVisible();
 
@@ -118,7 +118,7 @@ test('a blocked clipboard offers the invitation as text to copy by hand', async 
   await page.getByLabel(/Your nickname/i).fill('Blocked Host');
   await page.getByRole('button', { name: /^Create Room$/i }).click();
 
-  const joinLink = await page.getByLabel('Join link').inputValue();
+  const joinLink = await page.getByLabel('Join link').innerText();
   const roomCode = new URL(joinLink).searchParams.get('code') ?? '';
   await page.getByRole('button', { name: 'Copy Invitation' }).click();
 
@@ -137,14 +137,14 @@ test('re-opening the same invitation link returns to the seat instead of the joi
   await page.getByRole('button', { name: /Host the round/i }).click();
   await page.getByLabel(/Your nickname/i).fill('Repeat Host');
   await page.getByRole('button', { name: /^Create Room$/i }).click();
-  const joinLink = await page.getByLabel('Join link').inputValue();
+  const joinLink = await page.getByLabel('Join link').innerText();
   const roomCode = new URL(joinLink).searchParams.get('code') ?? '';
 
   await page.goto(`${new URL(joinLink).pathname}${new URL(joinLink).search}&devSession=repeat-invite`);
   await expect(page.getByText('Welcome back to your seat.')).toBeVisible();
   await expect(page.getByRole('heading', { name: /Current Room/i })).toBeVisible();
   await expect(page.locator('.round-table-seat:not(.empty)')).toHaveCount(1);
-  await expect(page.getByLabel('Join link')).toHaveValue(joinLink);
+  await expect(page.getByLabel('Join link')).toHaveText(joinLink);
   expect(new URL(page.url()).searchParams.get('step')).toBeNull();
 
   // Another room's invitation leaves this device's seat alone until it joins.

@@ -71,6 +71,9 @@ input {
   border-radius: 8px;
   background: #fff6df;
   color: #24120b;
+  /* Inputs inside a <label> would otherwise inherit its 0.95rem; iOS Safari zooms
+     the page on focus for anything under 16px and never zooms back out. */
+  font-size: 1rem;
   padding: 0.7rem 0.8rem;
   box-shadow: inset 0 1px 4px rgba(59, 30, 11, 0.18);
 }
@@ -2113,10 +2116,22 @@ label {
   gap: 0.55rem;
 }
 
-.share-panel input {
-  border-color: #d8ad58;
+.share-link {
+  display: grid;
+  align-content: center;
+  min-height: 46px;
+  border: 1px solid #d8ad58;
+  border-radius: 8px;
   background: #fff8df;
+  color: #24120b;
+  padding: 0.7rem 0.8rem;
   font-size: 0.88rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  box-shadow: inset 0 1px 4px rgba(59, 30, 11, 0.18);
+  /* One tap selects the whole link, like the old select-on-focus input. */
+  user-select: all;
+  -webkit-user-select: all;
 }
 
 .share-actions,
@@ -2160,7 +2175,8 @@ label {
   background: #fffdf4;
   color: #3d2a12;
   font: inherit;
-  font-size: 0.82rem;
+  /* 16px keeps iOS Safari from zooming the page when this gets focus. */
+  font-size: 1rem;
   /* The fallback exists to be selected by hand, so it stays selectable even
      where the rest of the board disables selection. */
   user-select: text;
@@ -2433,7 +2449,7 @@ label {
     gap: 0.42rem;
   }
 
-  .share-panel input {
+  .share-link {
     min-height: 40px;
     padding: 0.55rem 0.65rem;
     font-size: 0.8rem;

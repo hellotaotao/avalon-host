@@ -45,7 +45,9 @@ export function InviteSharePanel({ joinLink, code }: { joinLink: string; code: s
 
   return (
     <div className="share-panel">
-      <input value={joinLink} readOnly aria-label={t('Join link')} onFocus={(event) => event.currentTarget.select()} />
+      {/* Plain text, not a readonly <input>: iOS Safari zooms the page when a form
+          control under 16px gets focus, and this link is set small so it fits. */}
+      <div className="share-link" role="textbox" aria-readonly="true" aria-label={t('Join link')}>{joinLink}</div>
       <div className="share-actions share-actions-invite">
         <button type="button" className="primary" onClick={() => copy(inviteMessage, t('Invitation copied. Paste it into the chat.'), t('Invitation text to copy by hand'))}>{t('Copy Invitation')}</button>
       </div>

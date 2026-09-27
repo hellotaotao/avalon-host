@@ -333,7 +333,7 @@ test('AI room created from advanced settings plays normally for guests joining b
     await expect(host.getByRole('heading', { name: /Current Room/i })).toBeVisible();
     await expect(host.locator('.round-table-seat').filter({ hasText: /AI Seat 1/i }).getByText(/^AI$/)).toBeVisible();
     const roomCode = (await host.locator('.room-code-copy strong').innerText()).trim();
-    const joinLink = await host.getByLabel(/Join link/i).inputValue();
+    const joinLink = await host.getByLabel(/Join link/i).innerText();
     await expect(host.locator('.qr-code svg')).toBeVisible();
     await expect(host.locator('.qr-code img')).toHaveCount(0);
     expect(new URL(joinLink).pathname).toBe('/');
