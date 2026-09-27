@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getMissionFailThreshold, getTeamSize, roleAllegiance } from '../domain/avalon';
 import {
   advanceMissionResult,
+  getLadyOfTheLakeHolderId,
   MAX_PROPOSALS_PER_QUEST,
   recordTeamVote,
   selectMissionTeam,
@@ -145,6 +146,31 @@ export function QuestTrackSection({
   );
 }
 
+// Who holds the Lady and who examined whom is public; the results are not.
+function LadyOfTheLakeStatus({ missionState, players }: { missionState: MissionState; players: RoomPlayer[] }) {
+  const { t } = useI18n();
+  const nameOf = (playerId: string) => players.find((player) => player.id === playerId)?.displayName ?? playerId;
+  const holderId = getLadyOfTheLakeHolderId(missionState);
+  const checks = missionState.ladyOfTheLake?.checks ?? [];
+  return (
+    <div className="team-roster lady-status" aria-label={t('Lady of the Lake')}>
+      <div className="team-roster-heading">
+        <span>{t('Lady of the Lake')}</span>
+        <strong>{holderId ? nameOf(holderId) : ''}</strong>
+      </div>
+      {checks.length > 0 ? (
+        <div className="member-chips">
+          {checks.map((check) => (
+            <span key={`${check.afterRoundIndex}-${check.targetPlayerId}`}>{nameOf(check.holderPlayerId)} → {nameOf(check.targetPlayerId)}</span>
+          ))}
+        </div>
+      ) : (
+        <p className="empty-team">{t('Used after quests 2, 3, and 4.')}</p>
+      )}
+    </div>
+  );
+}
+
 export function CurrentExpeditionPanel({
   missionState,
   players,
@@ -202,9 +228,10 @@ export function CurrentExpeditionPanel({
       {(missionState.phase === 'proposal' || missionState.phase === 'vote') && isFinalProposal(missionState) && (
         <p className="final-proposal-warning">{t('Fifth proposal this quest: if this crew is rejected, Evil wins.')}</p>
       )}
+      {missionState.ladyOfTheLake && <LadyOfTheLakeStatus missionState={missionState} players={players} />}
       <div className="team-roster">
         <div className="team-roster-heading">
-          <span>{missionState.phase === 'proposal' ? t('Proposed crew') : t('Locked crew')}</span>
+          <span>{missionState.phase === 'proposal' || missionState.phase === 'lady' ? t('Proposed crew') : t('Locked crew')}</span>
           <strong>{visibleTeamNames.length}/{currentTeamSize}</strong>
         </div>
         {visibleTeamNames.length > 0 ? (

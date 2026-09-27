@@ -6,6 +6,7 @@ import {
   type Role,
   type RolePresetOptions,
 } from '../domain/avalon';
+import { LADY_OF_THE_LAKE_MIN_PLAYERS } from '../domain/missionFlow';
 import { resolveCreateRoomSeats } from '../services/roomService';
 import { formatRole, useI18n } from '../i18n';
 import { formatRoleCount, summarizeRoleEntries } from './gameText';
@@ -15,6 +16,8 @@ export function CreateRoomRoleConfig({
   humanPlayerCount,
   playerCount,
   roleOptions,
+  ladyOfTheLake,
+  onLadyOfTheLakeChange,
   onAiFillEnabledChange,
   onHumanPlayerCountChange,
   onPlayerCountChange,
@@ -24,6 +27,8 @@ export function CreateRoomRoleConfig({
   humanPlayerCount: number;
   playerCount: (typeof playerCountRange)[number];
   roleOptions: RolePresetOptions;
+  ladyOfTheLake: boolean;
+  onLadyOfTheLakeChange: (enabled: boolean) => void;
   onAiFillEnabledChange: (enabled: boolean) => void;
   onHumanPlayerCountChange: (playerCount: number) => void;
   onPlayerCountChange: (playerCount: (typeof playerCountRange)[number]) => void;
@@ -36,6 +41,7 @@ export function CreateRoomRoleConfig({
   const evilRoles = preset.roles.filter((role) => roleAllegiance(role) === 'evil');
   const seats = resolveCreateRoomSeats({ playerCount, aiFillEnabled, humanPlayerCount });
   const aiCount = seats.plannedPlayerCount - seats.humanPlayerCount;
+  const ladyAvailable = playerCount >= LADY_OF_THE_LAKE_MIN_PLAYERS;
 
   return (
     <section className="create-role-config" aria-label={t('Role configuration')}>
@@ -94,6 +100,24 @@ export function CreateRoomRoleConfig({
               );
             })}
           </div>
+        </div>
+
+        <div className="create-lady">
+          <h3>{t('Lady of the Lake')}</h3>
+          <label className="create-ai-toggle">
+            <input
+              type="checkbox"
+              checked={ladyAvailable && ladyOfTheLake}
+              disabled={!ladyAvailable}
+              onChange={(event) => onLadyOfTheLakeChange(event.target.checked)}
+            />
+            <span>{t('Use the Lady of the Lake')}</span>
+          </label>
+          <p className="hint">
+            {ladyAvailable
+              ? t('After quests 2, 3, and 4, the holder secretly checks one player\'s allegiance, then hands the Lady to them.')
+              : t('Available for 7 or more players.')}
+          </p>
         </div>
 
         <div className="create-ai-fill">

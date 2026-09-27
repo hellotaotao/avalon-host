@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import {
   ensureMissionState,
   resolveAssassination,
+  submitLadyOfTheLake as submitLadyOfTheLakeToState,
   submitMissionCard as submitMissionCardToState,
   submitTeamProposal,
   submitTeamVote as submitTeamVoteToState,
@@ -102,6 +103,8 @@ async function dispatch(body: RequestBody) {
       return submitMissionCard(readString(body.roomId, 'roomId'), readString(body.playerId, 'playerId'), readMissionCard(body.card));
     case 'submitAssassination':
       return submitAssassination(readString(body.roomId, 'roomId'), readString(body.assassinPlayerId, 'assassinPlayerId'), readString(body.targetPlayerId, 'targetPlayerId'));
+    case 'submitLadyOfTheLake':
+      return submitLadyOfTheLake(readString(body.roomId, 'roomId'), readString(body.holderPlayerId, 'holderPlayerId'), readString(body.targetPlayerId, 'targetPlayerId'));
     case 'readyForNextGame':
       return readyForNextGame(readString(body.roomId, 'roomId'), readString(body.playerId, 'playerId'));
     case 'removePlayer':
@@ -335,6 +338,14 @@ async function submitAssassination(roomId: string, assassinPlayerId: string, tar
     const playerIds = snapshot.players.map((player) => player.id);
     const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
     return resolveAssassination(missionState, snapshot.players.map(toAvalonPlayer), assassinPlayerId, targetPlayerId);
+  });
+}
+
+async function submitLadyOfTheLake(roomId: string, holderPlayerId: string, targetPlayerId: string) {
+  return mutateMissionState(roomId, (snapshot) => {
+    const playerIds = snapshot.players.map((player) => player.id);
+    const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
+    return submitLadyOfTheLakeToState(missionState, playerIds, holderPlayerId, targetPlayerId);
   });
 }
 

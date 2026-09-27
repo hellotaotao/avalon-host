@@ -1001,13 +1001,15 @@ label {
   margin-top: 1rem;
 }
 
-.create-ai-fill {
+.create-ai-fill,
+.create-lady {
   display: grid;
   gap: 0.55rem;
 }
 
 .create-ai-fill h3,
-.create-ai-fill h4 {
+.create-ai-fill h4,
+.create-lady h3 {
   margin: 0;
 }
 
@@ -1016,8 +1018,13 @@ label {
   color: #3a2010;
 }
 
-.create-ai-fill .hint {
+.create-ai-fill .hint,
+.create-lady .hint {
   margin: 0;
+}
+
+.create-ai-toggle:has(input:disabled) {
+  opacity: 0.55;
 }
 
 .create-ai-toggle {

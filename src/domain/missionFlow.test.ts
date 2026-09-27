@@ -3,9 +3,12 @@ import {
   advanceMissionResult,
   createInitialMissionState,
   endedByRejectedProposals,
+  getLadyOfTheLakeHolderId,
+  getLadyOfTheLakeTargetIds,
   recordTeamVote,
   resolveAssassination,
   selectMissionTeam,
+  submitLadyOfTheLake,
   submitMissionCard,
   submitTeamProposal,
   submitTeamVote,
@@ -238,3 +241,53 @@ function createAssassinPhaseState(): MissionState {
   }
   return state;
 }
+
+describe('Lady of the Lake', () => {
+  function playQuest(state: MissionState, ids: string[], outcome: 'success' | 'fail'): MissionState {
+    const teamSize = [2, 3, 3, 4, 4][state.roundIndex];
+    const team = ids.slice(0, teamSize);
+    const voted = recordTeamVote(selectMissionTeam(state, ids, team), ids, ids.length, 0);
+    return advanceMissionResult(voted, ids, outcome === 'success' ? teamSize : teamSize - 2, outcome === 'success' ? 0 : 2);
+  }
+
+  it('starts with the player on the first leader\'s right and stays off unless enabled', () => {
+    expect(createInitialMissionState(sevenPlayerIds).ladyOfTheLake).toBeUndefined();
+    const state = createInitialMissionState(sevenPlayerIds, { ladyOfTheLake: true });
+    expect(state.leaderPlayerId).toBe('p1');
+    expect(getLadyOfTheLakeHolderId(state)).toBe('p7');
+  });
+
+  it('comes up after the second quest, not the first, and waits for the holder', () => {
+    let state = createInitialMissionState(sevenPlayerIds, { ladyOfTheLake: true });
+    state = playQuest(state, sevenPlayerIds, 'success');
+    expect(state.phase).toBe('proposal');
+    state = playQuest(state, sevenPlayerIds, 'fail');
+    expect(state).toMatchObject({ phase: 'lady', roundIndex: 2, leaderPlayerId: 'p3', proposalIndex: 0 });
+    expect(() => submitTeamProposal(state, sevenPlayerIds, 'p3', ['p1', 'p2', 'p3'])).toThrow('Mission flow is in lady, not proposal.');
+  });
+
+  it('hands the Lady to the examined player, who can then not be examined again', () => {
+    let state = createInitialMissionState(sevenPlayerIds, { ladyOfTheLake: true });
+    state = playQuest(playQuest(state, sevenPlayerIds, 'success'), sevenPlayerIds, 'fail');
+
+    expect(() => submitLadyOfTheLake(state, sevenPlayerIds, 'p1', 'p2')).toThrow('Only the Lady of the Lake holder can examine a player.');
+    expect(() => submitLadyOfTheLake(state, sevenPlayerIds, 'p7', 'p7')).toThrow('The Lady of the Lake cannot examine a player who has held her.');
+
+    state = submitLadyOfTheLake(state, sevenPlayerIds, 'p7', 'p4');
+    expect(state.phase).toBe('proposal');
+    expect(getLadyOfTheLakeHolderId(state)).toBe('p4');
+    expect(state.ladyOfTheLake?.checks).toEqual([{ afterRoundIndex: 1, holderPlayerId: 'p7', targetPlayerId: 'p4' }]);
+    expect(getLadyOfTheLakeTargetIds(state, sevenPlayerIds)).toEqual(['p1', 'p2', 'p3', 'p5', 'p6']);
+
+    state = playQuest(state, sevenPlayerIds, 'fail');
+    expect(state.phase).toBe('lady');
+    expect(() => submitLadyOfTheLake(state, sevenPlayerIds, 'p4', 'p7')).toThrow('The Lady of the Lake cannot examine a player who has held her.');
+  });
+
+  it('is skipped when the quest that would trigger it ends the game or starts the assassination', () => {
+    let state = createInitialMissionState(sevenPlayerIds, { ladyOfTheLake: true });
+    state = playQuest(playQuest(state, sevenPlayerIds, 'success'), sevenPlayerIds, 'success');
+    state = submitLadyOfTheLake(state, sevenPlayerIds, 'p7', 'p1');
+    expect(playQuest(state, sevenPlayerIds, 'success').phase).toBe('assassin');
+  });
+});

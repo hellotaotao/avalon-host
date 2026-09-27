@@ -55,6 +55,7 @@ export function getMissionPhaseLabel(missionState: MissionState): string {
   if (missionState.phase === 'proposal') return 'Choosing crew';
   if (missionState.phase === 'vote') return 'Council vote';
   if (missionState.phase === 'mission') return 'Quest underway';
+  if (missionState.phase === 'lady') return 'Lady of the Lake';
   if (missionState.phase === 'assassin') return 'Assassin endgame';
   return missionState.winner === 'evil' ? 'Evil victory' : 'Good victory';
 }
@@ -75,6 +76,7 @@ export function getRoomHeroCopy(snapshot: RoomSnapshot | undefined, t: (text: st
   if (missionState.phase === 'proposal') return t('The current captain picks a crew, then every player votes on that proposal.');
   if (missionState.phase === 'vote') return t('Every player votes, including the captain who proposed the crew.');
   if (missionState.phase === 'mission') return t('Only the selected crew submits mission cards; results stay anonymous.');
+  if (missionState.phase === 'lady') return t('Before the next quest, the Lady of the Lake holder secretly learns one player\'s allegiance.');
   if (missionState.phase === 'assassin') return t('Good has three successful quests. The Assassin must guess Merlin before the winner is final.');
   return t('The table is finished. Review the result or reset for the next game.');
 }
@@ -102,6 +104,9 @@ export function getMissionPhaseCopy({
   }
   if (missionState.phase === 'mission') {
     return `${submittedCardCount}/${missionState.selectedTeamIds.length} ${t('mission cards are in. The quest resolves when the crew is done.')}`;
+  }
+  if (missionState.phase === 'lady') {
+    return t('The Lady of the Lake holder is choosing a player to examine.');
   }
   if (missionState.phase === 'assassin') {
     return t('Good reached three successful quests. The Assassin now chooses a Merlin target.');

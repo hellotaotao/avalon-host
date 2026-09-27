@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Role } from '../domain/avalon';
 import type { MissionResultState, MissionState } from '../domain/missionFlow';
 import { getNextRoomAiAction } from './roomAi';
-import type { RoomSnapshot } from './roomCore';
+import { getRoomStatusForPhase, type RoomSnapshot } from './roomCore';
 
 describe('room AI assassin', () => {
   it('picks the same target no matter which good player is actually Merlin', () => {
@@ -159,6 +159,41 @@ function aiCard(roles: Role[], scenario: AiScenario, actorId?: string) {
   return action.card;
 }
 
+describe('room AI Lady of the Lake', () => {
+  const roles: Role[] = ['Loyal Servant', 'Assassin', 'Merlin', 'Percival', 'Morgana', 'Loyal Servant', 'Minion'];
+
+  it('the AI holder examines someone it has not seen and who has not held the Lady', () => {
+    const snapshot = makeRoomSnapshot(roles, { ai: [6], roundIndex: 2 }, {
+      phase: 'lady',
+      ladyOfTheLake: { holderPlayerIds: ['p1', 'p7'], checks: [{ afterRoundIndex: 1, holderPlayerId: 'p1', targetPlayerId: 'p7' }] },
+    });
+    const action = getNextRoomAiAction(snapshot);
+    if (action?.type !== 'submitLadyOfTheLake') throw new Error(`Expected a Lady check, got ${action?.type}`);
+    expect(action.holderPlayerId).toBe('p7');
+    // The Minion sees the Assassin and Morgana, and cannot pick past holders or itself.
+    expect(['p1', 'p2', 'p5', 'p7']).not.toContain(action.targetPlayerId);
+  });
+
+  it('waits for a human holder', () => {
+    const snapshot = makeRoomSnapshot(roles, { ai: [6], roundIndex: 2 }, {
+      phase: 'lady',
+      ladyOfTheLake: { holderPlayerIds: ['p1'], checks: [] },
+    });
+    expect(getNextRoomAiAction(snapshot)).toBeUndefined();
+  });
+
+  it('a good AI that found an evil player rejects teams with that player', () => {
+    const ladyOfTheLake = { holderPlayerIds: ['p1', 'p5'], checks: [{ afterRoundIndex: 1, holderPlayerId: 'p1', targetPlayerId: 'p5' }] };
+    const vote = (checks: typeof ladyOfTheLake) => {
+      const action = getNextRoomAiAction(makeRoomSnapshot(roles, { ai: [0], roundIndex: 2, team: ['p4', 'p5', 'p6'] }, { phase: 'vote', ladyOfTheLake: checks }));
+      if (action?.type !== 'submitTeamVote') throw new Error(`Expected a vote, got ${action?.type}`);
+      return action.vote;
+    };
+    expect(vote({ holderPlayerIds: ['p1'], checks: [] })).toBe('approve');
+    expect(vote(ladyOfTheLake)).toBe('reject');
+  });
+});
+
 function aiTeam(roles: Role[], scenario: AiScenario) {
   const action = getNextRoomAiAction(makeRoomSnapshot(roles, scenario, { phase: 'proposal', leaderPlayerId: 'p1' }));
   if (action?.type !== 'proposeTeam') throw new Error(`Expected a proposal, got ${action?.type}`);
@@ -171,7 +206,7 @@ function makeRoomSnapshot(roles: Role[], scenario: AiScenario, mission: Pick<Mis
     room: {
       id: roomId,
       code: '12345',
-      status: mission.phase,
+      status: getRoomStatusForPhase(mission.phase),
       gameType: 'avalon_lite',
       settings: {
         plannedPlayerCount: roles.length,

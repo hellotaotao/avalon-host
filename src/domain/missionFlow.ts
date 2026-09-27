@@ -1,6 +1,6 @@
 import { assassinWins, getTeamSize, resolveMission, roleAllegiance, votePasses, type MissionCard, type Player, type Vote } from './avalon.js';
 
-export type MissionPhase = 'proposal' | 'vote' | 'mission' | 'assassin' | 'finished';
+export type MissionPhase = 'proposal' | 'vote' | 'mission' | 'lady' | 'assassin' | 'finished';
 export type MissionWinner = 'good' | 'evil';
 
 export interface TeamVoteState {
@@ -29,6 +29,27 @@ export interface MissionCardSubmissionState {
   cards: MissionCard[];
 }
 
+export interface LadyOfTheLakeCheck {
+  // The quest that had just finished when the Lady was used.
+  afterRoundIndex: number;
+  holderPlayerId: string;
+  targetPlayerId: string;
+}
+
+export interface LadyOfTheLakeState {
+  // Everyone who has held the Lady, in order; the last one holds it now.
+  // Past holders cannot be examined.
+  holderPlayerIds: string[];
+  checks: LadyOfTheLakeCheck[];
+}
+
+// The Lady of the Lake is an optional rule meant for tables of seven or more.
+export const LADY_OF_THE_LAKE_MIN_PLAYERS = 7;
+
+export interface MissionStateOptions {
+  ladyOfTheLake?: boolean;
+}
+
 export interface MissionState {
   phase: MissionPhase;
   roundIndex: number;
@@ -40,10 +61,11 @@ export interface MissionState {
   missionCardSubmissions?: MissionCardSubmissionState;
   missionResults: MissionResultState[];
   assassination?: AssassinationState;
+  ladyOfTheLake?: LadyOfTheLakeState;
   winner?: MissionWinner;
 }
 
-export function createInitialMissionState(playerIds: string[]): MissionState {
+export function createInitialMissionState(playerIds: string[], options: MissionStateOptions = {}): MissionState {
   assertPlayablePlayers(playerIds);
   return {
     phase: 'proposal',
@@ -52,6 +74,9 @@ export function createInitialMissionState(playerIds: string[]): MissionState {
     selectedTeamIds: [],
     proposalIndex: 0,
     missionResults: [],
+    // The Lady starts with the player on the first leader's right, which in
+    // seat order is the last player to lead.
+    ...(options.ladyOfTheLake ? { ladyOfTheLake: { holderPlayerIds: [playerIds[playerIds.length - 1]], checks: [] } } : {}),
   };
 }
 
@@ -158,7 +183,7 @@ export function advanceMissionResult(state: MissionState, playerIds: string[], s
   }
   return {
     ...state,
-    phase: 'proposal',
+    phase: ladyOfTheLakeDueAfter(state) ? 'lady' : 'proposal',
     roundIndex: state.roundIndex + 1,
     leaderPlayerId: nextLeader(playerIds, state.leaderPlayerId),
     selectedTeamIds: [],
@@ -212,6 +237,33 @@ export function resolveAssassination(state: MissionState, players: Player[], ass
   };
 }
 
+export function getLadyOfTheLakeHolderId(state: MissionState): string | undefined {
+  return state.ladyOfTheLake?.holderPlayerIds.at(-1);
+}
+
+export function getLadyOfTheLakeTargetIds(state: MissionState, playerIds: string[]): string[] {
+  const pastHolderIds = state.ladyOfTheLake?.holderPlayerIds ?? [];
+  return playerIds.filter((playerId) => !pastHolderIds.includes(playerId));
+}
+
+export function submitLadyOfTheLake(state: MissionState, playerIds: string[], holderPlayerId: string, targetPlayerId: string): MissionState {
+  assertPhase(state, 'lady');
+  assertPlayablePlayers(playerIds);
+  assertPlayerInRoom(playerIds, holderPlayerId);
+  assertPlayerInRoom(playerIds, targetPlayerId);
+  const lady = state.ladyOfTheLake;
+  if (!lady || getLadyOfTheLakeHolderId(state) !== holderPlayerId) throw new Error('Only the Lady of the Lake holder can examine a player.');
+  if (lady.holderPlayerIds.includes(targetPlayerId)) throw new Error('The Lady of the Lake cannot examine a player who has held her.');
+  return {
+    ...state,
+    phase: 'proposal',
+    ladyOfTheLake: {
+      holderPlayerIds: [...lady.holderPlayerIds, targetPlayerId],
+      checks: [...lady.checks, { afterRoundIndex: state.roundIndex - 1, holderPlayerId, targetPlayerId }],
+    },
+  };
+}
+
 // A quest allows five proposals; rejecting the fifth hands Evil the game.
 export const MAX_PROPOSALS_PER_QUEST = 5;
 
@@ -223,6 +275,11 @@ export function endedByRejectedProposals(state: MissionState): boolean {
 
 function finishState(state: MissionState, missionResults: MissionResultState[], winner: MissionWinner): MissionState {
   return { ...state, phase: 'finished', winner, missionResults, selectedTeamIds: [] };
+}
+
+// The Lady is used after the 2nd, 3rd, and 4th quests while the game goes on.
+function ladyOfTheLakeDueAfter(state: MissionState): boolean {
+  return Boolean(state.ladyOfTheLake) && state.roundIndex >= 1 && state.roundIndex <= 3;
 }
 
 function nextLeader(playerIds: string[], currentLeaderPlayerId: string): string {

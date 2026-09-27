@@ -130,7 +130,13 @@ describe('room service rules', () => {
       includeMorgana: false,
       includeMordred: true,
       includeOberon: false,
+      ladyOfTheLake: false,
     });
+  });
+
+  it('keeps the Lady of the Lake only for tables of seven or more', () => {
+    expect(buildCreateRoomSettings({ plannedPlayerCount: 7, humanPlayerCount: 7, ladyOfTheLake: true }).ladyOfTheLake).toBe(true);
+    expect(buildCreateRoomSettings({ plannedPlayerCount: 6, humanPlayerCount: 6, ladyOfTheLake: true }).ladyOfTheLake).toBe(false);
   });
 
   it('splits human count from table size and creates ready AI fill seats', () => {

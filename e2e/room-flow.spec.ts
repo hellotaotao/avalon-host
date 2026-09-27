@@ -433,6 +433,41 @@ test('mission cards enforce Good cannot fail and Evil can fail in the live UI', 
   });
 });
 
+test('seven-player Lady of the Lake examines a player privately after the second quest', async ({ browser }) => {
+  const room = await createStartedRoom(browser, 7, async (host) => {
+    await host.locator('.create-advanced > summary').click();
+    await host.getByLabel(/Use the Lady of the Lake/i).check();
+  });
+  const { host, players } = room;
+  try {
+    await revealRoles(players);
+    await expect(host.locator('.lady-status')).toContainText('E2E P7');
+
+    await playApprovedMission(players, players.slice(0, 2), () => 'success');
+    await expect(host.getByText('Quest 2 of 5')).toBeVisible();
+    await playApprovedMission(players, players.slice(0, 3), () => 'success');
+
+    const holder = players[6];
+    const target = players[2];
+    const holderAction = holder.page.locator('.live-player-phone .phone-action');
+    await expect(holderAction.getByText('Lady of the Lake', { exact: true })).toBeVisible();
+    await expect(holderAction.getByRole('button', { name: holder.name, exact: true })).toHaveCount(0);
+    await expect(players[1].page.locator('.live-player-phone .phone-action')).toContainText('E2E P7 is using the Lady of the Lake.');
+    await expect(players[0].page.locator('.live-player-phone .phone-action').getByRole('button')).toHaveCount(0);
+
+    await holderAction.getByRole('button', { name: target.name, exact: true }).click();
+
+    await expect(host.locator('.lady-status')).toContainText('E2E P7 → E2E P3');
+    await expect(host.locator('.lady-status .team-roster-heading strong')).toHaveText(target.name);
+    const allegiance = roleAllegiance(target.role!) === 'good' ? 'Good' : 'Evil';
+    await expect(holder.page.locator('.lady-checks')).toContainText(`Lady of the Lake: ${target.name} · ${allegiance}`);
+    await expect(players[1].page.locator('.lady-checks')).toHaveCount(0);
+    await expect(findLeader(players)).resolves.toBeDefined();
+  } finally {
+    await room.context.close();
+  }
+});
+
 async function withStartedRoom(
   browser: Browser,
   playerCount: number,
@@ -446,8 +481,8 @@ async function withStartedRoom(
   }
 }
 
-async function createStartedRoom(browser: Browser, playerCount: number): Promise<StartedRoom> {
-  const room = await createLobbyRoom(browser, playerCount);
+async function createStartedRoom(browser: Browser, playerCount: number, configureHost?: (host: Page) => Promise<void>): Promise<StartedRoom> {
+  const room = await createLobbyRoom(browser, playerCount, configureHost);
   const { host, players } = room;
   for (const player of players) {
     const readyButton = player.page.getByRole('button', { name: /^(Set Ready|Confirm seats and ready)$/i });

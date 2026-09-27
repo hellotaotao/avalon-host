@@ -11,6 +11,7 @@ import {
   resetRoomToLobby,
   setReady,
   submitAssassination,
+  submitLadyOfTheLake,
   submitMissionCard,
   submitTeamVote,
   type RoomSnapshot,
@@ -354,6 +355,7 @@ async function executeRoomAiAction(roomId: string, action: RoomAiAction): Promis
   if (action.type === 'proposeTeam') return proposeMissionTeam(roomId, action.leaderPlayerId, action.selectedTeamIds);
   if (action.type === 'submitTeamVote') return submitTeamVote(roomId, action.playerId, action.vote);
   if (action.type === 'submitMissionCard') return submitMissionCard(roomId, action.playerId, action.card);
+  if (action.type === 'submitLadyOfTheLake') return submitLadyOfTheLake(roomId, action.holderPlayerId, action.targetPlayerId);
   return submitAssassination(roomId, action.assassinPlayerId, action.targetPlayerId);
 }
 

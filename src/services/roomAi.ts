@@ -1,12 +1,13 @@
-import { getMissionFailThreshold, getTeamSize, type MissionCard, type Vote } from '../domain/avalon';
-import { MAX_PROPOSALS_PER_QUEST, type MissionState } from '../domain/missionFlow';
+import { getMissionFailThreshold, getTeamSize, roleAllegiance, type MissionCard, type Vote } from '../domain/avalon';
+import { getLadyOfTheLakeHolderId, getLadyOfTheLakeTargetIds, MAX_PROPOSALS_PER_QUEST, type MissionState } from '../domain/missionFlow';
 import { getPrivateRoleInfo, type RoomPlayer, type RoomSnapshot } from './roomCore';
 
 export type RoomAiAction =
   | { type: 'proposeTeam'; leaderPlayerId: string; selectedTeamIds: string[] }
   | { type: 'submitTeamVote'; playerId: string; vote: Vote }
   | { type: 'submitMissionCard'; playerId: string; card: MissionCard }
-  | { type: 'submitAssassination'; assassinPlayerId: string; targetPlayerId: string };
+  | { type: 'submitAssassination'; assassinPlayerId: string; targetPlayerId: string }
+  | { type: 'submitLadyOfTheLake'; holderPlayerId: string; targetPlayerId: string };
 
 // Every AI decision below draws only on what a human in that seat would know:
 // its own role, its night vision, and the public table state. Other players'
@@ -44,6 +45,14 @@ export function getNextRoomAiAction(snapshot: RoomSnapshot): RoomAiAction | unde
     };
   }
 
+  if (missionState.phase === 'lady') {
+    const holder = snapshot.players.find((player) => player.id === getLadyOfTheLakeHolderId(missionState));
+    if (!holder?.isAi) return undefined;
+    const target = chooseAiLadyTarget(snapshot, missionState, holder);
+    if (!target) return undefined;
+    return { type: 'submitLadyOfTheLake', holderPlayerId: holder.id, targetPlayerId: target.id };
+  }
+
   if (missionState.phase === 'assassin') {
     const assassin = snapshot.players.find((player) => player.isAi && player.role === 'Assassin');
     if (!assassin) return undefined;
@@ -59,6 +68,7 @@ export function getRoomAiActionKey(action: RoomAiAction): string {
   if (action.type === 'proposeTeam') return `${action.type}:${action.leaderPlayerId}:${action.selectedTeamIds.join('|')}`;
   if (action.type === 'submitTeamVote') return `${action.type}:${action.playerId}:${action.vote}`;
   if (action.type === 'submitMissionCard') return `${action.type}:${action.playerId}:${action.card}`;
+  if (action.type === 'submitLadyOfTheLake') return `${action.type}:${action.holderPlayerId}:${action.targetPlayerId}`;
   return `${action.type}:${action.assassinPlayerId}:${action.targetPlayerId}`;
 }
 
@@ -70,10 +80,17 @@ interface AiKnowledge {
 
 function getAiKnowledge(snapshot: RoomSnapshot, player: RoomPlayer): AiKnowledge {
   const info = getPrivateRoleInfo(player, snapshot.players);
-  return {
-    isEvil: info?.allegiance === 'evil',
-    visibleEvilIds: new Set(info?.sees.filter((seen) => seen.hint !== 'Merlin candidate').map((seen) => seen.playerId) ?? []),
-  };
+  const isEvil = info?.allegiance === 'evil';
+  const visibleEvilIds = new Set(info?.sees.filter((seen) => seen.hint !== 'Merlin candidate').map((seen) => seen.playerId) ?? []);
+  // A Good holder of the Lady of the Lake learns the allegiance of whoever it examined.
+  if (!isEvil) {
+    for (const check of snapshot.room.settings.missionState?.ladyOfTheLake?.checks ?? []) {
+      if (check.holderPlayerId !== player.id) continue;
+      const target = snapshot.players.find((candidate) => candidate.id === check.targetPlayerId);
+      if (target?.role && roleAllegiance(target.role) === 'evil') visibleEvilIds.add(target.id);
+    }
+  }
+  return { isEvil, visibleEvilIds };
 }
 
 function chooseAiTeam(snapshot: RoomSnapshot, missionState: MissionState, leader: RoomPlayer): string[] {
@@ -129,6 +146,18 @@ function chooseAiAssassinationTarget(snapshot: RoomSnapshot, missionState: Missi
   return [...candidates].sort((left, right) => (
     merlinScore(right.id) - merlinScore(left.id)
     || stableHash(snapshot.room.id, 'assassin', left.id) - stableHash(snapshot.room.id, 'assassin', right.id)
+  ))[0];
+}
+
+function chooseAiLadyTarget(snapshot: RoomSnapshot, missionState: MissionState, holder: RoomPlayer): RoomPlayer | undefined {
+  const knowledge = getAiKnowledge(snapshot, holder);
+  const targetIds = getLadyOfTheLakeTargetIds(missionState, snapshot.players.map((player) => player.id));
+  // Good examines whoever the public record trusts least; Evil skips its own
+  // teammates so the check reveals nothing it did not already know.
+  const candidates = snapshot.players.filter((player) => targetIds.includes(player.id) && !knowledge.visibleEvilIds.has(player.id));
+  return [...candidates].sort((left, right) => (
+    publicMissionScore(missionState, left.id) - publicMissionScore(missionState, right.id)
+    || stableHash(snapshot.room.id, 'lady', left.id) - stableHash(snapshot.room.id, 'lady', right.id)
   ))[0];
 }
 

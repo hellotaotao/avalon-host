@@ -4,7 +4,7 @@ import { ensureMissionState, type MissionState } from '../domain/missionFlow';
 import { buildJoinUrl } from '../navigationState';
 import { getPrivateRoleInfo, canArrangeSeats, type RoomPlayer, type RoomSnapshot } from '../services/roomService';
 import { useI18n } from '../i18n';
-import { PlayerPhone, getLivePhoneAction } from '../components/PlayerPhone';
+import { PlayerPhone, getLadyOfTheLakeResults, getLivePhoneAction } from '../components/PlayerPhone';
 import {
   AssassinPhaseActionPanel,
   AssassinPhaseBanner,
@@ -44,6 +44,7 @@ export function RoomView({
   onSubmitTeamVote,
   onSubmitMissionCard,
   onAssassination,
+  onLadyOfTheLake,
   onReadyForNextGame,
   isDemoMode,
   aiAutomation,
@@ -68,6 +69,7 @@ export function RoomView({
   onSubmitTeamVote: (vote: Vote) => void;
   onSubmitMissionCard: (card: MissionCard) => void;
   onAssassination: (targetPlayerId: string) => void;
+  onLadyOfTheLake: (targetPlayerId: string) => void;
   onReadyForNextGame: () => void;
   isDemoMode: boolean;
   aiAutomation?: RoomAiAutomationState;
@@ -283,6 +285,7 @@ export function RoomView({
               mode="live"
               player={currentPlayer}
               privateInfo={privateInfo}
+              ladyChecks={missionState ? getLadyOfTheLakeResults(missionState, snapshot.players, currentPlayer.id) : undefined}
               leaderId={missionState?.leaderPlayerId}
               selectedTeamIds={missionState?.selectedTeamIds}
               winner={missionState?.winner}
@@ -297,6 +300,7 @@ export function RoomView({
                 onProposeTeam: () => onProposeMissionTeam(liveSelectedTeamIds),
                 onVote: onSubmitTeamVote,
                 onPlayMissionCard: onSubmitMissionCard,
+                onLadyOfTheLake,
               })}
             />
           </>

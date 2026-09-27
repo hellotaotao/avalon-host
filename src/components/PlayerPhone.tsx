@@ -7,7 +7,12 @@ import {
   type VisibilityInfo,
   type Vote,
 } from '../domain/avalon';
-import { type MissionResultState, type MissionState } from '../domain/missionFlow';
+import {
+  getLadyOfTheLakeHolderId,
+  getLadyOfTheLakeTargetIds,
+  type MissionResultState,
+  type MissionState,
+} from '../domain/missionFlow';
 import { type RoomPlayer } from '../services/roomService';
 import { formatAllegiance, formatHint, formatRole, formatRoleDescription, useI18n } from '../i18n';
 import { isFinalProposal } from './gameText';
@@ -64,6 +69,13 @@ export type PlayerPhoneAction =
       result?: PlayerPhoneResult;
     }
   | {
+      kind: 'lady';
+      isHolder: boolean;
+      holderName: string;
+      candidates: PlayerPhonePerson[];
+      onExamine?: (targetPlayerId: string) => void;
+    }
+  | {
       kind: 'assassin';
       isAssassin: boolean;
       candidates: PlayerPhonePerson[];
@@ -77,10 +89,28 @@ export type PlayerPhoneAction =
       assassination?: DemoAssassination;
     };
 
+export interface LadyOfTheLakeResult {
+  targetPlayerId: string;
+  targetName: string;
+  allegiance: Allegiance;
+}
+
+// What this player learned from the Lady of the Lake. Only the holder at the
+// time of each check sees its result.
+export function getLadyOfTheLakeResults(missionState: MissionState, players: RoomPlayer[], playerId: string): LadyOfTheLakeResult[] {
+  return (missionState.ladyOfTheLake?.checks ?? []).flatMap((check) => {
+    if (check.holderPlayerId !== playerId) return [];
+    const target = players.find((candidate) => candidate.id === check.targetPlayerId);
+    if (!target?.role) return [];
+    return [{ targetPlayerId: target.id, targetName: target.displayName, allegiance: roleAllegiance(target.role) }];
+  });
+}
+
 export function PlayerPhone({
   mode,
   player,
   privateInfo,
+  ladyChecks,
   leaderId,
   selectedTeamIds = [],
   winner,
@@ -91,6 +121,7 @@ export function PlayerPhone({
   mode: PlayerPhoneMode;
   player: PlayerPhonePerson;
   privateInfo?: VisibilityInfo;
+  ladyChecks?: LadyOfTheLakeResult[];
   leaderId?: string;
   selectedTeamIds?: string[];
   winner?: Allegiance;
@@ -125,6 +156,7 @@ export function PlayerPhone({
           playerName={player.displayName}
           role={player.role}
           privateInfo={privateInfo}
+          ladyChecks={ladyChecks}
         />
       )}
       {agentView}
@@ -143,6 +175,7 @@ export function getLivePhoneAction({
   onProposeTeam,
   onVote,
   onPlayMissionCard,
+  onLadyOfTheLake,
 }: {
   player: RoomPlayer;
   players: RoomPlayer[];
@@ -153,6 +186,7 @@ export function getLivePhoneAction({
   onProposeTeam: () => void;
   onVote: (vote: Vote) => void;
   onPlayMissionCard: (card: MissionCard) => void;
+  onLadyOfTheLake?: (targetPlayerId: string) => void;
 }): PlayerPhoneAction | undefined {
   if (!missionState) return undefined;
   const selectedTeamNames = missionState.selectedTeamIds.map((id) => players.find((candidate) => candidate.id === id)?.displayName ?? id);
@@ -194,6 +228,18 @@ export function getLivePhoneAction({
       missionCardSubmitted,
       submittedCardCount: submittedMissionCardIds.length,
       onPlayMissionCard: onTeam && !missionCardSubmitted ? onPlayMissionCard : undefined,
+    };
+  }
+  if (missionState.phase === 'lady') {
+    const holderId = getLadyOfTheLakeHolderId(missionState);
+    const isHolder = holderId === player.id;
+    const targetIds = getLadyOfTheLakeTargetIds(missionState, players.map((candidate) => candidate.id));
+    return {
+      kind: 'lady',
+      isHolder,
+      holderName: players.find((candidate) => candidate.id === holderId)?.displayName ?? '',
+      candidates: players.filter((candidate) => targetIds.includes(candidate.id)),
+      onExamine: isHolder ? onLadyOfTheLake : undefined,
     };
   }
   if (missionState.phase === 'assassin') {
@@ -308,6 +354,26 @@ function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
     );
   }
 
+  if (action.kind === 'lady') {
+    return (
+      <div className={`phone-action ${action.onExamine ? '' : 'phone-readonly'}`}>
+        <span>{t('Lady of the Lake')}</span>
+        {action.onExamine ? (
+          <>
+            <p>{t('Choose a player to examine. Only you see their allegiance, in your Night info, and the Lady passes to them.')}</p>
+            <div className="choice-row">
+              {action.candidates.map((candidate) => (
+                <button key={candidate.id} type="button" onClick={() => action.onExamine?.(candidate.id)}>{candidate.displayName}</button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p>{action.isHolder ? t('Waiting for the Lady of the Lake.') : `${action.holderName} ${t('is using the Lady of the Lake.')}`}</p>
+        )}
+      </div>
+    );
+  }
+
   if (action.kind === 'assassin') {
     return (
       <div className={`phone-action ${action.onAssassinate ? '' : 'phone-readonly'}`}>
@@ -367,10 +433,12 @@ function PrivateSwipeReveal({
   playerName,
   role,
   privateInfo,
+  ladyChecks = [],
 }: {
   playerName: string;
   role: Role;
   privateInfo?: VisibilityInfo;
+  ladyChecks?: LadyOfTheLakeResult[];
 }) {
   const { t, language } = useI18n();
   const allegiance = roleAllegiance(role);
@@ -480,8 +548,15 @@ function PrivateSwipeReveal({
           <div className="night-info-face">
             {privateInfo?.sees.length ? (
               <ul>{privateInfo.sees.map((item) => <li key={item.playerId}>{item.name}: {formatHint(item.hint, language)}</li>)}</ul>
-            ) : (
+            ) : ladyChecks.length === 0 && (
               <p>{t('No extra information.')}</p>
+            )}
+            {ladyChecks.length > 0 && (
+              <ul className="lady-checks">
+                {ladyChecks.map((check) => (
+                  <li key={check.targetPlayerId}>{t('Lady of the Lake')}: {check.targetName} · {formatAllegiance(check.allegiance, language)}</li>
+                ))}
+              </ul>
             )}
           </div>
         </div>

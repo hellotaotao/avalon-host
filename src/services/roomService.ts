@@ -1,6 +1,7 @@
 import {
   ensureMissionState,
   resolveAssassination,
+  submitLadyOfTheLake as submitLadyOfTheLakeToState,
   submitMissionCard as submitMissionCardToState,
   submitTeamProposal,
   submitTeamVote as submitTeamVoteToState,
@@ -98,6 +99,7 @@ interface RoomRepository {
   submitTeamVote(roomId: string, playerId: string, vote: Vote): Promise<RoomSnapshot>;
   submitMissionCard(roomId: string, playerId: string, card: MissionCard): Promise<RoomSnapshot>;
   submitAssassination(roomId: string, assassinPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
+  submitLadyOfTheLake(roomId: string, holderPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
   readyForNextGame(roomId: string, playerId: string): Promise<RoomSnapshot>;
   removePlayer(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
   releaseSeat(roomId: string, hostPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot>;
@@ -151,6 +153,10 @@ export async function submitMissionCard(roomId: string, playerId: string, card: 
 
 export async function submitAssassination(roomId: string, assassinPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot> {
   return repository().submitAssassination(roomId, assassinPlayerId, targetPlayerId);
+}
+
+export async function submitLadyOfTheLake(roomId: string, holderPlayerId: string, targetPlayerId: string): Promise<RoomSnapshot> {
+  return repository().submitLadyOfTheLake(roomId, holderPlayerId, targetPlayerId);
 }
 
 export async function readyForNextGame(roomId: string, playerId: string): Promise<RoomSnapshot> {
@@ -370,6 +376,16 @@ const localRepository: RoomRepository = {
     return snapshot;
   },
 
+  async submitLadyOfTheLake(roomId: string, holderPlayerId: string, targetPlayerId: string) {
+    const data = readRooms();
+    const snapshot = requireById(data, roomId);
+    const playerIds = snapshot.players.map((player) => player.id);
+    const missionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
+    applyMissionStateToSnapshot(snapshot, submitLadyOfTheLakeToState(missionState, playerIds, holderPlayerId, targetPlayerId));
+    writeRooms(data, snapshot.room.id);
+    return snapshot;
+  },
+
   async readyForNextGame(roomId: string, playerId: string) {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
@@ -474,6 +490,7 @@ const apiRepository: RoomRepository = {
   submitTeamVote: (roomId, playerId, vote) => apiRequest('submitTeamVote', { roomId, playerId, vote }),
   submitMissionCard: (roomId, playerId, card) => apiRequest('submitMissionCard', { roomId, playerId, card }),
   submitAssassination: (roomId, assassinPlayerId, targetPlayerId) => apiRequest('submitAssassination', { roomId, assassinPlayerId, targetPlayerId }),
+  submitLadyOfTheLake: (roomId, holderPlayerId, targetPlayerId) => apiRequest('submitLadyOfTheLake', { roomId, holderPlayerId, targetPlayerId }),
   readyForNextGame: (roomId, playerId) => apiRequest('readyForNextGame', { roomId, playerId }),
   removePlayer: (roomId, hostPlayerId, targetPlayerId) => apiRequest('removePlayer', { roomId, hostPlayerId, targetPlayerId }),
   releaseSeat: (roomId, hostPlayerId, targetPlayerId) => apiRequest('releaseSeat', { roomId, hostPlayerId, targetPlayerId }),

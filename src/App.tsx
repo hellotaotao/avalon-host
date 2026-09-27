@@ -9,6 +9,7 @@ import {
 import {
   ensureMissionState,
   resolveAssassination,
+  submitLadyOfTheLake as submitLadyOfTheLakeToState,
   submitMissionCard as submitMissionCardToState,
   submitTeamProposal,
   submitTeamVote as submitTeamVoteToState,
@@ -38,6 +39,7 @@ import {
   swapSeats,
   swapSeatsInSnapshot,
   submitAssassination,
+  submitLadyOfTheLake,
   submitMissionCard,
   submitTeamVote,
   subscribeToRoom,
@@ -74,6 +76,7 @@ const ROOM_AI_THINK_BASE_MS: Record<RoomAiAction['type'], number> = {
   submitTeamVote: 650,
   submitMissionCard: 800,
   submitAssassination: 1400,
+  submitLadyOfTheLake: 1200,
 };
 
 const ROOM_AI_THINK_JITTER_MS = 600;
@@ -123,6 +126,7 @@ export function App() {
   const [hostName, setHostName] = useState('');
   const [hostNameTouched, setHostNameTouched] = useState(false);
   const [aiFillEnabled, setAiFillEnabled] = useState(false);
+  const [ladyOfTheLake, setLadyOfTheLake] = useState(false);
   const [humanPlayerCount, setHumanPlayerCount] = useState(4);
   const [plannedPlayerCount, setPlannedPlayerCount] = useState<(typeof playerCountRange)[number]>(5);
   const [hostRoleOptions, setHostRoleOptions] = useState<RolePresetOptions>(() => getRecommendedRolePresetOptions(5));
@@ -368,6 +372,7 @@ export function App() {
         displayName: hostName,
         ...resolveCreateRoomSeats({ playerCount: plannedPlayerCount, aiFillEnabled, humanPlayerCount }),
         roleOptions: hostRoleOptions,
+        ladyOfTheLake,
         deviceToken,
       });
       saveSessionBinding(result.snapshot.room.id, result.currentPlayerId);
@@ -557,6 +562,26 @@ export function App() {
       setSnapshot(await submitAssassination(snapshot.room.id, currentPlayer.id, targetPlayerId));
     } catch (error) {
       setMessage(error instanceof Error ? t(error.message) : t('Could not submit assassination.'));
+    }
+  }
+
+  async function handleLadyOfTheLake(targetPlayerId: string) {
+    if (!snapshot || !currentPlayer) return;
+    setMessage('');
+    if (isDemoMode) {
+      try {
+        const playerIds = snapshot.players.map((player) => player.id);
+        const currentMissionState = ensureMissionState(snapshot.room.settings.missionState, playerIds);
+        await handleMissionStateChange(submitLadyOfTheLakeToState(currentMissionState, playerIds, currentPlayer.id, targetPlayerId));
+      } catch (error) {
+        setMessage(error instanceof Error ? t(error.message) : t('Could not use the Lady of the Lake.'));
+      }
+      return;
+    }
+    try {
+      setSnapshot(await submitLadyOfTheLake(snapshot.room.id, currentPlayer.id, targetPlayerId));
+    } catch (error) {
+      setMessage(error instanceof Error ? t(error.message) : t('Could not use the Lady of the Lake.'));
     }
   }
 
@@ -885,6 +910,8 @@ export function App() {
               onAiFillEnabledChange={handleAiFillToggle}
               onHumanPlayerCountChange={setHumanPlayerCount}
               roleOptions={hostRoleOptions}
+              ladyOfTheLake={ladyOfTheLake}
+              onLadyOfTheLakeChange={setLadyOfTheLake}
               onPlayerCountChange={handlePlannedPlayerCount}
               onToggleRole={handleHostRoleToggle}
             />
@@ -949,6 +976,7 @@ export function App() {
           onSubmitTeamVote={handleSubmitTeamVote}
           onSubmitMissionCard={handleSubmitMissionCard}
           onAssassination={handleAssassination}
+          onLadyOfTheLake={handleLadyOfTheLake}
           onReadyForNextGame={handleReadyForNextGame}
           isDemoMode={isDemoMode}
           aiAutomation={aiAutomation}
@@ -1022,6 +1050,7 @@ async function executeRoomAiAction(roomId: string, action: RoomAiAction): Promis
   if (action.type === 'proposeTeam') return proposeMissionTeam(roomId, action.leaderPlayerId, action.selectedTeamIds);
   if (action.type === 'submitTeamVote') return submitTeamVote(roomId, action.playerId, action.vote);
   if (action.type === 'submitMissionCard') return submitMissionCard(roomId, action.playerId, action.card);
+  if (action.type === 'submitLadyOfTheLake') return submitLadyOfTheLake(roomId, action.holderPlayerId, action.targetPlayerId);
   return submitAssassination(roomId, action.assassinPlayerId, action.targetPlayerId);
 }
 

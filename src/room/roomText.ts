@@ -1,4 +1,4 @@
-import { type MissionState } from '../domain/missionFlow';
+import { getLadyOfTheLakeHolderId, type MissionState } from '../domain/missionFlow';
 import { type RoomPlayer } from '../services/roomService';
 
 export type RoomAiAutomationState = {
@@ -42,6 +42,10 @@ export function getPendingAiMissionActor(missionState: MissionState, players: Ro
     const submittedPlayerIds = missionState.missionCardSubmissions?.submittedPlayerIds ?? [];
     return orderedPlayers.find((player) => player.isAi && missionState.selectedTeamIds.includes(player.id) && !submittedPlayerIds.includes(player.id));
   }
+  if (missionState.phase === 'lady') {
+    const holder = orderedPlayers.find((player) => player.id === getLadyOfTheLakeHolderId(missionState));
+    return holder?.isAi ? holder : undefined;
+  }
   if (missionState.phase === 'assassin') {
     return orderedPlayers.find((player) => player.isAi && player.role === 'Assassin');
   }
@@ -52,6 +56,7 @@ export function formatPendingAiMissionAction(missionState: MissionState, player:
   if (missionState.phase === 'proposal') return `${player.displayName} ${t('is choosing the crew.')}`;
   if (missionState.phase === 'vote') return `${player.displayName} ${t('is thinking about the vote.')}`;
   if (missionState.phase === 'mission') return `${player.displayName} ${t('is preparing a mission card.')}`;
+  if (missionState.phase === 'lady') return `${player.displayName} ${t('is using the Lady of the Lake.')}`;
   if (missionState.phase === 'assassin') return `${player.displayName} ${t('is choosing Merlin.')}`;
   return '';
 }

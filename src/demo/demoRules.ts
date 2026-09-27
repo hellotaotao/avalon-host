@@ -4,6 +4,7 @@ import {
   endedByRejectedProposals,
   recordTeamVote,
   resolveAssassination,
+  type MissionPhase,
   type MissionState,
 } from '../domain/missionFlow';
 import { makeHistory } from './demoHistory';
@@ -20,7 +21,7 @@ export function resolveDemoVoteIfReady(
   return {
     players: players.map((player) => ({ ...player, missionCard: undefined })),
     statePatch: {
-      phase: next.phase,
+      phase: toDemoPhase(next.phase),
       leaderIndex: getDemoLeaderIndex(current, next.leaderPlayerId),
       proposalIndex: next.proposalIndex,
       selectedTeamIds: next.selectedTeamIds,
@@ -41,7 +42,7 @@ export function resolveDemoMissionIfReady(current: DemoState, players: DemoPlaye
   return {
     ...current,
     players,
-    phase: startsNextQuest ? 'result' : next.phase,
+    phase: startsNextQuest ? 'result' : toDemoPhase(next.phase),
     missionResults: next.missionResults,
     selectedTeamIds: startsNextQuest ? current.selectedTeamIds : next.selectedTeamIds,
     lastMission: next.missionResults.at(-1),
@@ -150,4 +151,10 @@ export function deterministicShuffle<T>(items: T[], seed: string): T[] {
 
 export function toDemoAvalonPlayer(player: DemoPlayer): Player {
   return { id: player.id, name: player.displayName, role: player.role };
+}
+
+// The demo table never turns on the Lady of the Lake, so her phase cannot come up.
+function toDemoPhase(phase: MissionPhase): Exclude<MissionPhase, 'lady'> {
+  if (phase === 'lady') throw new Error('The demo does not use the Lady of the Lake.');
+  return phase;
 }

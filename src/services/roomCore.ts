@@ -14,6 +14,8 @@ import {
 import {
   createInitialMissionState,
   endedByRejectedProposals,
+  LADY_OF_THE_LAKE_MIN_PLAYERS,
+  type MissionPhase,
   type MissionState,
 } from '../domain/missionFlow.js';
 
@@ -23,6 +25,7 @@ export interface RoomSettings extends AssignmentOptions {
   plannedPlayerCount?: number;
   humanPlayerCount?: number;
   createdInDemoMode?: boolean;
+  ladyOfTheLake?: boolean;
   missionState?: MissionState;
   gameHistory?: RoomGameHistoryEntry[];
   nextGameReadyPlayerIds?: string[];
@@ -78,6 +81,7 @@ export interface CreateRoomInput {
   humanPlayerCount?: number;
   plannedPlayerCount?: number;
   roleOptions?: RolePresetOptions;
+  ladyOfTheLake?: boolean;
   /** @deprecated Formal rooms now use recommended role presets by player count. */
   includePercivalMorgana?: boolean;
   deviceToken: string;
@@ -187,7 +191,7 @@ export function createJoinDemoRoom(displayName: string): { snapshot: RoomSnapsho
   return { snapshot: makeDemoSnapshot(roomId, DEMO_JOIN_ROOM_CODE, players), currentPlayerId };
 }
 
-export function buildCreateRoomSettings(input: Pick<CreateRoomInput, 'humanPlayerCount' | 'plannedPlayerCount' | 'roleOptions' | 'includePercivalMorgana'>): RoomSettings {
+export function buildCreateRoomSettings(input: Pick<CreateRoomInput, 'humanPlayerCount' | 'plannedPlayerCount' | 'roleOptions' | 'ladyOfTheLake' | 'includePercivalMorgana'>): RoomSettings {
   const humanPlayerCount = sanitizeHumanPlayerCount(input.humanPlayerCount);
   const plannedPlayerCount = sanitizePlannedPlayerCount(input.plannedPlayerCount, humanPlayerCount);
   const roleOptions = sanitizeRoomRoleOptions(plannedPlayerCount, input.roleOptions ?? {
@@ -200,6 +204,7 @@ export function buildCreateRoomSettings(input: Pick<CreateRoomInput, 'humanPlaye
     humanPlayerCount,
     plannedPlayerCount,
     ...roleOptions,
+    ladyOfTheLake: Boolean(input.ladyOfTheLake) && plannedPlayerCount >= LADY_OF_THE_LAKE_MIN_PLAYERS,
   };
 }
 
@@ -254,7 +259,9 @@ export function startDemoSnapshot(snapshot: RoomSnapshot, hostPlayerId?: string)
         settings: {
           ...snapshot.room.settings,
           nextGameReadyPlayerIds: undefined,
-          missionState: createInitialMissionState(players.map((player) => player.id)),
+          missionState: createInitialMissionState(players.map((player) => player.id), {
+            ladyOfTheLake: Boolean(snapshot.room.settings.ladyOfTheLake) && players.length >= LADY_OF_THE_LAKE_MIN_PLAYERS,
+          }),
         },
       },
       players: players.map((player) => ({
@@ -279,6 +286,12 @@ function sanitizeRoomRoleOptions(playerCount: number, roleOptions: RolePresetOpt
   }, {});
 }
 
+// The Lady of the Lake is a short pause before the next proposal, so the room
+// row stores it as 'proposal' and the database status list stays unchanged.
+export function getRoomStatusForPhase(phase: MissionPhase): RoomStatus {
+  return phase === 'lady' ? 'proposal' : phase;
+}
+
 export function applyMissionStateToSnapshot(snapshot: RoomSnapshot, missionState: MissionState, endedAt = new Date().toISOString()): RoomSnapshot {
   const wasAlreadyFinished = snapshot.room.settings.missionState?.phase === 'finished';
   const settings: RoomSettings = { ...snapshot.room.settings, missionState };
@@ -291,7 +304,7 @@ export function applyMissionStateToSnapshot(snapshot: RoomSnapshot, missionState
   }
   snapshot.room = {
     ...snapshot.room,
-    status: missionState.phase,
+    status: getRoomStatusForPhase(missionState.phase),
     settings,
   };
   return snapshot;
