@@ -10,11 +10,12 @@ const closeWhenDone = args.has('--close');
 const slowMo = Number(process.env.AVALON_DEMO_SLOWMO_MS || (headless ? 0 : 350));
 
 let devServer;
+let browser;
 
 async function main() {
   await ensureServer();
 
-  const browser = await chromium.launch({
+  browser = await chromium.launch({
     headless,
     slowMo,
     args: ['--window-size=1500,950'],
@@ -53,7 +54,7 @@ async function main() {
   await pauseForViewing('Five tabs joined the same room.');
 
   for (const player of players) {
-    const readyButton = player.page.getByRole('button', { name: /^Set Ready$/i });
+    const readyButton = player.page.getByRole('button', { name: /^(Set Ready|Confirm seats and ready)$/i });
     if (await readyButton.isVisible()) await readyButton.click();
   }
 
@@ -62,6 +63,7 @@ async function main() {
 
   for (const player of players) {
     await expect(player.page.getByText(/Table Quest/i)).toBeVisible();
+    await expect(player.page.locator('.game-start-backdrop')).toHaveCount(0);
   }
 
   await revealRoles(players);
@@ -70,9 +72,10 @@ async function main() {
 
   const leader = await findLeader(players);
   await leader.page.bringToFront();
-  await proposeFirstQuestTeam(leader, players.slice(0, 2));
+  const team = players.slice(0, 2);
+  await proposeFirstQuestTeam(leader, team);
   await submitVotes(players);
-  await submitMissionCards(players);
+  await submitMissionCards(team);
 
   await expect(host.getByText(/Good won/i)).toBeVisible();
   await host.bringToFront();
@@ -144,13 +147,11 @@ async function submitVotes(players) {
   }
 }
 
-async function submitMissionCards(players) {
-  for (const player of players) {
-    const successButton = player.page.getByRole('button', { name: /^Success$/i });
-    if (await successButton.isVisible()) {
-      await player.page.bringToFront();
-      await successButton.click();
-    }
+async function submitMissionCards(team) {
+  for (const player of team) {
+    await player.page.bringToFront();
+    await expect(player.page.locator('.live-player-phone .phone-action').getByText(/Mission card/i)).toBeVisible();
+    await player.page.getByRole('button', { name: /^Success$/i }).click();
   }
 }
 
@@ -181,8 +182,10 @@ process.on('SIGINT', () => {
 
 process.on('exit', stopServer);
 
-main().catch((error) => {
+main().catch(async (error) => {
   console.error(error);
+  // An open browser keeps the process alive, so a failed run would hang forever.
+  await browser?.close();
   stopServer();
   process.exitCode = 1;
 });

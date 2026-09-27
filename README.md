@@ -32,7 +32,7 @@ Demo supports:
 - Player counts from 5-10 with normal Avalon Good/Evil counts: 5=3/2, 6=4/2, 7=4/3, 8=5/3, 9=6/3, 10=6/4.
 - Role presets with Merlin and Assassin fixed. Normal Loyal Servant/Minion cards fill the remaining slots.
 - Optional special-role toggles for Percival, Morgana, Mordred, and Oberon when the selected table has enough Good/Evil slots.
-- Avalon Lite quest team sizes; any fail card fails the quest:
+- Avalon Lite quest team sizes; one fail card fails a quest, except the 4th quest at 7+ players, which needs two:
   - 5: 2,3,2,3,3
   - 6: 2,3,4,3,4
   - 7: 2,3,3,4,4
