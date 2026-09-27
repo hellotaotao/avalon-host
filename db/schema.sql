@@ -9,6 +9,7 @@ create table if not exists rooms (
   status text not null default 'lobby' check (status in ('setup', 'lobby', 'locked', 'reveal', 'proposal', 'vote', 'mission', 'assassin', 'finished')),
   game_type text not null default 'avalon_lite',
   settings jsonb not null default '{}'::jsonb,
+  version integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -29,6 +30,7 @@ create table if not exists players (
 );
 
 alter table players add column if not exists is_ai boolean not null default false;
+alter table rooms add column if not exists version integer not null default 0;
 
 create index if not exists rooms_cleanup_idx on rooms(status, updated_at);
 create index if not exists players_room_id_idx on players(room_id);

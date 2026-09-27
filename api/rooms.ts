@@ -55,7 +55,8 @@ type VercelResponse = {
 type RequestBody = Record<string, unknown> & { action?: string };
 
 let sqlClient: ReturnType<typeof neon> | undefined;
-let requiredSchemaPromise: Promise<void> | undefined;
+
+const ROOM_CODE_ATTEMPTS = 20;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('content-type', 'application/json');
@@ -71,26 +72,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const body = parseBody(req.body);
-    await ensureRequiredSchema();
     const result = await dispatch(body);
     res.status(200).json(result ?? null);
   } catch (error) {
     const statusCode = error instanceof HttpError ? error.statusCode : 500;
     res.status(statusCode).json({ error: error instanceof Error ? error.message : 'Request failed.' });
   }
-}
-
-function ensureRequiredSchema() {
-  requiredSchemaPromise ??= applyRequiredSchema().catch((error) => {
-    requiredSchemaPromise = undefined;
-    throw error;
-  });
-  return requiredSchemaPromise;
-}
-
-async function applyRequiredSchema() {
-  await getSql()`alter table players add column if not exists is_ai boolean not null default false`;
-  await getSql()`alter table rooms add column if not exists version integer not null default 0`;
 }
 
 async function dispatch(body: RequestBody) {
@@ -145,14 +132,8 @@ async function createRoom(input: CreateRoomInput) {
   const displayName = input.displayName.trim();
   if (!displayName) throw new HttpError(400, 'Display name is required.');
 
-  const existingRooms = await sql`select code from rooms`;
-  const code = generateRoomCode(existingRooms.map((room) => String(room.code)));
   const settings: RoomSettings = buildCreateRoomSettings(input);
-  const [roomRow] = await sql`
-    insert into rooms (code, status, game_type, settings)
-    values (${code}, 'lobby', 'avalon_lite', ${JSON.stringify(settings)}::jsonb)
-    returning id::text as id
-  `;
+  const roomRow = await insertRoomWithFreshCode(settings);
   const [playerRow] = await sql`
     insert into players (room_id, display_name, seat_index, is_host, is_ready, device_token_hash, is_ai)
     values (${roomRow.id}, ${displayName}, 0, true, false, ${input.deviceToken}, false)
@@ -166,6 +147,22 @@ async function createRoom(input: CreateRoomInput) {
   }
 
   return { snapshot: await fetchSnapshot(roomRow.id as string), currentPlayerId: playerRow.id as string };
+}
+
+// Let the unique index on rooms.code catch collisions instead of reading every
+// existing code first.
+async function insertRoomWithFreshCode(settings: RoomSettings) {
+  const sql = getSql();
+  for (let attempt = 0; attempt < ROOM_CODE_ATTEMPTS; attempt += 1) {
+    const [roomRow] = await sql`
+      insert into rooms (code, status, game_type, settings)
+      values (${generateRoomCode()}, 'lobby', 'avalon_lite', ${JSON.stringify(settings)}::jsonb)
+      on conflict (code) do nothing
+      returning id::text as id
+    `;
+    if (roomRow) return roomRow;
+  }
+  throw new HttpError(503, 'Could not find a free room code. Please try again.');
 }
 
 async function joinRoom(input: JoinRoomInput) {
