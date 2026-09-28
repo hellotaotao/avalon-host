@@ -18,14 +18,14 @@ interface StartedRoom {
 test('live UI creates a room, joins five players, starts, proposes, votes, and submits mission cards', async ({ browser }) => {
   await withStartedRoom(browser, 5, async ({ host, players }) => {
     for (const page of players.map((player) => player.page)) {
-      await expect(page.locator('.room-topbar .room-quest')).toHaveCount(5);
+      await expect(page.locator('.room-header .room-quest')).toHaveCount(5);
       await expect(page.locator('.room-action-card')).toBeVisible();
     }
 
     await expect(host.locator('.room-table-card .role-lineup')).toBeVisible();
     await expect(host.getByRole('dialog', { name: 'More' })).toHaveCount(0);
     await expect(host.getByRole('button', { name: 'Submit Backup Proposal' })).toHaveCount(0);
-    await host.getByRole('button', { name: 'More' }).click();
+    await host.locator('.room-header').getByRole('button', { name: 'More' }).click();
     await expect(host.getByRole('dialog', { name: 'More' }).getByText('Recovery controls')).toBeVisible();
     await host.keyboard.press('Escape');
     await expect(host.getByRole('dialog', { name: 'More' })).toHaveCount(0);
@@ -39,9 +39,10 @@ test('live UI creates a room, joins five players, starts, proposes, votes, and s
     await expect(offTeam.getByRole('heading', { name: 'Waiting for the team to play their cards' })).toBeVisible();
     await submitMissionCards(team, () => 'success');
 
-    await expect(host.locator('.room-quest').first()).toHaveClass(/success/);
+    await expect(host.locator('.room-header .room-quest').first()).toHaveClass(/success/);
+    await expect(host.locator('.room-header .room-score')).toContainText('Good 1');
     await expect(host.locator('.quest-record li').first()).toContainText('Success');
-    await expect(host.locator('.room-topbar')).toContainText('Quest 2 · 3 players');
+    await expectCurrentQuest(host, 2);
   });
 });
 
@@ -59,8 +60,13 @@ test('on a phone, the step a player acts on sits in the first screen and the top
     const page = players[0].page;
     await page.mouse.wheel(0, 1200);
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(300);
-    const topBar = await page.locator('.room-topbar').boundingBox();
-    expect(topBar?.y).toBeLessThanOrEqual(1);
+    const compactBar = page.locator('.room-compact-bar.shown');
+    await expect(compactBar).toBeVisible();
+    await expect.poll(async () => (await compactBar.boundingBox())?.y).toBeLessThanOrEqual(1);
+    await expect(compactBar.locator('.room-compact-summary')).toHaveAttribute('aria-label', /^Score: Good 0, Evil 0, Quest 1 · proposal 1\/5\. Back to top$/);
+    await compactBar.locator('.room-compact-summary').click();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    await expect(page.locator('.room-compact-bar.shown')).toHaveCount(0);
   });
 });
 
@@ -94,10 +100,11 @@ test('the host confirms seats only after every seat is taken', async ({ browser 
 
 test('the quest track marks the official fail threshold for each quest', async ({ browser }) => {
   await withStartedRoom(browser, 7, async ({ host, players }) => {
-    const fourthQuest = host.locator('.room-quest').nth(3);
-    await expect(fourthQuest.locator('em')).toHaveText('2');
+    const fourthQuest = host.locator('.room-header .room-quest').nth(3);
+    await expect(fourthQuest.locator('em')).toHaveText('Needs 2 Fail cards');
     await expect(fourthQuest).toHaveAttribute('aria-label', /2 Fail cards to fail/);
-    await expect(host.locator('.room-quest').first().locator('em')).toHaveCount(0);
+    await expect(host.locator('.room-header .room-quest').first().locator('em')).toHaveText('In progress');
+    await expect(host.locator('.room-leader-row')).toContainText('Proposal 1 of 5');
     const leader = await findLeader(players);
     await expect(leader.page.locator('.room-action-card .room-action-rule')).toContainText('1 Fail card to fail');
   });
@@ -175,18 +182,18 @@ test('five-player Evil wins through three failed quests', async ({ browser }) =>
     }
 
     await expect(host.locator('.room-action-card h2')).toHaveText(/^Evil wins · You (won|lost)$/);
-    await expect(host.locator('.room-quest.fail')).toHaveCount(3);
+    await expect(host.locator('.room-header .room-quest.fail')).toHaveCount(3);
     await expect(host.getByText(/Game 1: Evil won/i)).toBeVisible();
 
     // The result stays readable after someone leaves the finished table.
     const leaver = players[4];
     leaver.page.on('dialog', (dialog) => dialog.accept());
-    await leaver.page.getByRole('button', { name: 'More' }).click();
+    await leaver.page.locator('.room-header').getByRole('button', { name: 'More' }).click();
     await leaver.page.getByRole('button', { name: /^Leave Room$/i }).click();
     await expect(host.locator('.room-table-departed')).toContainText(leaver.name);
     await expect(host.locator('.room-table-card .round-table-seat .seat-role')).toHaveCount(4);
     await expect(host.locator('.room-action-card h2')).toHaveText(/^Evil wins · You (won|lost)$/);
-    await expect(host.locator('.room-quest')).toHaveCount(5);
+    await expect(host.locator('.room-header .room-quest')).toHaveCount(5);
     await expect(host.locator('.room-action-card')).toContainText('Someone has left');
     await expect(host.getByText(/Three failed quests/i).first()).toBeVisible();
   });
@@ -209,21 +216,22 @@ test('six-player rejected team vote rotates leader, then the next leader recover
     const recoveryTeam = goodPlayers.slice(0, getTeamSize(players.length, 0));
     await playApprovedMission(players, recoveryTeam, () => 'success');
 
-    await expect(host.locator('.room-quest').first()).toHaveClass(/success/);
-    await expect(host.locator('.room-topbar')).toContainText('Quest 2');
+    await expect(host.locator('.room-header .room-quest').first()).toHaveClass(/success/);
+    await expectCurrentQuest(host, 2);
   });
 });
 
 test('five rejected proposals in one quest hand Evil the game, with a warning before the last vote', async ({ browser }) => {
   await withStartedRoom(browser, 5, async ({ host, players }) => {
     for (let proposal = 1; proposal <= 4; proposal += 1) {
-      await expect(host.locator('.room-topbar')).toContainText(`Proposal ${proposal}/5`);
+      await expect(host.locator('.room-leader-row')).toContainText(`Proposal ${proposal} of 5`);
       await expect(host.locator('.room-action-card .final-proposal-warning')).toHaveCount(0);
       await proposeTeam(players, players.slice(0, 2));
       await submitVotes(players, () => 'reject');
     }
 
-    await expect(host.locator('.room-topbar')).toContainText('Proposal 5/5');
+    await expect(host.locator('.room-leader-row')).toContainText('Proposal 5 of 5');
+    await expect(host.locator('.room-vote-track.final')).toBeVisible();
     await expect(host.locator('.room-action-card .final-proposal-warning')).toContainText(/if this crew is rejected, Evil wins/i);
     await proposeTeam(players, players.slice(0, 2));
     for (const player of players) {
@@ -246,7 +254,7 @@ test('lobby room controls are scoped to host and guests', async ({ browser }) =>
     await players[1].page.getByRole('button', { name: /^(Set Ready|Confirm seats and ready)$/i }).click();
 
     await expect(host.getByRole('button', { name: /^Leave Room$/i })).toBeHidden();
-    await host.getByRole('button', { name: 'More' }).click();
+    await host.locator('.room-header').getByRole('button', { name: 'More' }).click();
     await expect(host.getByRole('button', { name: /^Leave Room$/i })).toBeVisible();
     await expect(host.getByRole('button', { name: /^Dissolve Room$/i })).toBeVisible();
     await expect(host.getByRole('button', { name: /^Start Game$/i })).toHaveCount(0);
@@ -258,15 +266,15 @@ test('lobby room controls are scoped to host and guests', async ({ browser }) =>
       expect(await host.evaluate(() => Boolean(document.activeElement?.closest('.room-sheet')))).toBe(true);
     }
     await host.keyboard.press('Escape');
-    await expect(host.getByRole('button', { name: 'More' })).toBeFocused();
-    await host.getByRole('button', { name: 'More' }).click();
+    await expect(host.locator('.room-header').getByRole('button', { name: 'More' })).toBeFocused();
+    await host.locator('.room-header').getByRole('button', { name: 'More' }).click();
     await host.getByRole('button', { name: 'Close' }).click();
     await expect(host.getByRole('dialog', { name: 'More' })).toHaveCount(0);
-    await host.getByRole('button', { name: 'More' }).click();
+    await host.locator('.room-header').getByRole('button', { name: 'More' }).click();
     await host.locator('.room-sheet-backdrop').click({ position: { x: 10, y: 10 } });
     await expect(host.getByRole('button', { name: /^Leave Room$/i })).toBeHidden();
 
-    await guest.getByRole('button', { name: 'More' }).click();
+    await guest.locator('.room-header').getByRole('button', { name: 'More' }).click();
     await expect(guest.getByRole('button', { name: /^Leave Room$/i })).toBeVisible();
     await expect(guest.getByRole('button', { name: /^Dissolve Room$/i })).toHaveCount(0);
     await expect(guest.getByRole('button', { name: /^Start Game$/i })).toHaveCount(0);
@@ -486,7 +494,7 @@ test('AI room created from advanced settings plays normally for guests joining b
     }
 
     for (const player of players) {
-      await expect(player.page.locator('.room-quests')).toBeVisible();
+      await expect(player.page.locator('.room-header .room-quest-track')).toBeVisible();
     }
 
     await proposeTeam(players, players.slice(1, 3));
@@ -495,7 +503,7 @@ test('AI room created from advanced settings plays normally for guests joining b
     await submitMissionCards(players.slice(1, 3), () => 'success');
 
     for (const player of players) {
-      await expect(player.page.locator('.room-topbar')).toContainText('Quest 2');
+      await expectCurrentQuest(player.page, 2);
     }
     await expect(linkGuest.locator('.quest-record li')).toHaveCount(1);
   } finally {
@@ -515,7 +523,7 @@ test('host releases a seat so a player can reclaim it from a new browser mid-gam
     await newBrowser.getByRole('button', { name: /^Join Room$/i }).click();
     await expect(newBrowser.getByText(/ask the host to release your seat/i)).toBeVisible();
 
-    await host.getByRole('button', { name: 'More' }).click();
+    await host.locator('.room-header').getByRole('button', { name: 'More' }).click();
     const row = host.locator('.host-player-action-row').filter({ hasText: lost.name });
     await expect(row.getByRole('button', { name: /^Remove$/i })).toHaveCount(0);
     host.once('dialog', (dialog) => dialog.accept());
@@ -551,7 +559,7 @@ test('mission cards enforce Good cannot fail and Evil can fail in the live UI', 
 
     await goodPlayer!.page.getByRole('button', { name: /^Success$/i }).click();
     await evilFail.click();
-    await expect(evilPlayer!.page.locator('.room-topbar')).toContainText('Quest 2');
+    await expectCurrentQuest(evilPlayer!.page, 2);
   });
 });
 
@@ -566,7 +574,7 @@ test('seven-player Lady of the Lake examines a player privately after the second
     await expect(host.locator('.lady-status')).toContainText('E2E P7');
 
     await playApprovedMission(players, players.slice(0, 2), () => 'success');
-    await expect(host.locator('.room-topbar')).toContainText('Quest 2');
+    await expectCurrentQuest(host, 2);
     await playApprovedMission(players, players.slice(0, 3), () => 'success');
 
     const holder = players[6];
@@ -616,7 +624,7 @@ async function createStartedRoom(browser: Browser, playerCount: number, configur
   for (const player of players) {
     await expect(player.page.getByRole('heading', { name: /Game Progress/i })).toBeAttached();
     await expect(player.page.getByRole('heading', { name: /My identity/i })).toBeVisible();
-    await expect(player.page.locator('.room-quests')).toBeVisible();
+    await expect(player.page.locator('.room-header .room-quest-track')).toBeVisible();
     await expect(player.page.locator('.game-start-backdrop')).toHaveCount(0);
   }
 
@@ -656,6 +664,10 @@ async function joinRoomPage(page: Page, runId: string, index: number, roomCode: 
   await page.getByLabel(/Your nickname/i).fill(`E2E P${index + 1}`);
   await page.getByRole('button', { name: /^Join Room$/i }).click();
   await expect(page.locator('.room-action-card')).toBeVisible();
+}
+
+async function expectCurrentQuest(page: Page, quest: number): Promise<void> {
+  await expect(page.locator('.room-header .room-quest').nth(quest - 1)).toHaveClass(/current/);
 }
 
 async function expectInFirstScreen(locator: ReturnType<Page['locator']>): Promise<void> {

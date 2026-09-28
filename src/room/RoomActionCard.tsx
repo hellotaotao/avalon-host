@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getMissionFailThreshold, getTeamSize, roleAllegiance, type MissionCard, type Vote } from '../domain/avalon';
-import { getLadyOfTheLakeHolderId, getLadyOfTheLakeTargetIds, MAX_PROPOSALS_PER_QUEST, type MissionState } from '../domain/missionFlow';
+import { getLadyOfTheLakeHolderId, getLadyOfTheLakeTargetIds, type MissionState } from '../domain/missionFlow';
 import { getPlannedPlayerCount, type RoomPlayer, type RoomSnapshot } from '../services/roomService';
 import { fillText, formatAllegiance, useI18n } from '../i18n';
 import { formatFailThresholdRule, getGameEndCopy, isFinalProposal, joinSentences } from '../components/gameText';
@@ -111,7 +111,6 @@ export function LobbyActionCard({
   const missing = Math.max(0, total - snapshot.players.length);
   const players = sortRoomPlayersBySeat(snapshot.players);
   const notReady = players.filter((player) => !player.isReady);
-  const seatedMeta = fillText(t('{count}/{total} seated'), { count: String(snapshot.players.length), total: String(total) });
   const notReadyLine = notReady.length > 0
     ? fillText(t('Not ready yet: {names}'), { names: joinNames(notReady.map((player) => nameWithYou(player, currentPlayer.id, t)), language) })
     : t('Starting the game now.');
@@ -122,7 +121,7 @@ export function LobbyActionCard({
   // newcomer would take the ready back, so the card is only about inviting.
   if (currentPlayer.isHost && missing > 0) {
     return (
-      <ActionCard phase={t('Invite')} yourTurn meta={seatedMeta} title={t('Invite players to the table')}>
+      <ActionCard phase={t('Invite')} yourTurn title={t('Invite players to the table')}>
         <RoomInvite code={snapshot.room.code} joinLink={joinLink} isDemoMode={isDemoMode} />
         <ActionStatus lines={[fillText(t('{count} more to join. Once every seat is taken, this card turns into checking the seats.'), { count: String(missing) })]} />
         {aiNote}
@@ -164,7 +163,6 @@ export function LobbyActionCard({
     <ActionCard
       phase={t('Get ready')}
       yourTurn={!currentPlayer.isReady}
-      meta={seatedMeta}
       title={currentPlayer.isReady ? t('You are ready') : t('Check your nickname, then get ready')}
     >
       {nickname}
@@ -255,11 +253,6 @@ export function GameActionCard({
   const supportedCount = gamePlayerCount >= 5 && gamePlayerCount <= 10;
   const teamSize = supportedCount ? getTeamSize(gamePlayerCount, missionState.roundIndex) : 0;
   const failRule = supportedCount ? formatFailThresholdRule(getMissionFailThreshold(gamePlayerCount, missionState.roundIndex), language) : '';
-  const proposalMeta = fillText(t('Quest {quest} · Proposal {count}/{max}'), {
-    quest,
-    count: String(missionState.proposalIndex + 1),
-    max: String(MAX_PROPOSALS_PER_QUEST),
-  });
   const aiProgress = <AiProgress missionState={missionState} players={players} aiAutomation={aiAutomation} />;
   const finalWarning = isFinalProposal(missionState)
     ? <p className="final-proposal-warning">{t('Fifth proposal this quest: if this crew is rejected, Evil wins.')}</p>
@@ -294,7 +287,6 @@ export function GameActionCard({
         <ActionCard
           phase={t('Choose team')}
           yourTurn
-          meta={proposalMeta}
           title={fillText(t('You are the leader: choose {count} players'), { count: String(teamSize) })}
         >
           <div className="room-picks" role="group" aria-label={t('Quest team')}>
@@ -319,7 +311,7 @@ export function GameActionCard({
       );
     }
     return (
-      <ActionCard phase={t('Choose team')} meta={proposalMeta} title={fillText(t('Waiting for {name} to choose the team'), { name: nameOf(leaderId) })}>
+      <ActionCard phase={t('Choose team')} title={fillText(t('Waiting for {name} to choose the team'), { name: nameOf(leaderId) })}>
         <p className="room-action-copy room-action-waiting">
           {fillText(t('Quest {quest} needs {count} players. Once the team is proposed, you vote here.'), { quest, count: String(teamSize) })}
         </p>
@@ -335,7 +327,7 @@ export function GameActionCard({
     const currentVote = votes[currentPlayer.id];
     const waiting = players.filter((player) => !votes[player.id]).map((player) => youName(player.id));
     return (
-      <ActionCard phase={t('Team vote')} yourTurn={!currentVote} meta={proposalMeta} title={t('Vote on this team')}>
+      <ActionCard phase={t('Team vote')} yourTurn={!currentVote} title={t('Vote on this team')}>
         <div className="room-crew" aria-label={t('Quest team')}>
           {missionState.selectedTeamIds.map((id) => <span key={id}>{nameOf(id)}</span>)}
         </div>
@@ -368,11 +360,10 @@ export function GameActionCard({
       total: String(missionState.selectedTeamIds.length),
       names: joinNames(waiting.map(youName), language),
     });
-    const meta = fillText(t('Quest {quest}'), { quest });
     if (onTeam && !submitted.includes(currentPlayer.id)) {
       const canFail = Boolean(currentPlayer.role && roleAllegiance(currentPlayer.role) === 'evil');
       return (
-        <ActionCard phase={t('On the quest')} yourTurn meta={meta} title={t('You are on the team: play a mission card')}>
+        <ActionCard phase={t('On the quest')} yourTurn title={t('You are on the team: play a mission card')}>
           <div className="room-choices">
             <button type="button" disabled={busy} onClick={() => onPlayMissionCard('success')}>{t('Success')}</button>
             <button type="button" className="danger" disabled={busy || !canFail} onClick={() => onPlayMissionCard('fail')}>{t('Fail')}</button>
@@ -387,7 +378,6 @@ export function GameActionCard({
     return (
       <ActionCard
         phase={t('On the quest')}
-        meta={meta}
         title={onTeam ? t('Card played') : t('Waiting for the team to play their cards')}
       >
         <div className="room-crew" aria-label={t('Quest team')}>
@@ -401,11 +391,10 @@ export function GameActionCard({
 
   if (missionState.phase === 'lady') {
     const holderId = getLadyOfTheLakeHolderId(missionState) ?? '';
-    const meta = fillText(t('Next: quest {quest}'), { quest });
     if (holderId === currentPlayer.id) {
       const candidates = players.filter((player) => getLadyOfTheLakeTargetIds(missionState, players.map((item) => item.id)).includes(player.id));
       return (
-        <ActionCard phase={t('Lady of the Lake')} yourTurn meta={meta} title={t('Choose a player to examine')}>
+        <ActionCard phase={t('Lady of the Lake')} yourTurn title={t('Choose a player to examine')}>
           <p className="room-action-copy">{t('Choose a player to examine. Only you see their allegiance, in your Night info, and the Lady passes to them.')}</p>
           <div className="room-picks">
             {candidates.map((player) => (
@@ -417,7 +406,7 @@ export function GameActionCard({
       );
     }
     return (
-      <ActionCard phase={t('Lady of the Lake')} meta={meta} title={fillText(t('{name} is using the Lady of the Lake'), { name: nameOf(holderId) })}>
+      <ActionCard phase={t('Lady of the Lake')} title={fillText(t('{name} is using the Lady of the Lake'), { name: nameOf(holderId) })}>
         <p className="room-action-copy room-action-waiting">{t('Only the holder sees the result.')}</p>
         {aiProgress}
         <ActionStatus lines={[previousQuestLine]} />

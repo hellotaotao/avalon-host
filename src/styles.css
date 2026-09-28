@@ -3688,136 +3688,324 @@ label {
   padding-top: 0;
 }
 
-.room-topbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  min-height: 56px;
+/* One column that never grows past the screen, so a long nickname anywhere
+   is cut short instead of widening the whole page. */
+.room-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.room-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.55rem;
   margin-inline: -1rem;
   border-bottom: 1px solid rgba(240, 199, 107, 0.38);
   background: rgba(21, 16, 13, 0.94);
-  color: #fff7de;
-  padding: 0.5rem 1rem;
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  color: #f2ddae;
+  padding: 0.6rem 1rem 0.65rem;
 }
 
-.room-topbar-code {
+.room-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.room-header-code {
   display: grid;
   line-height: 1.05;
 }
 
-.room-topbar-code small {
+.room-header-code small {
   color: #e4b95f;
-  font-size: 0.66rem;
+  font-size: 0.7rem;
   font-weight: 900;
 }
 
-.room-topbar-code strong {
+.room-header-code strong {
   color: #ffe39b;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.4rem;
-  letter-spacing: 0.06em;
+  font-size: 1.9rem;
+  letter-spacing: 0.08em;
 }
 
-.room-quests {
-  display: flex;
-  gap: 0.32rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.room-quest {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border: 1.5px solid rgba(240, 199, 107, 0.4);
-  border-radius: 50%;
-  background: rgba(255, 248, 221, 0.06);
-  color: #d9c79f;
-  font-size: 0.92rem;
-  font-weight: 900;
-}
-
-.room-quest.success {
-  border-color: #a9cdef;
-  background: #2d5f8f;
-  color: #fff;
-}
-
-.room-quest.fail {
-  border-color: #eba493;
-  background: #7a2d25;
-  color: #fff;
-}
-
-.room-quest.current {
-  border: 2px solid #f0c76b;
-  color: #ffe39b;
-  box-shadow: 0 0 0 3px rgba(240, 199, 107, 0.22);
-}
-
-.room-quest i,
-.room-quest em {
-  position: absolute;
-  right: -4px;
-  top: -4px;
-  display: grid;
-  place-items: center;
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  background: #fff4c2;
-  color: #2a190f;
-  font-size: 0.6rem;
-  font-style: normal;
-  font-weight: 900;
-}
-
-.room-quest em {
-  top: auto;
-  bottom: -4px;
-  background: #b83224;
-  color: #fff;
-}
-
-.room-topbar-meta {
-  display: grid;
-  justify-items: end;
-  gap: 0.1rem;
-  margin-left: auto;
-  min-width: 0;
-  color: #f2ddae;
-  font-size: 0.72rem;
+.room-header-facts,
+.room-leader-row {
+  border-top: 1px solid rgba(240, 199, 107, 0.2);
+  padding-top: 0.45rem;
+  font-size: 0.84rem;
   font-weight: 800;
-  line-height: 1.2;
-  text-align: right;
 }
 
-.room-topbar-meta strong {
-  color: #ffe39b;
-  font-size: 0.86rem;
+.room-header-facts {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 0.3rem 1rem;
 }
 
-.room-topbar-more {
+.room-score {
+  display: grid;
+  gap: 0.1rem;
+}
+
+/* Sans digits: Georgia's old-style 0 reads as the letter o. */
+.room-score strong {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  color: #fff7de;
+  font-size: 1.25rem;
+  font-weight: 900;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.room-score em {
+  color: #b9a47c;
+  font-style: normal;
+}
+
+.room-score .good,
+.room-compact-score .good {
+  color: #a9cdef;
+}
+
+.room-score .evil,
+.room-compact-score .evil {
+  color: #f3a08f;
+}
+
+.room-score small {
+  color: #b9a47c;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.room-more-button {
   flex: none;
   min-height: 38px;
   border-color: rgba(240, 199, 107, 0.55);
   background: rgba(255, 248, 221, 0.08);
   color: #ffe39b;
-  padding: 0.3rem 0.75rem;
+  padding: 0.3rem 0.8rem;
   font-size: 0.9rem;
   box-shadow: none;
 }
 
-.room-topbar-more:hover:not(:disabled) {
-  background: rgba(240, 199, 107, 0.14);
+.room-more-button:hover:not(:disabled) {
+  background: rgba(240, 199, 107, 0.16);
+  color: #ffe39b;
+}
+
+.room-quest-track {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: center;
+}
+
+.room-quest-track li {
+  display: grid;
+  justify-items: center;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.room-quest-track small {
+  color: #b9a47c;
+  font-size: 0.68rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.room-quest-track span,
+.room-compact-quests i {
+  display: grid;
+  place-items: center;
+  border: 1.5px solid rgba(240, 199, 107, 0.4);
+  border-radius: 50%;
+  background: rgba(255, 248, 221, 0.06);
+  color: #e8d6ab;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.room-quest-track span {
+  width: 38px;
+  height: 38px;
+  font-size: 0.86rem;
+}
+
+.room-quest-track em {
+  min-height: 1.1em;
+  color: #b9a47c;
+  font-size: 0.66rem;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.room-quest-track .success span,
+.room-compact-quests .success {
+  border-color: #a9cdef;
+  background: #2d5f8f;
+  color: #fff;
+}
+
+.room-quest-track .fail span,
+.room-compact-quests .fail {
+  border-color: #eba493;
+  background: #7a2d25;
+  color: #fff;
+}
+
+.room-quest-track .current span,
+.room-compact-quests .current {
+  border: 2px solid #f0c76b;
+  color: #ffe39b;
+  box-shadow: 0 0 0 3px rgba(240, 199, 107, 0.22);
+}
+
+.room-quest-track .success em {
+  color: #a9cdef;
+}
+
+.room-quest-track .fail em {
+  color: #f3a08f;
+}
+
+.room-quest-track .current em {
+  color: #ffe39b;
+}
+
+.room-leader-row strong {
+  color: #ffe39b;
+}
+
+/* A long leader nickname gives way; the vote track always shows in full. */
+.room-leader-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-vote-track {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.4rem;
+  color: #d9c79f;
+  white-space: nowrap;
+}
+
+.room-vote-pips {
+  display: inline-flex;
+  gap: 0.2rem;
+}
+
+.room-vote-pips i {
+  width: 0.62rem;
+  height: 0.62rem;
+  border: 1.5px solid rgba(240, 199, 107, 0.55);
+  border-radius: 50%;
+}
+
+.room-vote-pips i.rejected {
+  border-color: #eba493;
+  background: #c0503f;
+}
+
+.room-vote-pips i.last {
+  border-color: #eba493;
+}
+
+.room-vote-track.final {
+  color: #f3a08f;
+}
+
+/* Pinned once the header has scrolled away; slides in from the top edge. */
+.room-compact-bar {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: min(640px, 100%);
+  min-height: 52px;
+  border-bottom: 1px solid rgba(240, 199, 107, 0.38);
+  background: rgba(21, 16, 13, 0.95);
+  color: #f2ddae;
+  padding: calc(0.4rem + env(safe-area-inset-top, 0px)) 1rem 0.4rem;
+  transform: translate(-50%, -110%);
+  visibility: hidden;
+  transition: transform 0.2s ease, visibility 0s linear 0.2s;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.room-compact-bar.shown {
+  transform: translate(-50%, 0);
+  visibility: visible;
+  transition: transform 0.2s ease;
+}
+
+.room-compact-summary {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  min-height: 40px;
+  border: 0;
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-align: left;
+  box-shadow: none;
+}
+
+.room-compact-summary:hover:not(:disabled) {
+  background: none;
+}
+
+.room-compact-score {
+  color: #fff7de;
+  font-size: 1.05rem;
+  font-weight: 900;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.room-compact-code {
+  color: #ffe39b;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.15rem;
+  letter-spacing: 0.06em;
+}
+
+.room-compact-quests {
+  display: flex;
+  gap: 0.22rem;
+}
+
+.room-compact-quests i {
+  width: 22px;
+  height: 22px;
+  font-size: 0.66rem;
+}
+
+.room-compact-phase {
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .room-action-card {
@@ -4543,16 +4731,16 @@ label {
 }
 
 @media (min-width: 700px) {
-  .room-topbar {
+  .room-header {
     margin-inline: -1.5rem;
     padding-inline: 1.5rem;
   }
 }
 
 @media (max-width: 380px) {
-  .room-quest {
-    width: 30px;
-    height: 30px;
+  .room-quest-track span {
+    width: 34px;
+    height: 34px;
   }
 
   .room-picks {
@@ -4566,5 +4754,10 @@ label {
   .room-sheet-backdrop,
   .room-sheet {
     animation: none;
+  }
+
+  .room-compact-bar,
+  .room-compact-bar.shown {
+    transition: none;
   }
 }

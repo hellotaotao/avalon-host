@@ -1,7 +1,7 @@
 import { buildRolePreset, type Player, type Role } from '../domain/avalon';
 import { endedByRejectedProposals, MAX_PROPOSALS_PER_QUEST, type MissionState } from '../domain/missionFlow';
 import { type RoomPlayer, type RoomSnapshot } from '../services/roomService';
-import { fillText, formatRole, useI18n } from '../i18n';
+import { formatRole, useI18n } from '../i18n';
 
 export function summarizeRoles(roles: Role[], language: ReturnType<typeof useI18n>['language'] = 'en'): string {
   return summarizeRoleEntries(roles)
@@ -38,11 +38,6 @@ export function formatFailThresholdRule(threshold: number, language: ReturnType<
 }
 
 const publicRoleOrder: Role[] = ['Merlin', 'Percival', 'Loyal Servant', 'Assassin', 'Morgana', 'Mordred', 'Oberon', 'Minion'];
-
-// Short form for tight spots such as the room's top bar.
-export function formatFailsOnRule(threshold: number, t: (text: string) => string): string {
-  return threshold === 1 ? t('Fails on 1 Fail card') : fillText(t('Fails on {count} Fail cards'), { count: String(threshold) });
-}
 
 // Chinese sentences run together; English ones need a space.
 export function joinSentences(sentences: Array<string | undefined | false>, language: ReturnType<typeof useI18n>['language']): string {

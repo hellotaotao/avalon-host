@@ -62,7 +62,7 @@ async function main() {
   await pauseForViewing('All five players are ready. The game starts automatically.');
 
   for (const player of players) {
-    await expect(player.page.locator('.room-quests')).toBeVisible();
+    await expect(player.page.locator('.room-header .room-quest-track')).toBeVisible();
     await expect(player.page.locator('.game-start-backdrop')).toHaveCount(0);
   }
 
@@ -77,7 +77,7 @@ async function main() {
   await submitVotes(players);
   await submitMissionCards(team);
 
-  await expect(host.locator('.room-quest').first()).toHaveClass(/success/);
+  await expect(host.locator('.room-header .room-quest').first()).toHaveClass(/success/);
   await host.bringToFront();
   await pauseForViewing('First quest completed. Browser will stay open unless --close is used.');
 

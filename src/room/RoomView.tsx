@@ -10,14 +10,16 @@ import { GameResultOverlay, GameStartOverlay, RoomHistoryPanel } from './GameEnd
 import { IdentityCard } from './IdentityCard';
 import { GameActionCard, LobbyActionCard } from './RoomActionCard';
 import { RoomMoreSheet } from './RoomMoreSheet';
-import { RoomTopBar } from './RoomTopBar';
+import { RoomCompactBar, RoomHeader } from './RoomTopBar';
 import { GameTableCard, LobbyTableCard } from './RoundTableCard';
 import { type RoomAiAutomationState } from './roomText';
 
 const RESULT_OVERLAY_MS = 2400;
 
-// Every phase uses the same skeleton, top to bottom: status bar, the action
-// card (what this player does now), the round table, and their own identity.
+// Every phase uses the same skeleton, top to bottom: the header (score, quest
+// track, leader), the action card (what this player does now), the round
+// table, and their own identity. Once the header scrolls away, a compact bar
+// with the same essentials stays pinned to the top.
 // Everything rarely needed opens from the top bar's "More" as a sheet.
 export function RoomView({
   snapshot,
@@ -87,7 +89,9 @@ export function RoomView({
   const inviteInCard = !started && Boolean(currentPlayer?.isHost) && !isTableFull(snapshot);
   const [draftTeamIds, setDraftTeamIds] = useState<string[]>([]);
   const [moreOpen, setMoreOpen] = useState(false);
-  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const moreOpenerRef = useRef<HTMLElement | null>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  const [headerOutOfView, setHeaderOutOfView] = useState(false);
   const [showResultOverlay, setShowResultOverlay] = useState(false);
   const previousPhaseRef = useRef(missionState?.phase);
   const isLeaderDrafting = missionState?.phase === 'proposal' && currentPlayer?.id === missionState.leaderPlayerId;
@@ -112,6 +116,19 @@ export function RoomView({
     return () => window.clearTimeout(timer);
   }, [missionState?.phase]);
 
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header || typeof IntersectionObserver === 'undefined') return undefined;
+    const observer = new IntersectionObserver(([entry]) => setHeaderOutOfView(!entry.isIntersecting));
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, [started]);
+
+  function openMore(opener: HTMLElement) {
+    moreOpenerRef.current = opener;
+    setMoreOpen(true);
+  }
+
   function toggleDraftPlayer(playerId: string) {
     setDraftTeamIds((current) => (current.includes(playerId) ? current.filter((id) => id !== playerId) : [...current, playerId]));
   }
@@ -135,13 +152,21 @@ export function RoomView({
         <GameResultOverlay won={won} winner={missionState.winner} onDismiss={() => setShowResultOverlay(false)} />
       )}
 
-      <RoomTopBar
+      <RoomHeader
+        ref={headerRef}
         snapshot={snapshot}
         missionState={missionState}
         playerCount={gamePlayerCount}
         moreOpen={moreOpen}
-        moreButtonRef={moreButtonRef}
-        onOpenMore={() => setMoreOpen(true)}
+        onOpenMore={openMore}
+      />
+      <RoomCompactBar
+        snapshot={snapshot}
+        missionState={missionState}
+        playerCount={gamePlayerCount}
+        shown={headerOutOfView}
+        moreOpen={moreOpen}
+        onOpenMore={openMore}
       />
 
       {currentPlayer && !started && (
@@ -227,7 +252,7 @@ export function RoomView({
           showInvite={!inviteInCard}
           currentTeamSize={currentTeamSize}
           busy={busy}
-          returnFocusRef={moreButtonRef}
+          returnFocusRef={moreOpenerRef}
           onClose={() => setMoreOpen(false)}
           onLeave={onLeave}
           onResetRoomToLobby={onResetRoomToLobby}
