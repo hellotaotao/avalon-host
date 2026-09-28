@@ -276,6 +276,63 @@ test('lobby room controls are scoped to host and guests', async ({ browser }) =>
   }
 });
 
+test('the host swaps seats by tapping two seats or dragging one onto another, and both animate', async ({ browser }) => {
+  const room = await createLobbyRoom(browser, 5);
+  try {
+    const { host } = room;
+    const table = host.locator('.room-action-card .round-table');
+    const seatButton = (name: string) => table.getByRole('button', { name: new RegExp(`: ${name} `) });
+    const seatNumber = async (name: string) => (await seatButton(name).getAttribute('aria-label'))?.match(/Seat (\d+)/)?.[1];
+    const swappingSeats = () => host.evaluate(() => document.querySelectorAll('.round-table-seat.swapping').length);
+
+    await expect(host.locator('.round-table-caption')).toHaveText('Tap two players, or drag one onto another, to swap seats.');
+    await seatButton('E2E P2').click();
+    await seatButton('E2E P4').click();
+    expect(await swappingSeats()).toBe(2);
+    await expect.poll(() => seatNumber('E2E P2')).toBe('4');
+    await expect.poll(() => seatNumber('E2E P4')).toBe('2');
+    await expect.poll(swappingSeats).toBe(0);
+
+    const from = await seatButton('E2E P3').locator('.seat-avatar').boundingBox();
+    const to = await seatButton('E2E P5').locator('.seat-avatar').boundingBox();
+    await host.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+    await host.mouse.down();
+    await host.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 12 });
+    await expect(table.locator('.round-table-seat.drop-target')).toHaveCount(1);
+    await host.mouse.up();
+    expect(await swappingSeats()).toBe(2);
+    await expect.poll(() => seatNumber('E2E P3')).toBe('5');
+    await expect.poll(() => seatNumber('E2E P5')).toBe('3');
+
+    // A drag that ends away from any seat puts the player back.
+    await expect.poll(swappingSeats).toBe(0);
+    const stray = await seatButton('E2E P2').locator('.seat-avatar').boundingBox();
+    await host.mouse.move(stray!.x + stray!.width / 2, stray!.y + stray!.height / 2);
+    await host.mouse.down();
+    await host.mouse.move(stray!.x + stray!.width / 2, stray!.y - 140, { steps: 8 });
+    await host.mouse.up();
+    await expect.poll(() => seatNumber('E2E P2')).toBe('4');
+    await expect(table.locator('.round-table-seat.selected')).toHaveCount(0);
+
+    // Swapping the host's own seat: the host visibly moves over first, then the
+    // table turns so the host is back at the bottom of their own view.
+    const hostSeat = table.locator('.round-table-seat.me');
+    const start = await hostSeat.boundingBox();
+    await seatButton('E2E P1').click();
+    await seatButton('E2E P3').click();
+    expect(await swappingSeats()).toBe(2);
+    await host.waitForTimeout(350);
+    const midway = await hostSeat.boundingBox();
+    expect(Math.hypot(midway!.x - start!.x, midway!.y - start!.y)).toBeGreaterThan(40);
+    await expect.poll(swappingSeats).toBe(0);
+    await expect.poll(async () => Math.abs((await hostSeat.boundingBox())!.y - start!.y)).toBeLessThan(2);
+    await expect.poll(() => seatNumber('E2E P1')).toBe('5');
+    await expect.poll(() => seatNumber('E2E P3')).toBe('1');
+  } finally {
+    await room.context.close();
+  }
+});
+
 test('private reveal swipe area shows each side only while held or dragged', async ({ browser }) => {
   await withStartedRoom(browser, 5, async ({ players }) => {
     const swipeArea = players[0].page.locator('.identity-card .phone-private-swipe');
