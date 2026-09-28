@@ -21,7 +21,7 @@ npm test
 npm run build
 ```
 
-In production, the app uses Vercel serverless functions backed by Neon Postgres. In local Vite dev, it runs in browser demo mode using `localStorage` unless `VITE_USE_NEON_API=true` is set while a local Vercel API server is running.
+In production, the app uses Vercel serverless functions backed by Neon Postgres. Production builds also report page views to Vercel Web Analytics (`@vercel/analytics`); local dev and tests do not load it. Web Analytics has to be enabled for the project in the Vercel dashboard before data appears. In local Vite dev, it runs in browser demo mode using `localStorage` unless `VITE_USE_NEON_API=true` is set while a local Vercel API server is running.
 
 ## Demo Simulator
 
