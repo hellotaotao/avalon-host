@@ -12,6 +12,7 @@ import {
 import type { MissionCard, Vote } from '../src/domain/avalon.js';
 import {
   applyMissionStateToSnapshot,
+  assertCanSetReady,
   assertDeletedRows,
   autoStartReadyRoom,
   buildAiPlayers,
@@ -21,6 +22,7 @@ import {
   GAME_ALREADY_STARTED_JOIN_ERROR,
   generateRoomCode,
   isRoomStaleForExit,
+  isTableFull,
   leavePlayerFromSnapshot,
   mapPlayer,
   mapRoom,
@@ -252,13 +254,19 @@ async function updateNickname(roomId: string, playerId: string, displayName: str
 }
 
 async function setReady(roomId: string, playerId: string, isReady: boolean) {
+  const snapshot = await fetchSnapshot(roomId);
+  assertCanSetReady(snapshot, playerId, isReady);
+  const wasHost = Boolean(snapshot.players.find((player) => player.id === playerId)?.isHost);
+  // Conditional on the host flag checked above: a guest's ready must not land
+  // on a seat that became the host's in the meantime, where it would count as
+  // confirming seats the new host never looked at.
   const rows = await getSql()`
     update players
     set is_ready = ${isReady}
-    where id = ${playerId} and room_id = ${roomId}
+    where id = ${playerId} and room_id = ${roomId} and is_host = ${wasHost}
     returning id::text as id
   `;
-  assertDeletedRows(rows, 'Player not found.');
+  if (!rows[0]) throw new HttpError(409, 'The room changed while saving. Please try again.');
   await touchRoom(roomId);
   return withRoomWriteRetry(roomId, async (snapshot, version) => {
     const nextSnapshot = autoStartReadyRoom(snapshot);
@@ -378,6 +386,11 @@ async function removePlayer(roomId: string, hostPlayerId: string, targetPlayerId
   for (const player of snapshot.players) {
     await sql`update players set seat_index = ${player.seatIndex} where id = ${player.id} and room_id = ${roomId}`;
   }
+  // The open seat takes back the host's confirmation of the seating. Only the
+  // host row is written, so a guest's concurrent ready is not overwritten.
+  if (!isTableFull(snapshot)) {
+    await sql`update players set is_ready = false where room_id = ${roomId} and is_host`;
+  }
   // Clients order snapshots by the room's version and update time, so a
   // removal that left both untouched let a poll from before it bring the
   // removed player back on screen.
@@ -408,13 +421,22 @@ async function swapSeats(roomId: string, hostPlayerId: string, firstPlayerId: st
 }
 
 async function transferHost(roomId: string, hostPlayerId: string, targetPlayerId: string) {
-  const snapshot = await fetchSnapshot(roomId);
-  transferHostInSnapshot(snapshot, hostPlayerId, targetPlayerId);
-  const sql = getSql();
-  for (const player of snapshot.players) {
-    await sql`update players set is_host = ${player.isHost} where id = ${player.id} and room_id = ${roomId}`;
-  }
-  return fetchSnapshot(roomId);
+  return withRoomWriteRetry(roomId, async (snapshot, version) => {
+    transferHostInSnapshot(snapshot, hostPlayerId, targetPlayerId);
+    // The version bump makes a concurrent play-again write retry against the
+    // new host, and drops the new host from the play-again list between games.
+    if (!(await persistRoomState(roomId, version, snapshot.room))) return undefined;
+    const target = snapshot.players.find((player) => player.id === targetPlayerId);
+    // One statement, so no ready can land while the room has no host or the new
+    // host still carries a guest's ready.
+    await getSql()`
+      update players
+      set is_host = (id = ${targetPlayerId}),
+          is_ready = case when id = ${targetPlayerId} then ${Boolean(target?.isReady)} else is_ready end
+      where room_id = ${roomId}
+    `;
+    return fetchSnapshot(roomId);
+  });
 }
 
 async function resetRoomToLobby(roomId: string, hostPlayerId: string) {

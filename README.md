@@ -38,7 +38,7 @@ Demo supports:
   - 7: 2,3,3,4,4
   - 8-10: 3,4,4,5,5
 - A multi-phone table view where every player has a virtual phone. Each phone can show/hide that player's own role and night information.
-- Demo and live play share the same `PlayerPhone` surface for role, night information, and player-facing phase actions. Demo mode controls reveal state persistently for operating many phones; live mode uses protected per-player peek controls.
+- Each virtual phone is a `PlayerPhone` card for role, night information, and player-facing phase actions. Demo mode controls reveal state persistently for operating many phones; live rooms use the same swipe-to-peek identity card on the player's own page.
 - Local table state for leader, quest round, team selection, public approve/reject votes, anonymous mission success/fail cards, and score progress.
 - The same rules as live rooms: votes, quest results, the five-proposal limit, and the assassination all resolve through `src/domain/missionFlow.ts`, so the demo cannot drift from real play.
 
@@ -101,19 +101,29 @@ The smoke test uses the local room service with mocked browser storage. It creat
 1. Host opens the site and taps **Create Room**.
 2. Host enters a nickname, picks the player count, optionally adjusts special roles under Advanced settings, and receives a 5-digit room code.
 3. Other players open the site, tap **Join Room**, enter the 5-digit room code and nickname. A join URL in the form `/?step=join&code=12345` also opens the join form with the code prefilled.
-4. The lobby shows seats, host marker, current player marker, and ready state.
+4. The lobby shows seats, host marker, current player marker, and ready state. Until every seat is taken, the host's card is only about inviting; once the table is full it turns into checking the round table against where people actually sit, with **Confirm seats and ready** right under it. The host cannot get ready earlier (a newcomer would take that ready back anyway), and a seat that opens up again takes it back too.
 5. Refreshing the same browser restores its current room/player session, and rejoining from the same device reuses the existing seat. Before the game starts, rejoining with the same nickname from another browser also takes the existing seat. After it starts, see **Reconnecting From a New Browser** below.
 6. Before the game starts, the host can remove stale players from the lobby so abandoned seats do not block start.
 7. The game starts automatically once the room has its planned player count and every player is ready.
 8. Starting locks the room, assigns Avalon Lite roles from the active ready player count, and shows each device its own private reveal.
 9. Mission play runs from the players' own phones: the current leader proposes the team, every player votes approve/reject, and selected mission players submit Success/Fail cards. Good players cannot submit Fail.
-10. Three successful missions enter the Assassin endgame. Normal missions pause, every player sees the Assassin warning, and the current Assassin can choose a Merlin target from the dedicated Assassin phase panel. Hitting Merlin gives Evil the win; missing Merlin gives Good the win.
+10. Three successful missions enter the Assassin endgame. Normal missions pause, every player sees that the Assassin is choosing, and the Assassin picks a Merlin target in their action card. Hitting Merlin gives Evil the win; missing Merlin gives Good the win.
+11. When the game ends, a short full-screen beat shows the result, then the result and **Play Again** stay at the top of the page until the next game starts. Who was who is shown on the round table itself: each seat gets its role under the name and a Good or Evil ring, and the Assassin's pick is marked.
 
-Live private reveal and the demo's multi-phone cards now render through the shared `PlayerPhone` component. The live room keeps role/night information behind protected peek covers, while demo mode can keep individual phone reveals open for tabletop simulation.
+### Room page layout
+
+Every phase uses the same skeleton, top to bottom, so a player always knows where to look:
+
+1. **Top bar** (pinned while scrolling): the room code and seated/ready counts in the lobby; during a game, the five quests with their results, the proposal count, and the current quest size.
+2. **Action card**: the one place a player acts. It holds whatever this player has to do right now (invite, get ready, pick the team, vote, play a card, examine with the Lady, assassinate, play again) or, when it is someone else's turn, who the table is waiting on.
+3. **Round table**: seats in table order with the leader, the proposed team, and who has voted or played a card (after the game, everyone's role); below it the roles in play, the record of finished quests, and the Lady of the Lake status.
+4. **My identity**: the swipe-to-peek role and night information.
+
+Everything rarely needed opens from the **More** button in the top bar, as a sheet over the page: invite details, language, host tools including recovery controls, and leaving the table.
 
 ## Share Join
 
-Room screens keep the 5-digit room code prominent for table readout before the game starts and after it finishes. They also show a readable join link, Copy Link and Copy Code controls, and a scannable QR code for the join URL. The numeric code remains the fallback.
+While seats are still open, the host's action card shows the 5-digit room code large for table readout, with a readable join link, Copy Invitation, Copy Link and Copy Code controls, and a scannable QR code for the join URL. After that, and for every other player, the same invite block sits under **More**, and the room code stays in the top bar before the game. The numeric code remains the fallback.
 
 The QR code is drawn in the page with `qrcode.react`, so the join link is never sent to a third-party image service and the code still appears on a flaky connection.
 
@@ -129,13 +139,13 @@ A player's seat is tied to a device token kept in that browser's `localStorage`.
 
 The saved seat survives a bad network. It is dropped only when the server answers that the room is gone or that this player is no longer in it, or when the player leaves; a request that fails, times out, or comes back unreadable leaves it in place and offers a retry. Coming back to a backgrounded page refreshes the room immediately instead of waiting for the next poll, and a slow poll can no longer paint an older board over a newer one when the newer write bumped the room's version or update time (host transfer does neither yet).
 
-Once a game has started, a new device cannot take a seat on its own. The host opens **Host permissions** and taps **Release Seat** next to that player; the player then joins the same room code with the same nickname and gets their original seat, role, and progress back. The host's own seat cannot be released this way, and AI seats never need it.
+Once a game has started, a new device cannot take a seat on its own. The host opens **More**, and under **Host permissions** taps **Release Seat** next to that player; the player then joins the same room code with the same nickname and gets their original seat, role, and progress back. The host's own seat cannot be released this way, and AI seats never need it.
 
 ## Mission MVP Status
 
 Mission flow state is stored in `rooms.settings.missionState`. Live room updates are fetched through a Vercel API polling loop; demo mode updates the local snapshot only and does not write to Neon.
 
-Normal live play is phone-driven. The Table Quest panel remains a status surface with host backup controls, but it is no longer the only way to progress proposals, votes, or mission results. Individual team votes are tracked in mission state, and mission cards are stored as submitted-player markers plus an anonymous card pile until every selected player has submitted; only then is the public success/fail aggregate revealed. After three successful quests, the assigned Assassin can submit the Merlin guess from the dedicated Assassin phase panel. Three failed quests finish with Evil winning; an Assassin hit on Merlin also gives Evil the win; an Assassin miss gives Good the win. Each quest allows five crew proposals: if the fifth is rejected too, Evil wins. The board shows the proposal count and warns everyone before the fifth vote.
+Normal live play is phone-driven. The host still has backup recovery controls under **More** for a phone that cannot submit its own proposal, vote, or mission card. Individual team votes are tracked in mission state, and mission cards are stored as submitted-player markers plus an anonymous card pile until every selected player has submitted; only then is the public success/fail aggregate revealed. After three successful quests, the assigned Assassin submits the Merlin guess from their action card. Three failed quests finish with Evil winning; an Assassin hit on Merlin also gives Evil the win; an Assassin miss gives Good the win. Each quest allows five crew proposals: if the fifth is rejected too, Evil wins. The top bar shows the proposal count and the action card warns everyone before the fifth vote.
 
 ### Lady of the Lake
 

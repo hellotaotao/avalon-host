@@ -11,6 +11,7 @@ import type { MissionCard, Vote } from '../domain/avalon';
 import { isDevSessionActive } from '../sessionKeys';
 import {
   applyMissionStateToSnapshot,
+  assertCanSetReady,
   autoStartReadyRoom,
   buildCreateRoomSettings,
   buildAiPlayers,
@@ -41,6 +42,7 @@ import {
 
 export {
   applyMissionStateToSnapshot,
+  assertCanSetReady,
   assertDeletedRows,
   autoStartReadyRoom,
   buildAiPlayers,
@@ -57,6 +59,8 @@ export {
   generateRoomCode,
   isRoomStaleForExit,
   isSeatReleased,
+  isTableFull,
+  getPlannedPlayerCount,
   getPrivateRoleInfo,
   getStartablePlayers,
   getStartValidation,
@@ -287,6 +291,7 @@ const localRepository: RoomRepository = {
   async setReady(roomId: string, playerId: string, isReady: boolean) {
     const data = readRooms();
     const snapshot = requireById(data, roomId);
+    assertCanSetReady(snapshot, playerId, isReady);
     requireLocalPlayer(snapshot, playerId).isReady = isReady;
     const nextSnapshot = autoStartReadyRoom(snapshot);
     if (nextSnapshot !== snapshot) {

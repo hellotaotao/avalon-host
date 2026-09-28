@@ -73,3 +73,20 @@ export function InviteSharePanel({ joinLink, code }: { joinLink: string; code: s
     </div>
   );
 }
+
+export function RoomInvite({ code, joinLink, isDemoMode }: { code: string; joinLink: string; isDemoMode: boolean }) {
+  const { t } = useI18n();
+  return (
+    <div className="room-code">
+      <div className="room-code-top">
+        <div className="room-code-copy">
+          <span>{isDemoMode ? t('Demo Room Code') : t('Room Code')}</span>
+          <strong>{code}</strong>
+          <p>{isDemoMode ? t('Sandbox demo with bot players. This is not a real shareable room.') : t('Share this code with players at the table.')}</p>
+        </div>
+        <QrCodePanel value={joinLink} />
+      </div>
+      <InviteSharePanel joinLink={joinLink} code={code} />
+    </div>
+  );
+}

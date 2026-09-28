@@ -345,6 +345,9 @@ export function readyForNextGameInSnapshot(snapshot: RoomSnapshot, playerId: str
       role: undefined,
     })),
   };
+  // Someone left after the game: the room waits in the lobby for new players,
+  // and the host confirms the seating again once it is full.
+  unreadyHostIfSeatsOpen(nextSnapshot);
   return autoStartReadyRoom(nextSnapshot);
 }
 
@@ -392,6 +395,7 @@ export function removePlayerFromSnapshot(snapshot: RoomSnapshot, hostPlayerId: s
   snapshot.players = snapshot.players
     .filter((player) => player.id !== targetPlayerId)
     .map((player, index) => ({ ...player, seatIndex: index }));
+  unreadyHostIfSeatsOpen(snapshot);
   return snapshot;
 }
 
@@ -408,6 +412,7 @@ export function leavePlayerFromSnapshot(snapshot: RoomSnapshot, playerId: string
     .filter((player) => player.id !== playerId)
     .map((player, index) => ({ ...player, seatIndex: index, isHost: index === 0 }));
   if (active) resetAbandonedRoomAfterLeave(snapshot);
+  unreadyHostIfSeatsOpen(snapshot);
   return snapshot;
 }
 
@@ -443,7 +448,21 @@ export function transferHostInSnapshot(snapshot: RoomSnapshot, hostPlayerId: str
   if (!host.isHost) throw new Error('Only the host can transfer host rights.');
   const target = requirePlayer(snapshot, targetPlayerId);
   if (host.id === target.id) return snapshot;
-  snapshot.players = snapshot.players.map((player) => ({ ...player, isHost: player.id === target.id }));
+  // The new host has not confirmed the seating yet, whatever they did as a
+  // guest: in the lobby that was their ready, between games their play-again.
+  const lobby = isLobbyStatus(snapshot);
+  snapshot.players = snapshot.players.map((player) => ({
+    ...player,
+    isHost: player.id === target.id,
+    isReady: lobby && player.id === target.id ? false : player.isReady,
+  }));
+  const nextGameReadyPlayerIds = snapshot.room.settings.nextGameReadyPlayerIds;
+  if (!lobby && nextGameReadyPlayerIds?.includes(target.id)) {
+    snapshot.room.settings = {
+      ...snapshot.room.settings,
+      nextGameReadyPlayerIds: nextGameReadyPlayerIds.filter((id) => id !== target.id),
+    };
+  }
   return snapshot;
 }
 
@@ -504,6 +523,28 @@ export function swapSeatsInSnapshot(snapshot: RoomSnapshot, hostPlayerId: string
 export function unreadyHostAfterJoin(players: RoomPlayer[]): void {
   const host = players.find((player) => player.isHost);
   if (host) host.isReady = false;
+}
+
+export function getPlannedPlayerCount(settings?: RoomSettings): number {
+  return settings?.plannedPlayerCount ?? 5;
+}
+
+export function isTableFull(snapshot: RoomSnapshot): boolean {
+  return snapshot.players.length >= getPlannedPlayerCount(snapshot.room.settings);
+}
+
+// The host's ready confirms the seating, so it only counts once every seat is
+// taken; before that, the next newcomer would take it back anyway.
+export function assertCanSetReady(snapshot: RoomSnapshot, playerId: string, isReady: boolean): void {
+  const player = requirePlayer(snapshot, playerId);
+  if (!isReady || !player.isHost || !isLobbyStatus(snapshot)) return;
+  if (!isTableFull(snapshot)) throw new Error('Wait until every seat is filled before confirming seats.');
+}
+
+// When a seat opens up again, the host's confirmation no longer covers the table.
+function unreadyHostIfSeatsOpen(snapshot: RoomSnapshot): void {
+  if (!isLobbyStatus(snapshot) || isTableFull(snapshot)) return;
+  snapshot.players = snapshot.players.map((player) => (player.isHost ? { ...player, isReady: false } : player));
 }
 
 function isLobbyStatus(snapshot: RoomSnapshot): boolean {

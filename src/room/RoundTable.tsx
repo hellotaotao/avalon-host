@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import { type Allegiance, type Role } from '../domain/avalon';
 import { type RoomPlayer } from '../services/roomService';
-import { useI18n } from '../i18n';
+import { formatRole, useI18n } from '../i18n';
+
+export type RevealedSeatRoles = Record<string, { role: Role; allegiance: Allegiance }>;
 
 // The table is drawn from the viewer's chair: their seat sits at the bottom
 // and seat order runs clockwise, so the next seat is on the viewer's left.
@@ -24,6 +27,9 @@ export function RoundTable({
   leaderId,
   teamIds = [],
   readyPlayerIds,
+  seatMarks,
+  revealedRoles,
+  seatTags,
   centerCaption,
   editable,
   busy,
@@ -35,12 +41,19 @@ export function RoundTable({
   leaderId?: string;
   teamIds?: string[];
   readyPlayerIds?: string[];
+  // Per-seat progress for the current step (voted, card played). Unlike
+  // readyPlayerIds, it leaves the seats undimmed and the center alone.
+  seatMarks?: Record<string, 'done' | 'waiting'>;
+  // After a game: every seat's role, shown on the table instead of a list.
+  revealedRoles?: RevealedSeatRoles;
+  // Short public labels on a seat, such as who the Assassin chose.
+  seatTags?: Record<string, string>;
   centerCaption?: string;
   editable: boolean;
   busy: boolean;
   onSwap: (firstPlayerId: string, secondPlayerId: string) => void;
 }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [selectedId, setSelectedId] = useState<string>();
   const gradientId = React.useId().replace(/:/g, '');
   const ordered = [...players].sort((a, b) => a.seatIndex - b.seatIndex);
@@ -98,7 +111,14 @@ export function RoundTable({
 
   return (
     <div className="round-table-stage">
-    <div className={['round-table', editable ? 'editable' : '', selectedId ? 'has-selection' : '', leader ? 'in-game' : ''].filter(Boolean).join(' ')}>
+    <div className={[
+      'round-table',
+      editable ? 'editable' : '',
+      selectedId ? 'has-selection' : '',
+      leader ? 'in-game' : '',
+      revealedRoles ? 'has-roles' : '',
+      count >= 8 ? 'many-seats' : '',
+    ].filter(Boolean).join(' ')}>
       <svg className="round-table-art" viewBox="0 0 100 100" aria-hidden="true">
         <defs>
           <radialGradient id={`${gradientId}-felt`} cx="50%" cy="42%" r="60%">
@@ -166,6 +186,9 @@ export function RoundTable({
           const index = seatIndexById.get(player.id) ?? 0;
           const isMe = player.id === currentPlayerId;
           const ready = readyPlayerIds?.includes(player.id);
+          const mark = readyPlayerIds ? (ready ? 'done' : 'waiting') : seatMarks?.[player.id];
+          const revealed = revealedRoles?.[player.id];
+          const tag = seatTags?.[player.id];
           const className = [
             'round-table-seat',
             isMe ? 'me' : '',
@@ -173,19 +196,24 @@ export function RoundTable({
             player.id === leaderId ? 'leader' : '',
             teamIds.includes(player.id) ? 'on-team' : '',
             player.id === selectedId ? 'selected' : '',
-            readyPlayerIds ? (ready ? 'ready' : 'waiting') : '',
+            readyPlayerIds && !revealed ? (ready ? 'ready' : 'waiting') : '',
+            revealed ? `revealed-${revealed.allegiance}` : '',
           ].filter(Boolean).join(' ');
-          const label = `${t('Seat')} ${index + 1}: ${player.displayName}${player.isHost ? ` (${t('Host')})` : ''}${readyPlayerIds ? ` · ${ready ? t('Ready') : t('Waiting')}` : ''}`;
+          const markLabel = readyPlayerIds ? (ready ? t('Ready') : t('Waiting')) : mark === 'done' ? t('Done') : mark ? t('Waiting') : '';
+          const roleLabel = revealed ? ` · ${formatRole(revealed.role, language)}` : '';
+          const label = `${t('Seat')} ${index + 1}: ${player.displayName}${player.isHost ? ` (${t('Host')})` : ''}${roleLabel}${tag ? ` · ${tag}` : ''}${markLabel ? ` · ${markLabel}` : ''}`;
           const content = (
             <>
               {player.id === leaderId && <span className="seat-crown" aria-hidden="true">♛</span>}
               <span className="seat-avatar" aria-hidden="true">
                 <span className="seat-initial">{player.isAi ? 'AI' : Array.from(player.displayName.trim())[0]?.toUpperCase() ?? '?'}</span>
                 <span className="seat-number">{index + 1}</span>
-                {readyPlayerIds && <span className={`seat-ready ${ready ? 'on' : 'off'}`}>{ready ? '✓' : ''}</span>}
+                {mark && <span className={`seat-ready ${mark === 'done' ? 'on' : 'off'}`}>{mark === 'done' ? '✓' : ''}</span>}
                 {player.isHost && <span className="seat-host">{t('Host')}</span>}
+                {tag && <span className="seat-tag" aria-hidden="true">{t('✕')}</span>}
               </span>
               <span className="seat-name" aria-hidden="true">{isMe ? `${player.displayName} · ${t('You')}` : player.displayName}</span>
+              {revealed && <span className={`seat-role ${revealed.allegiance}`} aria-hidden="true">{formatRole(revealed.role, language)}</span>}
             </>
           );
           return (

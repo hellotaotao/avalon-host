@@ -22,7 +22,6 @@ import {
   createRoom,
   getRoomById,
   getPrivateRoleInfo,
-  getStartValidation,
   joinRoom,
   leaveRoom,
   transferHost,
@@ -54,7 +53,8 @@ import { attemptRestore, isStaleSnapshot } from './roomSession';
 import { fillText, useI18n } from './i18n';
 import { CreateRoomRoleConfig, sanitizeRoleOptions } from './components/CreateRoomRoleConfig';
 import { HomeSeoIntro } from './components/HomeSeoIntro';
-import { getRoomHeroCopy, getRoomHeroTitle, toRoomAvalonPlayer } from './components/gameText';
+import { LanguageSwitcher } from './components/LanguageSwitcher';
+import { toRoomAvalonPlayer } from './components/gameText';
 import { DemoSimulator } from './demo/DemoSimulator';
 import { RoomView } from './room/RoomView';
 import { type RoomAiAutomationState } from './room/roomText';
@@ -107,16 +107,6 @@ type RoomAiAttemptState = {
   lastError?: string;
 };
 
-function LanguageSwitcher() {
-  const { language, setLanguage, t } = useI18n();
-  return (
-    <div className="language-switcher" aria-label={t('Language')}>
-      <button type="button" className={language === 'en' ? 'selected' : ''} onClick={() => setLanguage('en')}>{t('English')}</button>
-      <button type="button" className={language === 'zh' ? 'selected' : ''} onClick={() => setLanguage('zh')}>{t('中文')}</button>
-    </div>
-  );
-}
-
 export function App() {
   const { t } = useI18n();
   const [screen, setScreen] = useState<Screen>(() => parseEntryStep(window.location.href));
@@ -149,7 +139,6 @@ export function App() {
   const isHostNameMissing = !hostName.trim();
   const showHostNameError = hostNameTouched && isHostNameMissing;
   const isDemoMode = Boolean(snapshot?.room.settings.createdInDemoMode);
-  const startValidation = snapshot ? getStartValidation(snapshot.players, snapshot.room.settings) : undefined;
   const privateInfo = useMemo(
     () => (currentPlayer && snapshot ? getPrivateRoleInfo(currentPlayer, snapshot.players) : undefined),
     [currentPlayer, snapshot],
@@ -782,11 +771,15 @@ export function App() {
       screen === 'demo' || screen === 'demoJoin' ? 'demo-shell' : '',
       screen === 'room' ? 'room-shell' : '',
     ].filter(Boolean).join(' ')}>
-      <header className="hero">
-        <div className="hero-top"><p className="eyebrow">{t('Avalon room assistant')}</p><LanguageSwitcher /></div>
-        <h1>{screen === 'room' ? getRoomHeroTitle(snapshot, t) : t('Veiled Roundtable')}</h1>
-        <p className="lede">{screen === 'room' ? getRoomHeroCopy(snapshot, t) : t('For in-person game nights: scan to join, and roles, votes, and scoring are handled for you.')}</p>
-      </header>
+      {/* The room screen spends its first screen on what the player has to do
+          next, so the title banner and language switch move out of the way. */}
+      {screen !== 'room' && (
+        <header className="hero">
+          <div className="hero-top"><p className="eyebrow">{t('Avalon room assistant')}</p><LanguageSwitcher /></div>
+          <h1>{t('Veiled Roundtable')}</h1>
+          <p className="lede">{t('For in-person game nights: scan to join, and roles, votes, and scoring are handled for you.')}</p>
+        </header>
+      )}
 
       {message && <p className="notice">{message}</p>}
 
@@ -961,7 +954,6 @@ export function App() {
           snapshot={snapshot}
           currentPlayer={currentPlayer}
           privateInfo={privateInfo}
-          startValidation={startValidation}
           onReady={handleReady}
           onRename={handleRename}
           onRemovePlayer={handleRemovePlayer}

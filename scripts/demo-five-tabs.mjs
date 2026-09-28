@@ -37,7 +37,7 @@ async function main() {
   await host.getByRole('button', { name: /Host the round/i }).click();
   await host.getByLabel(/Your nickname/i).fill(players[0].name);
   await host.getByRole('button', { name: /^Create Room$/i }).click();
-  await expect(host.getByRole('heading', { name: /Current Room/i })).toBeVisible();
+  await expect(host.locator('.room-action-card')).toBeVisible();
 
   const roomCode = (await host.locator('.room-code-copy strong').innerText()).trim();
   console.log(`Room code: ${roomCode}`);
@@ -47,7 +47,7 @@ async function main() {
     await player.page.goto(`${APP_URL}/?devSession=${runId}-p${index + 1}&step=join&code=${roomCode}`);
     await player.page.getByLabel(/Your nickname/i).fill(player.name);
     await player.page.getByRole('button', { name: /^Join Room$/i }).click();
-    await expect(player.page.getByRole('heading', { name: /Current Room/i })).toBeVisible();
+    await expect(player.page.locator('.room-action-card')).toBeVisible();
   }
 
   await bringAllPagesToFront(players);
@@ -62,7 +62,7 @@ async function main() {
   await pauseForViewing('All five players are ready. The game starts automatically.');
 
   for (const player of players) {
-    await expect(player.page.getByText(/Table Quest/i)).toBeVisible();
+    await expect(player.page.locator('.room-quests')).toBeVisible();
     await expect(player.page.locator('.game-start-backdrop')).toHaveCount(0);
   }
 
@@ -77,7 +77,7 @@ async function main() {
   await submitVotes(players);
   await submitMissionCards(team);
 
-  await expect(host.getByText(/Good won/i)).toBeVisible();
+  await expect(host.locator('.room-quest').first()).toHaveClass(/success/);
   await host.bringToFront();
   await pauseForViewing('First quest completed. Browser will stay open unless --close is used.');
 
@@ -125,14 +125,14 @@ async function revealRoles(players) {
 
 async function findLeader(players) {
   for (const player of players) {
-    const button = player.page.locator('.live-player-phone .phone-action').getByRole('button', { name: /^Propose Team$/i });
+    const button = player.page.locator('.room-action-card').getByRole('button', { name: /^Propose Team$/i });
     if (await button.isVisible()) return player;
   }
   throw new Error('No visible leader proposal button found.');
 }
 
 async function proposeFirstQuestTeam(leader, team) {
-  const action = leader.page.locator('.live-player-phone .phone-action');
+  const action = leader.page.locator('.room-action-card');
   for (const player of team) {
     await action.getByLabel(player.name, { exact: true }).check();
   }
@@ -142,16 +142,18 @@ async function proposeFirstQuestTeam(leader, team) {
 async function submitVotes(players) {
   for (const player of players) {
     await player.page.bringToFront();
-    await expect(player.page.getByText(/Team vote/i)).toBeVisible();
-    await player.page.getByRole('button', { name: /^Approve$/i }).click();
+    const action = player.page.locator('.room-action-card');
+    await expect(action.getByRole('heading', { name: 'Vote on this team' })).toBeVisible();
+    await action.getByRole('button', { name: /^Approve$/i }).click();
   }
 }
 
 async function submitMissionCards(team) {
   for (const player of team) {
     await player.page.bringToFront();
-    await expect(player.page.locator('.live-player-phone .phone-action').getByText(/Mission card/i)).toBeVisible();
-    await player.page.getByRole('button', { name: /^Success$/i }).click();
+    const action = player.page.locator('.room-action-card');
+    await expect(action.getByRole('heading', { name: 'You are on the team: play a mission card' })).toBeVisible();
+    await action.getByRole('button', { name: /^Success$/i }).click();
   }
 }
 

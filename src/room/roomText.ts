@@ -8,15 +8,6 @@ export type RoomAiAutomationState = {
   waitingForRetry: boolean;
 };
 
-export function formatStartValidation(message: string | undefined, t: (text: string) => string): string | undefined {
-  if (!message) return undefined;
-  const neededMatch = message.match(/^Need (\d+) more ready players? to start\.$/);
-  if (neededMatch) return `${neededMatch[1]} ${t('more ready players needed to start.')}`;
-  const plannedCountMatch = message.match(/^This room is set for (\d+) players\.$/);
-  if (plannedCountMatch) return `${t('This room is set for')} ${plannedCountMatch[1]} ${t('players.')}`;
-  return t(message);
-}
-
 export function getRoomPlayerNames(players: RoomPlayer[], playerIds: string[] = []): string[] {
   return playerIds.map((id) => {
     const player = players.find((candidate) => candidate.id === id);

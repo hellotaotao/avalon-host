@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { assignRoles } from '../domain/avalon';
 import {
   applyMissionStateToSnapshot,
+  assertCanSetReady,
   assertDeletedRows,
   buildAiPlayers,
   buildCreateRoomSettings,
@@ -497,6 +498,65 @@ describe('seat arrangement', () => {
     expect(next.room.status).toBe('reveal');
     expect(next.players.map((player) => player.id)).toEqual(['p3', 'p2', 'p1', 'p4', 'p5']);
     expect(next.room.settings.missionState?.leaderPlayerId).toBe('p3');
+  });
+});
+
+describe('host ready confirms the seating', () => {
+  it('lets the host get ready only once every seat is taken', () => {
+    const snapshot = makeSnapshot(4);
+    snapshot.room.settings = { plannedPlayerCount: 5 };
+    expect(() => assertCanSetReady(snapshot, 'p1', true)).toThrow('Wait until every seat is filled before confirming seats.');
+    expect(() => assertCanSetReady(snapshot, 'p2', true)).not.toThrow();
+    expect(() => assertCanSetReady(snapshot, 'p1', false)).not.toThrow();
+    expect(() => assertCanSetReady(makeSnapshot(5), 'p1', true)).not.toThrow();
+  });
+
+  it('takes back the host ready when a removal opens a seat', () => {
+    const snapshot = makeSnapshot(5);
+    removePlayerFromSnapshot(snapshot, 'p1', 'p3');
+    expect(snapshot.players.find((player) => player.isHost)?.isReady).toBe(false);
+    expect(snapshot.players.filter((player) => !player.isHost).every((player) => player.isReady)).toBe(true);
+  });
+
+  it('takes back the host ready when a guest leaves the lobby', () => {
+    const snapshot = makeSnapshot(5);
+    leavePlayerFromSnapshot(snapshot, 'p4');
+    expect(snapshot.players.find((player) => player.isHost)?.isReady).toBe(false);
+  });
+
+  it('makes a new lobby host confirm the seating themselves', () => {
+    const snapshot = makeSnapshot(5);
+    snapshot.players[0].isReady = false;
+    transferHostInSnapshot(snapshot, 'p1', 'p3');
+    expect(snapshot.players.find((player) => player.id === 'p3')).toMatchObject({ isHost: true, isReady: false });
+    snapshot.players[0].isReady = true;
+    expect(canAutoStartGame(snapshot.players, snapshot.room.settings)).toBe(false);
+  });
+
+  it('sends a table that lost a player back to the lobby without a host ready', () => {
+    const snapshot = makeSnapshot(5);
+    snapshot.room.status = 'finished';
+    snapshot.room.settings = { plannedPlayerCount: 5 };
+    leavePlayerFromSnapshot(snapshot, 'p5');
+    let next = snapshot;
+    for (const id of ['p2', 'p3', 'p4', 'p1']) next = readyForNextGameInSnapshot(next, id);
+    expect(next.room.status).toBe('lobby');
+    expect(next.players.find((player) => player.isHost)?.isReady).toBe(false);
+    expect(next.players.filter((player) => !player.isHost).every((player) => player.isReady)).toBe(true);
+  });
+
+  it('makes a new host between games confirm the seating with their own play-again', () => {
+    const snapshot = makeSnapshot(5);
+    snapshot.room.status = 'finished';
+    snapshot.room.settings = { nextGameReadyPlayerIds: ['p2', 'p3'] };
+    transferHostInSnapshot(snapshot, 'p1', 'p3');
+    expect(snapshot.room.settings.nextGameReadyPlayerIds).toEqual(['p2']);
+
+    let next = snapshot;
+    for (const id of ['p1', 'p4', 'p5']) next = readyForNextGameInSnapshot(next, id);
+    expect(next.room.status).toBe('finished');
+    next = readyForNextGameInSnapshot(next, 'p3');
+    expect(next.room.status).toBe('reveal');
   });
 });
 

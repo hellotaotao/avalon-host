@@ -1,35 +1,28 @@
-import React, { useEffect, useState } from 'react';
-import { getTeamSize, type MissionCard, type Vote } from '../domain/avalon';
+import React, { useEffect, useRef, useState } from 'react';
+import { getTeamSize, roleAllegiance, type MissionCard, type Vote } from '../domain/avalon';
 import { ensureMissionState, type MissionState } from '../domain/missionFlow';
 import { buildJoinUrl } from '../navigationState';
-import { getPrivateRoleInfo, canArrangeSeats, type RoomPlayer, type RoomSnapshot } from '../services/roomService';
+import { canArrangeSeats, getPlannedPlayerCount, getPrivateRoleInfo, isTableFull, type RoomPlayer, type RoomSnapshot } from '../services/roomService';
 import { useI18n } from '../i18n';
-import { PlayerPhone, getLadyOfTheLakeResults, getLivePhoneAction } from '../components/PlayerPhone';
-import {
-  AssassinPhaseActionPanel,
-  AssassinPhaseBanner,
-  AssassinationResultBanner,
-  GameResultModal,
-  GameStartOverlay,
-  RoomHistoryPanel,
-} from './GameEndPanels';
-import { HostAuthorityPanel } from './HostAuthorityPanel';
-import { InviteSharePanel, QrCodePanel } from './InviteSharePanel';
-import {
-  CurrentExpeditionPanel,
-  FinalRevealPanel,
-  MissionPanel,
-  QuestTrackSection,
-  TableMakeupSection,
-} from './MissionPanel';
-import { RoundTable } from './RoundTable';
-import { type RoomAiAutomationState, formatStartValidation } from './roomText';
+import { getLadyOfTheLakeResults } from '../components/PlayerPhone';
+import { getRoomHeroTitle } from '../components/gameText';
+import { GameResultOverlay, GameStartOverlay, RoomHistoryPanel } from './GameEndPanels';
+import { IdentityCard } from './IdentityCard';
+import { GameActionCard, LobbyActionCard } from './RoomActionCard';
+import { RoomMoreSheet } from './RoomMoreSheet';
+import { RoomTopBar } from './RoomTopBar';
+import { GameTableCard, LobbyTableCard } from './RoundTableCard';
+import { type RoomAiAutomationState } from './roomText';
 
+const RESULT_OVERLAY_MS = 2400;
+
+// Every phase uses the same skeleton, top to bottom: status bar, the action
+// card (what this player does now), the round table, and their own identity.
+// Everything rarely needed opens from the top bar's "More" as a sheet.
 export function RoomView({
   snapshot,
   currentPlayer,
   privateInfo,
-  startValidation,
   onReady,
   onRename,
   onRemovePlayer,
@@ -54,7 +47,6 @@ export function RoomView({
   snapshot: RoomSnapshot;
   currentPlayer?: RoomPlayer;
   privateInfo?: ReturnType<typeof getPrivateRoleInfo>;
-  startValidation?: string;
   onReady: () => void;
   onRename: (event: React.FormEvent<HTMLFormElement>) => void;
   onRemovePlayer: (targetPlayerId: string) => void;
@@ -79,283 +71,170 @@ export function RoomView({
   const { t, language } = useI18n();
   const started = snapshot.room.status !== 'lobby' && snapshot.room.status !== 'setup';
   const playerIds = snapshot.players.map((player) => player.id);
-  const missionState = started && snapshot.players.length >= 5 ? ensureMissionState(snapshot.room.settings.missionState, playerIds) : undefined;
-  const currentTeamSize = missionState ? getTeamSize(snapshot.players.length, missionState.roundIndex) : 0;
-  const [assassinationTargetId, setAssassinationTargetId] = useState('');
-  const [resultModalDismissed, setResultModalDismissed] = useState(false);
-  const readyCount = snapshot.players.filter((player) => player.isReady).length;
-  const allPlayersReady = readyCount === snapshot.players.length;
+  const storedMissionState = snapshot.room.settings.missionState;
+  // A finished game keeps its record on screen even after someone leaves the room.
+  const missionState = started && (storedMissionState || snapshot.players.length >= 5) ? ensureMissionState(storedMissionState, playerIds) : undefined;
   const isFinished = snapshot.room.status === 'finished' || missionState?.phase === 'finished';
-  const showJoinPanel = !started;
-  const joinLinkPath = buildJoinUrl(snapshot.room.code, language);
-  const joinLink = `${window.location.origin}${joinLinkPath}`;
-  const assassinationTargets = snapshot.players.filter((player) => player.id !== currentPlayer?.id);
-  const aiSeatCount = snapshot.players.filter((player) => player.isAi).length;
-  const plannedHumanCount = (snapshot.room.settings.plannedPlayerCount ?? snapshot.players.length) - aiSeatCount;
-  const [liveSelectedTeamIds, setLiveSelectedTeamIds] = useState<string[]>([]);
+  const joinLink = `${window.location.origin}${buildJoinUrl(snapshot.room.code, language)}`;
   const latestGame = snapshot.room.settings.gameHistory?.at(-1);
-  const currentPlayerResult = latestGame?.playerResults.find((result) => result.playerId === currentPlayer?.id);
+  // Quest sizes follow the table the game was played at, not who is still here.
+  const gamePlayerCount = isFinished && latestGame ? latestGame.playerResults.length : snapshot.players.length;
+  const currentTeamSize = missionState && gamePlayerCount >= 5 ? getTeamSize(gamePlayerCount, missionState.roundIndex) : 0;
   const nextGameReadyPlayerIds = snapshot.room.settings.nextGameReadyPlayerIds ?? [];
-  const currentPlayerReadyForNextGame = Boolean(currentPlayer && nextGameReadyPlayerIds.includes(currentPlayer.id));
-  const startValidationCopy = formatStartValidation(startValidation, t);
   const canEditSeats = Boolean(currentPlayer?.isHost) && canArrangeSeats(snapshot);
-  const unreadyPlayers = snapshot.players.filter((player) => !player.isReady);
-  const waitingOnHostSeats = !started
-    && snapshot.players.length === (snapshot.room.settings.plannedPlayerCount ?? snapshot.players.length)
-    && unreadyPlayers.length === 1
-    && unreadyPlayers[0].isHost;
-  const visibleMissionTeamIds = missionState?.phase === 'proposal'
-    && currentPlayer?.id === missionState.leaderPlayerId
-    && liveSelectedTeamIds.length > 0
-    ? liveSelectedTeamIds
-    : missionState?.selectedTeamIds ?? [];
+  // The host checks the seats inside the action card once the table is full.
+  const lobbyTableInCard = !started && Boolean(currentPlayer?.isHost) && isTableFull(snapshot);
+  const inviteInCard = !started && Boolean(currentPlayer?.isHost) && !isTableFull(snapshot);
+  const [draftTeamIds, setDraftTeamIds] = useState<string[]>([]);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const [showResultOverlay, setShowResultOverlay] = useState(false);
+  const previousPhaseRef = useRef(missionState?.phase);
+  const isLeaderDrafting = missionState?.phase === 'proposal' && currentPlayer?.id === missionState.leaderPlayerId;
+  const visibleTeamIds = isLeaderDrafting ? draftTeamIds : missionState?.selectedTeamIds ?? [];
 
   useEffect(() => {
-    setAssassinationTargetId('');
-  }, [missionState?.phase, currentPlayer?.id]);
-
-  useEffect(() => {
-    if (missionState?.phase !== 'finished') setResultModalDismissed(false);
-  }, [missionState?.phase]);
-
-  useEffect(() => {
-    if (missionState?.phase !== 'proposal') setLiveSelectedTeamIds([]);
+    if (missionState?.phase !== 'proposal') setDraftTeamIds([]);
   }, [missionState?.phase, missionState?.roundIndex, missionState?.proposalIndex]);
 
-  function toggleLiveTeamPlayer(playerId: string) {
-    setLiveSelectedTeamIds((current) => (current.includes(playerId) ? current.filter((id) => id !== playerId) : [...current, playerId]));
+  // A game that ends while the page is open gets a short result beat; a page
+  // opened on a finished game just shows the result card.
+  useEffect(() => {
+    const previousPhase = previousPhaseRef.current;
+    previousPhaseRef.current = missionState?.phase;
+    if (missionState?.phase !== 'finished') {
+      setShowResultOverlay(false);
+      return undefined;
+    }
+    if (!previousPhase || previousPhase === 'finished') return undefined;
+    setShowResultOverlay(true);
+    const timer = window.setTimeout(() => setShowResultOverlay(false), RESULT_OVERLAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [missionState?.phase]);
+
+  function toggleDraftPlayer(playerId: string) {
+    setDraftTeamIds((current) => (current.includes(playerId) ? current.filter((id) => id !== playerId) : [...current, playerId]));
   }
 
+  const won = Boolean(missionState?.winner && currentPlayer?.role && roleAllegiance(currentPlayer.role) === missionState.winner);
+  // After a game, who was who is shown on the seats rather than as a list.
+  const revealedRoles = isFinished && latestGame
+    ? Object.fromEntries(latestGame.playerResults.map((result) => [result.playerId, { role: result.role, allegiance: result.allegiance }]))
+    : undefined;
+  const assassinationTargetId = missionState?.assassination?.targetPlayerId;
+  const seatTags = isFinished && assassinationTargetId ? { [assassinationTargetId]: t('Assassinated') } : undefined;
+  const departedResults = isFinished && latestGame
+    ? latestGame.playerResults.filter((result) => !snapshot.players.some((player) => player.id === result.playerId))
+    : [];
+
   return (
-    <section className={[
-      'room-grid',
-      started ? 'started-room-grid' : 'lobby-room-grid',
-      currentPlayer?.isHost ? 'has-host-authority' : 'guest-room-grid',
-    ].join(' ')}>
+    <section className={`room-grid ${started ? 'started-room-grid' : 'lobby-room-grid'}`}>
+      <h1 className="visually-hidden">{getRoomHeroTitle(snapshot, t)}</h1>
       {showGameStartNotice && <GameStartOverlay />}
-      {missionState?.phase === 'finished' && currentPlayer && !resultModalDismissed && (
-        <GameResultModal
+      {showResultOverlay && missionState?.winner && currentPlayer && (
+        <GameResultOverlay won={won} winner={missionState.winner} onDismiss={() => setShowResultOverlay(false)} />
+      )}
+
+      <RoomTopBar
+        snapshot={snapshot}
+        missionState={missionState}
+        playerCount={gamePlayerCount}
+        moreOpen={moreOpen}
+        moreButtonRef={moreButtonRef}
+        onOpenMore={() => setMoreOpen(true)}
+      />
+
+      {currentPlayer && !started && (
+        <LobbyActionCard
+          snapshot={snapshot}
+          currentPlayer={currentPlayer}
+          isDemoMode={isDemoMode}
+          joinLink={joinLink}
+          canEditSeats={canEditSeats}
+          busy={busy}
+          onReady={onReady}
+          onRename={onRename}
+          onSwapSeats={onSwapSeats}
+        />
+      )}
+      {currentPlayer && missionState && (
+        <GameActionCard
+          snapshot={snapshot}
           missionState={missionState}
           currentPlayer={currentPlayer}
-          playerResult={currentPlayerResult}
-          readyCount={nextGameReadyPlayerIds.length}
-          playerCount={snapshot.players.length}
-          alreadyReady={currentPlayerReadyForNextGame}
+          gamePlayerCount={gamePlayerCount}
           busy={busy}
+          aiAutomation={aiAutomation}
+          draftTeamIds={draftTeamIds}
+          nextGameReadyPlayerIds={nextGameReadyPlayerIds}
+          onToggleDraftPlayer={toggleDraftPlayer}
+          onProposeTeam={() => onProposeMissionTeam(draftTeamIds)}
+          onVote={onSubmitTeamVote}
+          onPlayMissionCard={onSubmitMissionCard}
+          onLadyOfTheLake={onLadyOfTheLake}
+          onAssassinate={onAssassination}
           onReadyForNextGame={onReadyForNextGame}
-          onDismiss={() => setResultModalDismissed(true)}
         />
       )}
-      {missionState?.phase === 'assassin' && (
-        <AssassinPhaseBanner />
-      )}
-      {missionState?.phase === 'assassin' && privateInfo?.role === 'Assassin' && (
-        <AssassinPhaseActionPanel
-          targets={assassinationTargets}
-          selectedTargetId={assassinationTargetId}
-          onSelectTarget={setAssassinationTargetId}
-          onAssassination={onAssassination}
+
+      {!started && !lobbyTableInCard && (
+        <LobbyTableCard
+          players={snapshot.players}
+          totalSeats={getPlannedPlayerCount(snapshot.room.settings)}
+          currentPlayerId={currentPlayer?.id}
+          editable={canEditSeats}
+          busy={busy}
+          onSwap={onSwapSeats}
         />
       )}
-      {missionState?.phase === 'finished' && missionState.assassination && (
-        <AssassinationResultBanner missionState={missionState} players={snapshot.players} />
+
+      {missionState && (
+        <GameTableCard
+          missionState={missionState}
+          players={snapshot.players}
+          currentPlayerId={currentPlayer?.id}
+          visibleTeamIds={visibleTeamIds}
+          nextGameReadyPlayerIds={nextGameReadyPlayerIds}
+          revealedRoles={revealedRoles}
+          seatTags={seatTags}
+          departedResults={departedResults}
+          editable={canEditSeats}
+          busy={busy}
+          onSwap={onSwapSeats}
+        />
       )}
-      {showJoinPanel && (
-        <div className="room-code">
-          <div className="room-code-top">
-            <div className="room-code-copy">
-              <span>{isDemoMode ? t('Demo Room Code') : t('Room Code')}</span>
-              <strong>{snapshot.room.code}</strong>
-              <p>
-                {isFinished
-                  ? t('Game finished. The room code is visible again for the next table.')
-                  : isDemoMode
-                    ? t('Sandbox demo with bot players. This is not a real shareable room.')
-                    : t('Share this code with players at the table.')}
-              </p>
-            </div>
-            <QrCodePanel value={joinLink} />
-          </div>
-          <InviteSharePanel joinLink={joinLink} code={snapshot.room.code} />
-        </div>
+
+      {started && !isFinished && currentPlayer && privateInfo && (
+        <IdentityCard
+          player={currentPlayer}
+          privateInfo={privateInfo}
+          ladyChecks={missionState ? getLadyOfTheLakeResults(missionState, snapshot.players, currentPlayer.id) : undefined}
+          onTeam={Boolean(missionState && (missionState.phase === 'vote' || missionState.phase === 'mission') && missionState.selectedTeamIds.includes(currentPlayer.id))}
+        />
       )}
 
       <RoomHistoryPanel snapshot={snapshot} currentPlayerId={currentPlayer?.id} />
 
-      {isFinished && latestGame && (
-        <FinalRevealPanel playerResults={latestGame.playerResults} currentPlayerId={currentPlayer?.id} />
-      )}
-
-      {started && missionState && (
-        <>
-          <TableMakeupSection players={snapshot.players} />
-          <section className="mission-board-section round-table-section" aria-label={t('Round table')}>
-            <div className="mission-section-heading">
-              <h3>{t('Round table')}</h3>
-              <span>{isFinished ? t('Seats unlocked') : t('Seats locked')}</span>
-            </div>
-            <RoundTable
-              players={snapshot.players}
-              currentPlayerId={currentPlayer?.id}
-              leaderId={isFinished ? undefined : missionState.leaderPlayerId}
-              teamIds={isFinished ? [] : visibleMissionTeamIds}
-              readyPlayerIds={isFinished ? nextGameReadyPlayerIds : undefined}
-              centerCaption={isFinished ? t('Play Again') : undefined}
-              editable={canEditSeats}
-              busy={busy}
-              onSwap={onSwapSeats}
-            />
-          </section>
-          <QuestTrackSection missionState={missionState} players={snapshot.players} visibleTeamIds={visibleMissionTeamIds} />
-        </>
-      )}
-
-      <section className={`panel private-room-panel ${started ? 'started' : 'lobby'}`}>
-        <div className="panel-header">
-          <h2>{started ? t('Your Player Area') : t('Current Room')}</h2>
-          <div className="room-header-actions">
-            {currentPlayer && (
-              <button type="button" className="secondary-control room-leave" onClick={onLeave} disabled={busy}>
-                {started && !isFinished ? t('Exit Table') : t('Leave Room')}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {currentPlayer && !started && (
-          <>
-            <form className="inline-form" onSubmit={onRename}>
-              <input name="displayName" defaultValue={currentPlayer.displayName} maxLength={24} aria-label={t('Nickname')} />
-              <button type="submit" disabled={busy}>{t('Save')}</button>
-            </form>
-            <button type="button" className={currentPlayer.isReady ? 'active-soft' : 'primary'} onClick={onReady} disabled={busy}>
-              {currentPlayer.isReady ? t('Ready') : currentPlayer.isHost ? t('Confirm seats and ready') : t('Set Ready')}
-            </button>
-          </>
-        )}
-
-        {!started && (
-          <>
-            <div className="next-step">
-              <strong>
-                {allPlayersReady
-                  ? t('All players are ready.')
-                  : waitingOnHostSeats ? t('Waiting for the host to confirm seats') : t('Waiting for everyone to get ready')}
-              </strong>
-              <span>
-                {allPlayersReady
-                  ? t('Starting the game now.')
-                  : waitingOnHostSeats ? t('The host checks the round table matches where everyone sits, then taps ready.') : startValidationCopy}
-              </span>
-            </div>
-          </>
-        )}
-
-        {started && isFinished && currentPlayer && (
-          <div className="finished-actions">
-            <button
-              type="button"
-              className="primary"
-              disabled={busy || currentPlayerReadyForNextGame}
-              onClick={onReadyForNextGame}
-            >
-              {currentPlayerReadyForNextGame ? t('Ready for next game') : t('Play Again')}
-            </button>
-            {currentPlayerReadyForNextGame && (
-              <p className="hint">{t('Waiting for everyone to play again.')} {nextGameReadyPlayerIds.length}/{snapshot.players.length}</p>
-            )}
-            {currentPlayer.isHost && !currentPlayerReadyForNextGame && (
-              <p className="hint">{t('If anyone changed seats, swap them on the round table before playing again.')}</p>
-            )}
-          </div>
-        )}
-
-        {started && currentPlayer && privateInfo && (
-          <>
-            {missionState && !isFinished && (
-              <CurrentExpeditionPanel
-                missionState={missionState}
-                players={snapshot.players}
-                currentTeamSize={currentTeamSize}
-                visibleTeamIds={visibleMissionTeamIds}
-                aiAutomation={aiAutomation}
-              />
-            )}
-            <PlayerPhone
-              mode="live"
-              player={currentPlayer}
-              privateInfo={privateInfo}
-              ladyChecks={missionState ? getLadyOfTheLakeResults(missionState, snapshot.players, currentPlayer.id) : undefined}
-              leaderId={missionState?.leaderPlayerId}
-              selectedTeamIds={missionState?.selectedTeamIds}
-              winner={missionState?.winner}
-              result={missionState?.phase === 'finished' ? missionState.missionResults.at(-1) : undefined}
-              action={getLivePhoneAction({
-                player: currentPlayer,
-                players: snapshot.players,
-                missionState,
-                currentTeamSize,
-                draftSelectedTeamIds: liveSelectedTeamIds,
-                onToggleTeamPlayer: toggleLiveTeamPlayer,
-                onProposeTeam: () => onProposeMissionTeam(liveSelectedTeamIds),
-                onVote: onSubmitTeamVote,
-                onPlayMissionCard: onSubmitMissionCard,
-                onLadyOfTheLake,
-              })}
-            />
-          </>
-        )}
-      </section>
-
-      <HostAuthorityPanel
-        players={snapshot.players}
-        currentPlayer={currentPlayer}
-        started={started}
-        isDemoMode={isDemoMode}
-        busy={busy}
-        onResetRoomToLobby={onResetRoomToLobby}
-        onDissolveRoom={onDissolveRoom}
-        onRemovePlayer={onRemovePlayer}
-        onReleaseSeat={onReleaseSeat}
-        onTransferHost={onTransferHost}
-      />
-
-      {!started && (
-        <section className="panel players-panel">
-          <h2>{t('Players')}</h2>
-          <p className="hint">{readyCount}/{snapshot.players.length} {t('ready. Minimum 5 ready players.')}</p>
-          {aiSeatCount > 0 && !isDemoMode && (
-            <div className="ai-fill-note ai-room-note">
-              <strong>
-                {t('AI fill-ins (experimental)')} · {plannedHumanCount} {t(plannedHumanCount === 1 ? 'human' : 'humans')} + {aiSeatCount} {t('AI')}
-              </strong>
-              <span>
-                {t('Seats marked AI are played automatically.')}
-                {currentPlayer?.isHost && ` ${t('AI moves run from this page, so keep it open during the game.')}`}
-              </span>
-            </div>
-          )}
-          <RoundTable
-            players={snapshot.players}
-            totalSeats={snapshot.room.settings.plannedPlayerCount}
-            currentPlayerId={currentPlayer?.id}
-            readyPlayerIds={snapshot.players.filter((player) => player.isReady).map((player) => player.id)}
-            editable={canEditSeats}
-            busy={busy}
-            onSwap={onSwapSeats}
-          />
-          {!currentPlayer?.isHost && (
-            <p className="hint">{t('The game starts automatically when everyone is ready.')}</p>
-          )}
-        </section>
-      )}
-
-      {started && (
-        <MissionPanel
-          missionState={missionState}
-          players={snapshot.players}
+      {moreOpen && (
+        <RoomMoreSheet
+          snapshot={snapshot}
           currentPlayer={currentPlayer}
+          missionState={missionState}
+          started={started}
+          isFinished={isFinished}
+          isDemoMode={isDemoMode}
+          joinLink={joinLink}
+          showInvite={!inviteInCard}
           currentTeamSize={currentTeamSize}
+          busy={busy}
+          returnFocusRef={moreButtonRef}
+          onClose={() => setMoreOpen(false)}
+          onLeave={onLeave}
+          onResetRoomToLobby={onResetRoomToLobby}
+          onDissolveRoom={onDissolveRoom}
+          onRemovePlayer={onRemovePlayer}
+          onReleaseSeat={onReleaseSeat}
+          onTransferHost={onTransferHost}
           onMissionStateChange={onMissionStateChange}
         />
       )}

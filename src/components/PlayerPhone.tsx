@@ -8,14 +8,11 @@ import {
   type Vote,
 } from '../domain/avalon';
 import {
-  getLadyOfTheLakeHolderId,
-  getLadyOfTheLakeTargetIds,
   type MissionResultState,
   type MissionState,
 } from '../domain/missionFlow';
 import { type RoomPlayer } from '../services/roomService';
 import { formatAllegiance, formatHint, formatRole, formatRoleDescription, useI18n } from '../i18n';
-import { isFinalProposal } from './gameText';
 import { type DemoAssassination, type DemoMissionResult } from '../demo/demoTypes';
 
 interface PlayerPhonePerson {
@@ -163,94 +160,6 @@ export function PlayerPhone({
       {action && <PlayerPhoneActionPanel action={action} />}
     </article>
   );
-}
-
-export function getLivePhoneAction({
-  player,
-  players,
-  missionState,
-  currentTeamSize,
-  draftSelectedTeamIds,
-  onToggleTeamPlayer,
-  onProposeTeam,
-  onVote,
-  onPlayMissionCard,
-  onLadyOfTheLake,
-}: {
-  player: RoomPlayer;
-  players: RoomPlayer[];
-  missionState?: MissionState;
-  currentTeamSize: number;
-  draftSelectedTeamIds: string[];
-  onToggleTeamPlayer: (playerId: string) => void;
-  onProposeTeam: () => void;
-  onVote: (vote: Vote) => void;
-  onPlayMissionCard: (card: MissionCard) => void;
-  onLadyOfTheLake?: (targetPlayerId: string) => void;
-}): PlayerPhoneAction | undefined {
-  if (!missionState) return undefined;
-  const selectedTeamNames = missionState.selectedTeamIds.map((id) => players.find((candidate) => candidate.id === id)?.displayName ?? id);
-  const lastResult = missionState.missionResults.at(-1);
-  const submittedMissionCardIds = missionState.missionCardSubmissions?.submittedPlayerIds ?? [];
-  if (missionState.phase === 'proposal') {
-    const isLeader = missionState.leaderPlayerId === player.id;
-    return {
-      kind: 'proposal',
-      isLeader,
-      leaderName: players.find((candidate) => candidate.id === missionState.leaderPlayerId)?.displayName ?? 'Leader',
-      teamSize: currentTeamSize,
-      selectedTeamIds: isLeader ? draftSelectedTeamIds : missionState.selectedTeamIds,
-      players,
-      canEdit: isLeader,
-      onToggleTeamPlayer,
-      onProposeTeam,
-    };
-  }
-  if (missionState.phase === 'vote') {
-    return {
-      kind: 'vote',
-      selectedTeamNames,
-      isFinalProposal: isFinalProposal(missionState),
-      currentVote: missionState.teamVotes?.[player.id],
-      submittedVoteCount: Object.keys(missionState.teamVotes ?? {}).length,
-      playerCount: players.length,
-      onVote,
-    };
-  }
-  if (missionState.phase === 'mission') {
-    const onTeam = missionState.selectedTeamIds.includes(player.id);
-    const missionCardSubmitted = submittedMissionCardIds.includes(player.id);
-    return {
-      kind: 'mission',
-      onTeam,
-      selectedTeamCount: missionState.selectedTeamIds.length,
-      canFailMission: player.role ? roleAllegiance(player.role) === 'evil' : false,
-      missionCardSubmitted,
-      submittedCardCount: submittedMissionCardIds.length,
-      onPlayMissionCard: onTeam && !missionCardSubmitted ? onPlayMissionCard : undefined,
-    };
-  }
-  if (missionState.phase === 'lady') {
-    const holderId = getLadyOfTheLakeHolderId(missionState);
-    const isHolder = holderId === player.id;
-    const targetIds = getLadyOfTheLakeTargetIds(missionState, players.map((candidate) => candidate.id));
-    return {
-      kind: 'lady',
-      isHolder,
-      holderName: players.find((candidate) => candidate.id === holderId)?.displayName ?? '',
-      candidates: players.filter((candidate) => targetIds.includes(candidate.id)),
-      onExamine: isHolder ? onLadyOfTheLake : undefined,
-    };
-  }
-  if (missionState.phase === 'assassin') {
-    return { kind: 'assassin', isAssassin: player.role === 'Assassin', candidates: players.filter((candidate) => candidate.role !== 'Assassin') };
-  }
-  return {
-    kind: 'finished',
-    winner: missionState.winner,
-    playerWon: Boolean(missionState.winner && player.role && roleAllegiance(player.role) === missionState.winner),
-    result: lastResult,
-  };
 }
 
 function PlayerPhoneActionPanel({ action }: { action: PlayerPhoneAction }) {
@@ -429,7 +338,7 @@ function MissionResultReveal({ result }: { result: PlayerPhoneResult }) {
 
 type PrivateRevealSide = 'left' | 'right';
 
-function PrivateSwipeReveal({
+export function PrivateSwipeReveal({
   playerName,
   role,
   privateInfo,

@@ -142,7 +142,7 @@ test('re-opening the same invitation link returns to the seat instead of the joi
 
   await page.goto(`${new URL(joinLink).pathname}${new URL(joinLink).search}&devSession=repeat-invite`);
   await expect(page.getByText('Welcome back to your seat.')).toBeVisible();
-  await expect(page.getByRole('heading', { name: /Current Room/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Invite players to the table' })).toBeVisible();
   await expect(page.locator('.round-table-seat:not(.empty)')).toHaveCount(1);
   await expect(page.getByLabel('Join link')).toHaveText(joinLink);
   expect(new URL(page.url()).searchParams.get('step')).toBeNull();
@@ -206,7 +206,7 @@ test('default create form only asks for nickname and player count, and every cou
 
   await page.getByLabel(/Your nickname/i).fill('Plain Host');
   await page.getByRole('button', { name: /^Create Room$/i }).click();
-  await expect(page.getByRole('heading', { name: /Current Room/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Invite players to the table' })).toBeVisible();
   await expect(page.locator('.round-table-seat:not(.empty)')).toHaveCount(1);
   await expect(page.locator('.round-table-seat.ai')).toHaveCount(0);
   await expect(page.locator('.ai-room-note')).toHaveCount(0);
@@ -214,7 +214,7 @@ test('default create form only asks for nickname and player count, and every cou
   await expect(page.locator('.qr-code svg')).toBeVisible();
   await expect(page.locator('.qr-code img')).toHaveCount(0);
   expect(externalRequests).toEqual([]);
-  await expect(page.getByText(/9 more ready players needed/i)).toBeVisible();
+  await expect(page.getByText(/9 more to join/i)).toBeVisible();
 });
 
 test('turning AI fill back off creates an all-human room', async ({ page }) => {
@@ -233,10 +233,10 @@ test('turning AI fill back off creates an all-human room', async ({ page }) => {
   await expect(page.getByText(/\d+ humans? \+ \d+ AI/i)).toHaveCount(0);
   await page.getByRole('button', { name: /^Create Room$/i }).click();
 
-  await expect(page.getByRole('heading', { name: /Current Room/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Invite players to the table' })).toBeVisible();
   await expect(page.locator('.round-table-seat:not(.empty)')).toHaveCount(1);
   await expect(page.locator('.round-table-seat.ai')).toHaveCount(0);
-  await expect(page.getByText(/6 more ready players needed/i)).toBeVisible();
+  await expect(page.getByText(/6 more to join/i)).toBeVisible();
 });
 
 test('create room allows one human with AI fill seats from advanced settings', async ({ page }) => {
@@ -252,14 +252,14 @@ test('create room allows one human with AI fill seats from advanced settings', a
   await expect(page.getByText(/1 human \+ 4 AI/i)).toBeVisible();
   await page.getByRole('button', { name: /^Create Room$/i }).click();
 
-  await expect(page.getByRole('heading', { name: /Current Room/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Check the seats, then get ready' })).toBeVisible();
   await expect(page.locator('.round-table-seat').filter({ hasText: /AI Seat 4/i }).getByText(/^AI$/)).toBeVisible();
   await expect(page.locator('.ai-room-note')).toContainText(/AI fill-ins \(experimental\) · 1 human \+ 4 AI/i);
   await expect(page.locator('.ai-room-note')).toContainText(/keep it open during the game/i);
   await expect(page.getByRole('button', { name: /^Start Game$/i })).toHaveCount(0);
   await page.getByRole('button', { name: /^(Set Ready|Confirm seats and ready)$/i }).click();
   await expect(page.getByRole('status').getByText(/Everyone is ready/i)).toBeVisible();
-  await expect(page.getByRole('heading', { name: /Game Progress/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Game Progress/i })).toBeAttached();
 });
 
 test('create room defers the nickname error until submit and still blocks empty names', async ({ page }) => {

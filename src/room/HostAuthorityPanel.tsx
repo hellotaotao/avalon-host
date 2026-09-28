@@ -1,7 +1,7 @@
 import { isSeatReleased, type RoomPlayer } from '../services/roomService';
 import { useI18n } from '../i18n';
 
-export function HostAuthorityPanel({
+export function HostControls({
   players,
   currentPlayer,
   started,
@@ -29,7 +29,7 @@ export function HostAuthorityPanel({
 
   const manageablePlayers = players.filter((player) => !player.isHost && !player.isAi && !isDemoMode);
 
-  const controls = (
+  return (
     <>
       {started && (
         <div className="host-action-group host-start-action">
@@ -70,28 +70,5 @@ export function HostAuthorityPanel({
         <button type="button" className="small-danger dissolve-room" onClick={onDissolveRoom} disabled={busy}>{t('Dissolve Room')}</button>
       </div>
     </>
-  );
-
-  // In-game the host panel is rarely needed, so collapse it to keep the play
-  // surface short. In the lobby it stays open — space is not tight there.
-  if (started) {
-    return (
-      <details className="panel host-authority-panel host-authority-disclosure">
-        <summary className="host-authority-heading">
-          <h2 id="host-authority-title">{t('Host permissions')}</h2>
-          <span className="disclosure-hint">{t('Tap to manage')}</span>
-        </summary>
-        {controls}
-      </details>
-    );
-  }
-
-  return (
-    <section className="panel host-authority-panel" aria-labelledby="host-authority-title">
-      <div className="host-authority-heading">
-        <h2 id="host-authority-title">{t('Host permissions')}</h2>
-      </div>
-      {controls}
-    </section>
   );
 }
