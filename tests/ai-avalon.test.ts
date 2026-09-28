@@ -44,12 +44,12 @@ describe('AI provider model and reasoning configuration', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, model: 'gpt-6-luna' }));
   });
 
-  it('allows the original mini without reasoning as a comparison baseline', async () => {
+  it('ignores a model or reasoning effort set in the deployment environment', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-key');
     vi.stubEnv('OPENAI_MODEL', 'gpt-5.4-mini');
     vi.stubEnv('OPENAI_REASONING_EFFORT', 'none');
     await callHandler();
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ model: 'gpt-5.4-mini', reasoning_effort: 'none' });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ model: 'gpt-6-luna', reasoning_effort: 'medium' });
   });
 
   it('uses the namespaced Luna model through OpenRouter', async () => {
@@ -59,12 +59,12 @@ describe('AI provider model and reasoning configuration', () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ model: 'openai/gpt-6-luna', reasoning_effort: 'medium' });
   });
 
-  it('preserves OpenRouter-specific overrides', async () => {
+  it('ignores OpenRouter model overrides in the environment too', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-key');
     vi.stubEnv('OPENROUTER_MODEL', 'openai/gpt-5.4-mini');
     vi.stubEnv('OPENROUTER_REASONING_EFFORT', 'none');
     await callHandler();
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ model: 'openai/gpt-5.4-mini', reasoning_effort: 'none' });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ model: 'openai/gpt-6-luna', reasoning_effort: 'medium' });
   });
 
   it('does not call a provider when no key is configured', async () => {

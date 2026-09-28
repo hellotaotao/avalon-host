@@ -12,8 +12,12 @@ type VercelResponse = {
   end(): void;
 };
 
-const DEFAULT_OPENAI_MODEL = 'gpt-6-luna';
-const DEFAULT_REASONING_EFFORT = 'medium';
+// The model is a product decision, so it lives here with the code and its
+// tests. Deployments only supply the API key; a model set there would silently
+// override this one.
+const OPENAI_MODEL = 'gpt-6-luna';
+const OPENROUTER_MODEL = `openai/${OPENAI_MODEL}`;
+const REASONING_EFFORT = 'medium';
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -38,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ok: false,
         error: {
           code: 'missing_provider_key',
-          message: 'Set OPENAI_API_KEY (and optional OPENAI_MODEL) or OPENROUTER_API_KEY to enable real AI decisions. Heuristic fallback remains available.',
+          message: 'Set OPENAI_API_KEY or OPENROUTER_API_KEY to enable real AI decisions. Heuristic fallback remains available.',
         },
       });
       return;
@@ -59,8 +63,8 @@ function getProviderConfig() {
       name: 'openai',
       url: OPENAI_URL,
       key: process.env.OPENAI_API_KEY,
-      model: process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
-      reasoningEffort: process.env.OPENAI_REASONING_EFFORT || DEFAULT_REASONING_EFFORT,
+      model: OPENAI_MODEL,
+      reasoningEffort: REASONING_EFFORT,
       headers: {},
     };
   }
@@ -69,8 +73,8 @@ function getProviderConfig() {
       name: 'openrouter',
       url: OPENROUTER_URL,
       key: process.env.OPENROUTER_API_KEY,
-      model: process.env.OPENROUTER_MODEL || process.env.OPENAI_MODEL || `openai/${DEFAULT_OPENAI_MODEL}`,
-      reasoningEffort: process.env.OPENROUTER_REASONING_EFFORT || process.env.OPENAI_REASONING_EFFORT || DEFAULT_REASONING_EFFORT,
+      model: OPENROUTER_MODEL,
+      reasoningEffort: REASONING_EFFORT,
       headers: {
         'HTTP-Referer': process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5173',
         'X-Title': 'Veiled Roundtable AI Table',

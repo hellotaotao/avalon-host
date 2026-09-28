@@ -188,11 +188,6 @@ Cleanup thresholds:
 
 `vercel.json` schedules the cleanup daily at 03:00 UTC. For production, set `CRON_SECRET` in Vercel; Vercel Cron will send `Authorization: Bearer $CRON_SECRET` and the endpoint will require it. If `CRON_SECRET` is not set, the endpoint accepts Vercel's `x-vercel-cron: 1` header for prototype deployments.
 
+### AI simulator model
 
-### AI simulator model configuration
-
-The AI simulator defaults to `gpt-6-luna` with explicit `medium` reasoning. It reuses the server-only `OPENAI_API_KEY`; no new key is required. Live-room AI fill-ins still use local rules, not this model endpoint.
-
-Set `OPENAI_MODEL` and `OPENAI_REASONING_EFFORT` in the deployment environment to override the defaults. Existing deployment overrides take precedence over the source defaults: update `OPENAI_MODEL` to `gpt-6-luna` and set `OPENAI_REASONING_EFFORT=medium` when deploying this change.
-
-For the previous comparison baseline, use `OPENAI_MODEL=gpt-5.4-mini` and `OPENAI_REASONING_EFFORT=none`. OpenRouter uses `OPENROUTER_MODEL` (default `openai/gpt-6-luna`) and `OPENROUTER_REASONING_EFFORT`; its explicit settings take precedence over the corresponding OpenAI settings. Provider errors still trigger the simulator's existing local heuristic fallback.
+The AI simulator uses `gpt-6-luna` with `medium` reasoning (`openai/gpt-6-luna` through OpenRouter). The model and reasoning effort are set in `api/ai-avalon.ts`, not in the deployment environment: a deployment only provides `OPENAI_API_KEY` (or `OPENROUTER_API_KEY`), so what runs is always what the code says. To try another model, change it there. Live-room AI fill-ins still use local rules, not this model endpoint, and provider errors fall back to the simulator's local heuristic.
