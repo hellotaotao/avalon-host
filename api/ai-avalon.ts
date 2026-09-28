@@ -12,7 +12,8 @@ type VercelResponse = {
   end(): void;
 };
 
-const DEFAULT_OPENAI_MODEL = 'gpt-5.4-mini';
+const DEFAULT_OPENAI_MODEL = 'gpt-6-luna';
+const DEFAULT_REASONING_EFFORT = 'medium';
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -59,6 +60,7 @@ function getProviderConfig() {
       url: OPENAI_URL,
       key: process.env.OPENAI_API_KEY,
       model: process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
+      reasoningEffort: process.env.OPENAI_REASONING_EFFORT || DEFAULT_REASONING_EFFORT,
       headers: {},
     };
   }
@@ -67,7 +69,8 @@ function getProviderConfig() {
       name: 'openrouter',
       url: OPENROUTER_URL,
       key: process.env.OPENROUTER_API_KEY,
-      model: process.env.OPENROUTER_MODEL || process.env.OPENAI_MODEL || 'openai/gpt-5.4-mini',
+      model: process.env.OPENROUTER_MODEL || process.env.OPENAI_MODEL || `openai/${DEFAULT_OPENAI_MODEL}`,
+      reasoningEffort: process.env.OPENROUTER_REASONING_EFFORT || process.env.OPENAI_REASONING_EFFORT || DEFAULT_REASONING_EFFORT,
       headers: {
         'HTTP-Referer': process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5173',
         'X-Title': 'Veiled Roundtable AI Table',
@@ -107,6 +110,7 @@ async function requestDecision(provider: ReturnType<typeof getProviderConfig>, r
     },
     body: JSON.stringify({
       model: provider.model,
+      reasoning_effort: provider.reasoningEffort,
       response_format: { type: 'json_object' },
       messages: [
         {
